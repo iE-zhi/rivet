@@ -31,6 +31,7 @@ function Row({ label, children, open = false }: { label: string; children: React
   );
 }
 
+/** 根据组件标识渲染带可访问名称的交互预览控件。 */
 function ComponentPreview({ id, dark }: { id: string; dark: boolean }) {
   switch (id) {
     case "button":
@@ -70,12 +71,13 @@ function ComponentPreview({ id, dark }: { id: string; dark: boolean }) {
       return (
         <>
           <Row label="Default">
-            <Select className="preview-select" options={[{ value: "com", label: "串口 (COM)" }]} />
-            <Select className="preview-select" options={[{ value: "115200", label: "115200" }]} />
+            <Select ariaLabel="串口设备" className="preview-select" options={[{ value: "com", label: "串口 (COM)" }]} />
+            <Select ariaLabel="波特率" className="preview-select" options={[{ value: "115200", label: "115200" }]} />
           </Row>
           <Row label="Open" open>
             <Select
               className="preview-select is-focus"
+              ariaLabel="数据位和校验位"
               defaultValue="8n1"
               defaultOpen
               options={[

@@ -1,0 +1,22 @@
+[package]
+name = "rivet"
+version = "0.1.0"
+description = "Rivet cross-platform serial console"
+authors = ["Rivet"]
+edition = "2021"
+
+[package.metadata.tauri-winres]
+ProductName = "Rivet"
+FileDescription = "Rivet serial console"
+
+[lib]
+name = "rivet_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serial2 = "=0.2.38"
+tauri = { version = "2", features = [] }

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Rivet",
+  "version": "0.1.0",
+  "identifier": "com.rivet.serial",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{
+      "title": "Rivet Serial",
+      "width": 1024,
+      "height": 600,
+      "minWidth": 620,
+      "minHeight": 560,
+      "center": true
+    }],
+    "security": {}
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": ["../THIRD_PARTY_NOTICES.md", "../licenses/MPL-2.0.txt", "../licenses/Unicode-3.0.txt"]
+  }
+}

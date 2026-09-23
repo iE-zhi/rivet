@@ -109,18 +109,25 @@
   cursor: pointer;
   position: relative;
 }
-.rivet-select-trigger::after {
-  content: "⌄";
+.rivet-select-chevron {
   position: absolute;
-  right: 12px;
-  top: 7px;
-  color: var(--r-muted);
+  right: 13px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translateY(-50%);
+  fill: none;
+  stroke: var(--r-muted);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .rivet-select-trigger:focus-visible,
 .rivet-select.is-focus .rivet-select-trigger {
   border-color: var(--r-primary);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, .18);
 }
+.rivet-select-trigger:disabled { opacity: .48; cursor: default; }
 .rivet-select-menu {
   position: absolute;
   left: 0;
@@ -150,6 +157,7 @@
   font-weight: 700;
   background: linear-gradient(90deg, var(--r-primary), var(--r-primary-light));
 }
+.rivet-select-check { width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
 .rivet-choice {
   display: inline-flex;
@@ -172,15 +180,9 @@
 }
 .rivet-checkbox { border-radius: 3px; }
 .rivet-checkbox:checked { background: var(--r-primary-light); border-color: var(--r-primary-light); }
-.rivet-checkbox:checked::after {
-  content: "✓";
-  display: grid;
-  place-items: center;
-  height: 100%;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 800;
-}
+.rivet-choice { position: relative; }
+.rivet-checkbox-icon { position: absolute; left: 2px; width: 12px; height: 12px; opacity: 0; pointer-events: none; fill: none; stroke: #fff; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.rivet-checkbox:checked + .rivet-checkbox-icon { opacity: 1; }
 .rivet-radio { border-radius: 50%; }
 .rivet-radio:checked {
   border-color: var(--r-primary-light);
@@ -261,9 +263,13 @@
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 14px;
+  padding-right: 5px;
   scrollbar-width: none;
   overscroll-behavior: contain;
+}
+.rivet-vertical-scrollbar-viewport:focus-visible {
+  outline: 2px solid var(--r-primary-light);
+  outline-offset: -2px;
 }
 .rivet-vertical-scrollbar-viewport::-webkit-scrollbar {
   width: 0;
@@ -275,7 +281,7 @@
   top: 4px;
   right: 2px;
   bottom: 4px;
-  width: 10px;
+  width: 8px;
   border-radius: 999px;
   background: var(--r-scrollbar-track);
   cursor: pointer;
@@ -289,7 +295,7 @@
   position: absolute;
   left: 2px;
   top: 0;
-  width: 6px;
+  width: 5px;
   min-height: 24px;
   border-radius: 999px;
   background: var(--r-scrollbar-thumb);
@@ -300,7 +306,7 @@
 .rivet-vertical-scrollbar:hover .rivet-vertical-scrollbar-thumb,
 .rivet-vertical-scrollbar-thumb:hover {
   left: 1px;
-  width: 8px;
+  width: 6px;
   background: var(--r-scrollbar-thumb-hover);
 }
 .rivet-vertical-scrollbar-thumb:active {
