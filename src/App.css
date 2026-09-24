@@ -54,7 +54,7 @@ button, input, textarea { font: inherit; }
 .field .rivet-select { width: 100%; }
 .field .rivet-select-trigger { height: 36px; border-radius: 6px; font-size: 12px; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.settings-group + .connect-button + .section-divider { margin-top: 7px; }
+.settings-group + .connect-button + .section-divider { margin-top: 7px; margin-bottom: 7px; }
 .send-section { display: flex; min-height: 0; flex: 1; flex-direction: column; }
 .message-input { width: 100%; min-height: 104px !important; border-radius: 6px !important; font-size: 12px !important; line-height: 1.55; resize: vertical !important; }
 .send-options { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 9px 0 12px; }
