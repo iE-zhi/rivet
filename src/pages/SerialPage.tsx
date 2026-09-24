@@ -580,7 +580,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
               <Button type="button" variant="secondary" className="clear-button" onClick={clearLog} disabled={!lines.length && byteCounts.sent === 0n && byteCounts.received === 0n}>{copy.clear}</Button>
             </div>
           </div>
-          {lines.length ? <VerticalScrollbar className="serial-log-scroll" viewportClassName="serial-log-viewport" height="100%" viewportLabel={copy.logViewport}><Terminal className="serial-terminal" lines={lines} /></VerticalScrollbar> : <div className="empty-state"><div className="empty-icon"><SvgIcon name="wave" size={22} /></div><strong>{copy.empty}</strong></div>}
+          {lines.length ? <VerticalScrollbar className="serial-log-scroll" viewportClassName="serial-log-viewport" height="100%" viewportLabel={copy.logViewport} autoScrollToBottom><Terminal className="serial-terminal" lines={lines} /></VerticalScrollbar> : <div className="empty-state"><div className="empty-icon"><SvgIcon name="wave" size={22} /></div><strong>{copy.empty}</strong></div>}
           {(status || saveError) && <div className="error-line" role="alert"><SvgIcon name="info" />{saveError || status}</div>}
         </section>
         <footer className="console-footer"><span className="console-byte-counts"><span>{copy.sent}{byteCounts.sent.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")} {copy.byteUnit}</span><span>{copy.received}{byteCounts.received.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")} {copy.byteUnit}</span></span><span>{connected ? copy.connected : copy.disconnected}</span></footer>
