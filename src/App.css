@@ -36,7 +36,6 @@ button, input, textarea { font: inherit; }
 .empty-state { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: var(--r-subtle); text-align: center; }
 .empty-state strong { color: var(--r-text); font-size: 14px; font-weight: 600; }
 .empty-icon { display: grid; width: 52px; height: 52px; margin-bottom: 4px; place-items: center; border: 1px solid var(--r-border); border-radius: 50%; color: var(--r-primary-light); }
-.error-line { display: flex; max-height: 84px; align-items: flex-start; gap: 8px; overflow: auto; padding: 10px 12px; border-left: 2px solid var(--r-danger); background: color-mix(in srgb, var(--r-danger) 8%, transparent); color: var(--r-danger); font-size: 12px; overflow-wrap: anywhere; }
 .console-footer { display: flex; min-height: 38px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; border-top: 1px solid var(--r-border); color: var(--r-muted); font-size: 11px; }
 .console-byte-counts { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .console-byte-counts > span { white-space: nowrap; }
@@ -91,15 +90,12 @@ button, input, textarea { font: inherit; }
 .settings-row-label { color: var(--r-text); font-size: 13px; font-weight: 500; }
 .settings-select { width: 196px; flex: 0 0 196px; }
 .settings-select .rivet-select-trigger { height: 36px; border-radius: 6px; font-size: 12px; }
-.settings-row-control { display: flex; width: 196px; max-width: 100%; flex: 0 0 196px; flex-direction: column; gap: 5px; }
+.settings-row-control { width: 196px; max-width: 100%; flex: 0 0 196px; }
 .settings-input { width: 100%; height: 36px; border-radius: 6px; font-size: 12px; text-align: right; }
 .settings-input[aria-invalid="true"] { border-color: var(--r-danger); }
-.settings-row-feedback { color: var(--r-danger); font-size: 11px; line-height: 1.35; text-align: right; }
-.settings-row.has-feedback { align-items: flex-start; }
-.settings-row.has-feedback .settings-row-label { padding-top: 10px; }
 
 @media (max-width: 1000px) { .serial-page { grid-template-columns: minmax(260px, 1fr) 310px; } .console-area { padding: 0 20px; } .control-panel-content { padding: 22px 17px 20px; } }
 @media (max-width: 760px) { html, body, #root { height: auto; min-height: 100%; } .app-shell { min-height: 100vh; height: auto; grid-template-columns: 48px minmax(0, 1fr); } .serial-page { height: auto; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; } .rail { grid-row: 1; padding-bottom: 5px; } .brand-mark { width: 30px; height: 30px; } .brand-mark img { width: 37.5px; height: 37.5px; } .rail-divider { width: 30px; } .console-area { min-height: 55vh; padding: 0 14px; } .control-panel { grid-column: 1; overflow: visible; border-top: 1px solid var(--r-border); border-left: 0; } .control-panel-scroll { height: auto !important; flex: none; } .control-panel-scroll .rivet-vertical-scrollbar-viewport { height: auto !important; overflow: visible !important; padding-right: 0; } .control-panel-scroll .rivet-vertical-scrollbar-viewport > div { min-height: 0; } .control-panel-scroll .rivet-vertical-scrollbar-track { display: none; } .control-panel-content { flex: none; padding: 22px 16px 16px; } .log-panel { min-height: 340px; } }
 @media (max-width: 640px) { .settings-page { height: auto; min-height: 100vh; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); } .settings-sidebar { flex-direction: row; padding: 12px; border-right: 0; border-bottom: 1px solid var(--r-border); } .settings-nav-item { justify-content: center; } .settings-main { overflow: visible; padding: 24px 22px 34px; } }
-@media (max-width: 420px) { .console-area { padding: 0 10px; } .control-panel-content { padding: 22px 12px 12px; } .field-grid { gap: 8px; } .settings-main { padding: 20px 14px 28px; } .settings-row { align-items: stretch; flex-direction: column; gap: 9px; padding: 14px; } .settings-row.has-feedback .settings-row-label { padding-top: 0; } .settings-row + .settings-row::before { right: 14px; left: 14px; } .settings-select, .settings-row-control { width: 100%; flex-basis: auto; } .settings-row-feedback { text-align: left; } }
+@media (max-width: 420px) { .console-area { padding: 0 10px; } .control-panel-content { padding: 22px 12px 12px; } .field-grid { gap: 8px; } .settings-main { padding: 20px 14px 28px; } .settings-row { align-items: stretch; flex-direction: column; gap: 9px; padding: 14px; } .settings-row + .settings-row::before { right: 14px; left: 14px; } .settings-select, .settings-row-control { width: 100%; flex-basis: auto; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

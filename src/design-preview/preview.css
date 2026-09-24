@@ -14,6 +14,7 @@ body {
   grid-template-columns: 1fr 1fr;
 }
 .preview-theme {
+  position: relative;
   min-width: 0;
   padding: 36px;
   background: var(--r-bg);
@@ -65,6 +66,7 @@ body {
 .preview-scroll-line:last-child {
   border-bottom: 0;
 }
+.preview-notification-note { max-width: 260px; padding-top: 260px; color: var(--r-subtle); font-size: 12px; line-height: 1.5; }
 
 @media (max-width: 900px) {
   .preview-root { grid-template-columns: 1fr; }

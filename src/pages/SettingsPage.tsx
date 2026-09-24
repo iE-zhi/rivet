@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent } from "react";
-import { Input, Select, SvgIcon, Switch, type SelectOption } from "../components/ui";
+import { Input, Select, SvgIcon, Switch, useNotification, type SelectOption } from "../components/ui";
 import { MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialDefaults, type SerialFlowControl, type SerialParity } from "./serialDefaults";
 import { SERIAL_RX_IDLE_MS_MAX, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_PACKET_BYTES_MAX, SERIAL_RX_PACKET_BYTES_MIN, type SerialRxSettings } from "./serialRxSettings";
 import type { Locale } from "./SerialPage";
@@ -271,6 +271,8 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
 export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange }: SettingsPageProps) {
   /** 取当前界面语言的文案和选项列表。 */
   const copy = SETTINGS_PAGE_COPY[locale];
+  /** 当前页面所有短时反馈均通过应用外壳中的全局通知发送。 */
+  const { notify } = useNotification();
   /** 设置页默认展示显示偏好；栏目切换只影响右侧当前分组。 */
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>("display");
   /** 文本草稿允许编辑期间显示无效内容，持久化状态始终只保存有效整数。 */
@@ -346,9 +348,9 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   const showSerialSettings = () => setActiveCategory("serial");
 
   /**
-   * 校验十进制波特率草稿并即时显示错误；持久化在失焦时提交。
+   * 校验十进制波特率草稿并标记无效状态；持久化在失焦时提交。
    * @param event 波特率输入框的文本变化事件。
-   * @returns 无；只保存草稿和有效状态提示。
+   * @returns 无；只保存草稿和 aria-invalid 状态。
    */
   const handleBaudRateChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.currentTarget.value;
@@ -363,7 +365,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     }
   };
 
-  /** 切换默认参数开关，并在关闭时恢复未提交波特率草稿为已保存值并清除错误。 */
+  /** 切换默认参数开关，并在关闭时恢复未提交波特率草稿为已保存值。 */
   const handleUseSerialDefaultsChange = (enabled: boolean) => {
     suppressBaudBlurCommitRef.current = false;
     if (!enabled) {
@@ -374,20 +376,20 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   };
 
   /**
-   * 有效波特率离开输入框时提交；无效草稿回退到最近一次已保存值。
-   * @returns 无；有效值更新应用默认参数，无效值只恢复显示草稿。
+   * 有效波特率离开输入框时提交；无效草稿发一次警告并回退到最近的有效值。
+   * @returns 无；有效值更新应用默认参数，无效值通知后恢复草稿。
    */
   const handleBaudRateBlur = () => {
-    if (suppressBaudBlurCommitRef.current || !useSerialDefaults) {
-      suppressBaudBlurCommitRef.current = false;
-      return;
-    }
+    const suppressCommit = suppressBaudBlurCommitRef.current || !useSerialDefaults;
+    suppressBaudBlurCommitRef.current = false;
     const baudRate = parseBaudRate(baudDraft);
     if (baudRate === null) {
+      if (useSerialDefaults) notify({ kind: "warning", message: copy.invalidBaud });
       setBaudDraft(String(serialDefaults.baudRate));
       setBaudInvalid(false);
       return;
     }
+    if (suppressCommit) return;
     setBaudDraft(String(baudRate));
     setBaudInvalid(false);
     if (baudRate !== serialDefaults.baudRate) {
@@ -396,9 +398,9 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   };
 
   /**
-   * 校验 RX 空闲时间草稿并即时显示范围错误。
+   * 校验 RX 空闲时间草稿并标记无效状态。
    * @param event RX 空闲时间输入框的文本变化事件。
-   * @returns 无；只更新草稿和错误提示。
+   * @returns 无；只更新草稿和 aria-invalid 状态。
    */
   const handleReceiveIdleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.currentTarget.value;
@@ -407,12 +409,13 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   };
 
   /**
-   * RX 空闲时间失焦时提交有效值，无效草稿恢复到最近一次已保存值。
-   * @returns 无；有效值立即更新应用设置，无效值只恢复草稿显示。
+   * RX 空闲时间失焦时提交有效值；无效草稿通知一次后恢复到已保存值。
+   * @returns 无；有效值立即更新应用设置，无效值通知后恢复草稿。
    */
   const handleReceiveIdleBlur = () => {
     const idleMs = parseBoundedInteger(receiveIdleDraft, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_IDLE_MS_MAX);
     if (idleMs === null) {
+      notify({ kind: "warning", message: copy.invalidReceiveIdleMs });
       setReceiveIdleDraft(String(serialRxSettings.idleMs));
       setReceiveIdleInvalid(false);
       return;
@@ -425,9 +428,9 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   };
 
   /**
-   * 校验 RX 单包字节数草稿并即时显示范围错误。
+   * 校验 RX 单包字节数草稿并标记无效状态。
    * @param event RX 单包上限输入框的文本变化事件。
-   * @returns 无；只更新草稿和错误提示。
+   * @returns 无；只更新草稿和 aria-invalid 状态。
    */
   const handleReceiveMaxPacketChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.currentTarget.value;
@@ -436,12 +439,13 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   };
 
   /**
-   * RX 单包字节数失焦时提交有效值，无效草稿恢复到最近一次已保存值。
-   * @returns 无；有效值立即更新应用设置，无效值只恢复草稿显示。
+   * RX 单包字节数失焦时提交有效值；无效草稿通知一次后恢复到已保存值。
+   * @returns 无；有效值立即更新应用设置，无效值通知后恢复草稿。
    */
   const handleReceiveMaxPacketBlur = () => {
     const maxPacketBytes = parseBoundedInteger(receiveMaxPacketDraft, SERIAL_RX_PACKET_BYTES_MIN, SERIAL_RX_PACKET_BYTES_MAX);
     if (maxPacketBytes === null) {
+      notify({ kind: "warning", message: copy.invalidReceiveMaxPacketBytes });
       setReceiveMaxPacketDraft(String(serialRxSettings.maxPacketBytes));
       setReceiveMaxPacketInvalid(false);
       return;
@@ -540,13 +544,12 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                     <span className="settings-row-label">{copy.useSerialDefaults}</span>
                     <Switch checked={useSerialDefaults} onCheckedChange={handleUseSerialDefaultsChange} ariaLabel={copy.useSerialDefaults} />
                   </div>
-                  <div className={`settings-row${baudInvalid ? " has-feedback" : ""}`}>
+                  <div className="settings-row">
                     <span className="settings-row-label">{copy.baud}</span>
                     <div className="settings-row-control">
                       <Input
                         aria-label={copy.baud}
                         aria-invalid={baudInvalid}
-                        aria-describedby={baudInvalid ? "serial-baud-error" : undefined}
                         className="settings-input"
                         disabled={!useSerialDefaults}
                         inputMode="numeric"
@@ -555,7 +558,6 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                         onChange={handleBaudRateChange}
                         onBlur={handleBaudRateBlur}
                       />
-                      {baudInvalid && <span className="settings-row-feedback" id="serial-baud-error" role="alert">{copy.invalidBaud}</span>}
                     </div>
                   </div>
                   <div className="settings-row">
@@ -579,13 +581,12 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
               <section className="settings-section" aria-labelledby="settings-receive-group-title">
                 <h1 className="settings-section-title" id="settings-receive-group-title">{copy.receiveGroupTitle}</h1>
                 <div className="settings-list">
-                  <div className={`settings-row${receiveIdleInvalid ? " has-feedback" : ""}`}>
+                  <div className="settings-row">
                     <span className="settings-row-label">{copy.receiveIdleMs}</span>
                     <div className="settings-row-control">
                       <Input
                         aria-label={copy.receiveIdleMs}
                         aria-invalid={receiveIdleInvalid}
-                        aria-describedby={receiveIdleInvalid ? "serial-rx-idle-error" : undefined}
                         className="settings-input"
                         inputMode="numeric"
                         maxLength={5}
@@ -593,16 +594,14 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                         onChange={handleReceiveIdleChange}
                         onBlur={handleReceiveIdleBlur}
                       />
-                      {receiveIdleInvalid && <span className="settings-row-feedback" id="serial-rx-idle-error" role="alert">{copy.invalidReceiveIdleMs}</span>}
                     </div>
                   </div>
-                  <div className={`settings-row${receiveMaxPacketInvalid ? " has-feedback" : ""}`}>
+                  <div className="settings-row">
                     <span className="settings-row-label">{copy.receiveMaxPacketBytes}</span>
                     <div className="settings-row-control">
                       <Input
                         aria-label={copy.receiveMaxPacketBytes}
                         aria-invalid={receiveMaxPacketInvalid}
-                        aria-describedby={receiveMaxPacketInvalid ? "serial-rx-packet-error" : undefined}
                         className="settings-input"
                         inputMode="numeric"
                         maxLength={5}
@@ -610,7 +609,6 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                         onChange={handleReceiveMaxPacketChange}
                         onBlur={handleReceiveMaxPacketBlur}
                       />
-                      {receiveMaxPacketInvalid && <span className="settings-row-feedback" id="serial-rx-packet-error" role="alert">{copy.invalidReceiveMaxPacketBytes}</span>}
                     </div>
                   </div>
                 </div>

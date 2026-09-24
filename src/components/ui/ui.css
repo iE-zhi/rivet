@@ -93,6 +93,99 @@
 }
 .rivet-svg-icon { display: inline-block; flex: 0 0 auto; vertical-align: middle; }
 
+/* 应用内通知共享设计 token；固定定位由应用外壳渲染，预览可切换为局部定位。 */
+.rivet-notification-viewport {
+  position: fixed;
+  z-index: 1000;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  box-sizing: border-box;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+  padding-right: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+  pointer-events: none;
+}
+.rivet-notification-viewport::-webkit-scrollbar { display: none; }
+.rivet-notification-viewport-absolute {
+  position: absolute;
+  top: 140px;
+  right: 16px;
+  z-index: 10;
+  width: 300px;
+  max-width: calc(100% - 32px);
+}
+.rivet-notification {
+  display: grid;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  grid-template-columns: 20px minmax(0, 1fr) 26px;
+  align-items: start;
+  gap: 11px;
+  padding: 13px 11px 13px 14px;
+  border: 1px solid var(--r-border);
+  border-left-width: 3px;
+  border-radius: 11px;
+  background: var(--r-surface);
+  color: var(--r-text);
+  box-shadow: none;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0) scale(1);
+  animation: rivet-notification-enter 180ms cubic-bezier(.2, .8, .2, 1) both;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.rivet-notification-success { border-left-color: var(--r-success); }
+.rivet-notification-info { border-left-color: var(--r-info); }
+.rivet-notification-warning { border-left-color: var(--r-warning); }
+.rivet-notification-error { border-left-color: var(--r-danger); }
+.rivet-notification-icon { margin-top: 1px; color: var(--r-info); }
+.rivet-notification-success .rivet-notification-icon { color: var(--r-success); }
+.rivet-notification-warning .rivet-notification-icon { color: var(--r-warning); }
+.rivet-notification-error .rivet-notification-icon { color: var(--r-danger); }
+.rivet-notification-content { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.rivet-notification-title { min-width: 0; color: var(--r-text); font-size: 12px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.rivet-notification-message { color: var(--r-subtle); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
+.rivet-notification-close {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--r-muted);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.rivet-notification-close:hover { background: var(--r-surface-2); color: var(--r-text); }
+.rivet-notification-close:focus-visible { outline: 2px solid var(--r-primary-light); outline-offset: 1px; }
+.rivet-notification.is-closing { opacity: 0; transform: translateX(12px) scale(.985); }
+@keyframes rivet-notification-enter {
+  from { opacity: 0; transform: translateX(12px) scale(.985); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+@media (max-width: 520px) {
+  .rivet-notification-viewport { top: 10px; right: 10px; max-width: calc(100vw - 20px); max-height: calc(100vh - 20px); }
+  .rivet-notification-viewport-absolute { top: 140px; right: 10px; max-width: calc(100% - 20px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rivet-notification,
+  .rivet-notification-close { animation: none; transition: none; }
+}
+
 .rivet-select {
   position: relative;
   display: inline-block;

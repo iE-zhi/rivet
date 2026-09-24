@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Button, Checkbox, Input, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, type TerminalLine } from "../components/ui";
+import { Button, Checkbox, Input, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, useNotification, type TerminalLine } from "../components/ui";
 import { buildSerialBytes } from "./serialBytes";
 import { appendSerialLogEntry, appendSerialRxBurst, createSerialLogBuffer, flattenSerialRxBurst, getSerialLogLines, isSerialRxBurstIdle, serializeSerialLogLines, splitSerialRxBytes, type SerialLogEntry, type SerialRxBurst } from "./serialLog";
 import { isSerialDefaults, LAST_USED_SERIAL_CONFIG_STORAGE_KEY, selectSerialStartupDefaults, serialDefaultsEqual, serializeSerialDefaults, type SerialDefaults } from "./serialDefaults";
@@ -17,7 +17,7 @@ type PortInfo = { path: string; name: string };
 type PortConfig = { path: string; baudRate: number; dataBits: number; stopBits: number; parity: string; flowControl: string };
 /** Rust 事件中的一次原始读取字节块，前端解码器跨事件保留 UTF-8 状态。 */
 type DataEvent = { bytes: number[] };
-/** 串口清单刷新后的选择与提示保留策略。 */
+/** 串口清单刷新后的选择与错误通知保留策略。 */
 type PortRefreshOptions = { preservePath?: boolean; preserveStatus?: boolean };
 /** 页面当前统计周期中的串口原始字节数，组件卸载时结束。 */
 type SerialByteCounts = {
@@ -34,6 +34,26 @@ const SERIAL_COPY = {
   },
   en: {
     connect: "Connect device", disconnect: "Disconnect", settings: "Port configuration", baud: "Baud rate", data: "Data bits", parity: "Parity", stop: "Stop bits", flow: "Flow control", send: "Send", sending: "Sending…", save: "Save", saveFailed: "Could not save log: ", clear: "Clear", hexDisplay: "Hex display", empty: "Waiting for serial data", unavailable: "Use the Rivet desktop app to access serial devices.", message: "Message to send…", hexMessage: "Hex bytes, e.g. 48 65 6C 6C 6F…", timestamp: "Timestamp", hexSend: "Hex send", cr: "\\r", lf: "\\n", hexEmpty: "Hex data cannot be empty.", hexInvalid: "Use only 0-9 and A-F; separate byte pairs with whitespace or enter an even number of hex digits continuously.", hexOdd: "Hex data must contain complete two-digit bytes.", connecting: "Connecting…", connected: "Connected", disconnected: "Disconnected", placeholder: "Serial device", console: "Serial console", logViewport: "Serial log scroll area", panelViewport: "Serial settings and send controls scroll area", flowNone: "None", flowHardware: "Hardware RTS/CTS", flowSoftware: "Software XON/XOFF", parityNone: "No parity", parityEven: "Even", parityOdd: "Odd", bit: "bit", refresh: "Refresh ports", selectPort: "Choose device", error: "Serial error", sent: "Sent: ", received: "Received: ", byteUnit: "bytes",
+  },
+} as const;
+
+/** 串口操作通知使用简短的中英双语文案。 */
+const SERIAL_NOTIFICATION_COPY = {
+  zh: {
+    saveSucceeded: "日志已保存。",
+    connectFailed: "连接失败：",
+    disconnectFailed: "断开连接失败：",
+    sendFailed: "发送失败：",
+    refreshFailed: "刷新串口设备失败：",
+    connectedTo: "已连接到",
+  },
+  en: {
+    saveSucceeded: "Log saved.",
+    connectFailed: "Could not connect: ",
+    disconnectFailed: "Could not disconnect: ",
+    sendFailed: "Could not send: ",
+    refreshFailed: "Could not refresh serial devices: ",
+    connectedTo: "Connected to",
   },
 } as const;
 
@@ -125,8 +145,6 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   const [lines, setLines] = useState<TerminalLine[]>([]);
   /** 收发字节数按页面挂载周期累计；清空日志时重置，断开或重连时保留。 */
   const [byteCounts, setByteCounts] = useState<SerialByteCounts>({ sent: 0n, received: 0n });
-  /** 保存命令独立显示错误，下一次保存尝试会清除过期提示。 */
-  const [saveError, setSaveError] = useState("");
   /** 保存当前有界日志及三种数据视图的字节计数。 */
   const logBufferRef = useRef(createSerialLogBuffer());
   /** 最多暂存配置上限内的原始接收字节，超出时先提交当前包。 */
@@ -148,7 +166,8 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   const hexDisplayRef = useRef(false);
   /** 在 React 重绘前同步阻止并发重复保存。 */
   const savingRef = useRef(false);
-  const [status, setStatus] = useState("");
+  /** 浏览器环境的能力限制只通知一次，避免 StrictMode 重放 effect 时重复显示。 */
+  const unavailableNoticeShownRef = useRef(false);
   /** 上次处理的默认值用于识别设置页的真实参数变化。 */
   const observedSerialDefaultsRef = useRef(serialDefaults);
   /** 上次处理的模式用于在运行期间切换后保留当前会话配置。 */
@@ -166,6 +185,9 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   const timestampEnabledRef = useRef(timestampEnabled);
   timestampEnabledRef.current = timestampEnabled;
   const copy = SERIAL_COPY[locale];
+  const notificationCopy = SERIAL_NOTIFICATION_COPY[locale];
+  /** 串口页面与后端事件的所有短时反馈均由应用外壳通知区展示。 */
+  const { notify } = useNotification();
 
   /**
    * 将有效默认参数复制到串口页本地会话状态，不会反向写入全局默认值。
@@ -316,56 +338,57 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     appendLine({ kind, prefix, text, ...(rawBytes === undefined ? {} : { rawBytes }) });
   }, [appendLine]);
 
-  /** 刷新系统端口清单；默认修正失效选择并清除提示，连接收尾可保留两者。 */
+  /** 刷新系统端口清单；连接失败后的收尾刷新抑制次级错误以保留主错误通知。 */
   const refreshPorts = useCallback(async ({ preservePath = false, preserveStatus = false }: PortRefreshOptions = {}) => {
     if (!desktop) return;
     try {
       const found = await invoke<PortInfo[]>("list_ports");
       setPorts(found);
       if (!preservePath) setPath((current) => found.some((port) => port.path === current) ? current : found[0]?.path ?? "");
-      if (!preserveStatus) setStatus("");
     } catch (error) {
-      const message = String(error);
-      setStatus((current) => preserveStatus ? current || message : message);
+      if (!preserveStatus) notify({ kind: "error", message: `${SERIAL_NOTIFICATION_COPY[localeRef.current].refreshFailed}${String(error)}` });
     }
-  }, [desktop]);
+  }, [desktop, notify]);
 
-  /** 先提交待处理 RX，再申请 Rust 侧连接；失败时恢复未连接状态并显示后端错误。 */
+  /** 先提交待处理 RX，再申请 Rust 侧连接；成功或失败均通知并保留终端日志。 */
   const connect = useCallback(async () => {
     if (!desktop || !listenersReady || !path || connecting || connected) return;
     flushPendingRxRef.current();
     setConnecting(true);
-    setStatus("");
+    let connectionFailed = false;
     const config: PortConfig = { path, baudRate: Number(baudRate), dataBits: Number(dataBits), stopBits: Number(stopBits), parity, flowControl };
     try {
       await invoke("open_port", { config });
       decoderRef.current = new TextDecoder("utf-8", { fatal: false });
       setConnected(true);
       log("ok", `${path} · ${config.baudRate} · ${config.dataBits}${parity[0].toUpperCase()}${config.stopBits}`);
+      notify({ kind: "success", message: `${notificationCopy.connectedTo} ${path}` });
     } catch (error) {
-      setStatus(String(error));
+      connectionFailed = true;
+      notify({ kind: "error", message: `${notificationCopy.connectFailed}${String(error)}` });
     } finally {
       setConnecting(false);
-      void refreshPorts({ preservePath: true, preserveStatus: true });
+      void refreshPorts({ preservePath: true, preserveStatus: connectionFailed });
     }
-  }, [baudRate, connected, connecting, dataBits, desktop, flowControl, listenersReady, log, parity, path, refreshPorts, stopBits]);
+  }, [baudRate, connected, connecting, dataBits, desktop, flowControl, listenersReady, log, notificationCopy.connectFailed, notificationCopy.connectedTo, notify, parity, path, refreshPorts, stopBits]);
 
-  /** 关闭前先提交待处理 RX；仅在 Rust 确认会话关闭后复位连接状态。 */
+  /** 关闭前先提交待处理 RX；仅在 Rust 确认会话关闭后更新状态并通知结果。 */
   const disconnect = useCallback(async () => {
     flushPendingRxRef.current();
     try {
       await invoke("close_port");
       setConnected(false);
       log("info", copy.disconnected);
+      notify({ kind: "success", message: copy.disconnected });
     } catch (error) {
-      setStatus(String(error));
+      notify({ kind: "error", message: `${notificationCopy.disconnectFailed}${String(error)}` });
     }
-  }, [copy.disconnected, log]);
+  }, [copy.disconnected, log, notificationCopy.disconnectFailed, notify]);
 
   /**
-   * 校验后立即记录 TX 并发送字节；成功或失败均保留草稿，仅成功时累计字节数，失败显示后端原始错误。
+   * 校验后立即记录 TX 并发送字节；成功或失败均保留草稿，仅成功时累计字节数，失败时显示通知。
    * @param event 表单提交事件；函数会阻止浏览器默认提交行为。
-   * @returns 发送与界面状态处理完成后的 Promise；后端错误显示在状态区。
+   * @returns 发送与界面状态处理完成后的 Promise；后端错误以全局通知显示。
    */
   const send = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -373,7 +396,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     if (!hexSend && !message.length) return;
     const result = buildSerialBytes(message, { hex: hexSend, appendCR, appendLF });
     if (!result.ok) {
-      setStatus(result.error === "empty" ? copy.hexEmpty : result.error === "odd" ? copy.hexOdd : copy.hexInvalid);
+      notify({ kind: "warning", message: result.error === "empty" ? copy.hexEmpty : result.error === "odd" ? copy.hexOdd : copy.hexInvalid });
       return;
     }
 
@@ -390,18 +413,17 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
       await invoke("send_bytes", { bytes: result.bytes });
       if (mountedRef.current && lifecycleRef.current === lifecycle && logCycleRef.current === cycle) {
         setByteCounts((counts) => ({ ...counts, sent: counts.sent + BigInt(result.bytes.length) }));
-        setStatus("");
       }
     } catch (error) {
-      if (mountedRef.current && lifecycleRef.current === lifecycle) setStatus(String(error));
+      if (mountedRef.current && lifecycleRef.current === lifecycle) notify({ kind: "error", message: `${notificationCopy.sendFailed}${String(error)}` });
     } finally {
       sendingRef.current = false;
       if (mountedRef.current && lifecycleRef.current === lifecycle) setSending(false);
     }
-  }, [appendCR, appendLF, connected, copy, hexSend, log, message]);
+  }, [appendCR, appendLF, connected, copy, hexSend, log, message, notificationCopy.sendFailed, notify]);
 
   /**
-   * 丢弃待提交 RX 并清空日志、解码残留、收发统计及保存错误；旧发送结果不会污染新周期。
+   * 丢弃待提交 RX 并清空日志、解码残留和收发统计；旧发送结果不会污染新周期。
    * @returns 无；重建日志缓冲区并更新对应的 React 状态。
    */
   const clearLog = useCallback(() => {
@@ -412,7 +434,6 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     logBufferRef.current = createSerialLogBuffer();
     setLines([]);
     setByteCounts({ sent: 0n, received: 0n });
-    setSaveError("");
   }, [clearRxFlushTimer]);
   /**
    * 先提交待处理 RX，再按用户选择重建日志视图；原始文本和字节缓存保持不变。
@@ -427,8 +448,8 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     setLines(getSerialLogLines(logBufferRef.current, enabled));
   }, []);
   /**
-   * 保存前提交待处理 RX 并生成当前可见快照；取消不提示，后端错误显示在状态区。
-   * @returns 保存请求完成后的 Promise；重复请求、浏览器环境或空日志直接返回。
+   * 保存前提交待处理 RX 并生成当前可见快照；取消不提示，成功或错误使用全局通知。
+   * @returns 保存请求完成后的 Promise；false 代表用户取消，重复请求、浏览器环境或空日志直接返回。
    */
   const saveLog = useCallback(async () => {
     if (!desktop || savingRef.current) return;
@@ -439,17 +460,17 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     const content = serializeSerialLogLines(snapshot);
     savingRef.current = true;
     setSaving(true);
-    setSaveError("");
     try {
-      await invoke<boolean>("save_log", { content });
+      const saved = await invoke<boolean>("save_log", { content });
+      if (saved) notify({ kind: "success", message: notificationCopy.saveSucceeded });
     } catch (error) {
-      setSaveError(`${copy.saveFailed}${String(error)}`);
+      notify({ kind: "error", message: `${copy.saveFailed}${String(error)}` });
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
-  }, [copy.saveFailed, desktop]);
-  /** 执行用户主动刷新并按默认策略修正设备选择及状态提示。 */
+  }, [copy.saveFailed, desktop, notificationCopy.saveSucceeded, notify]);
+  /** 执行用户主动刷新并按默认策略修正设备选择。 */
   const refreshFromButton = useCallback(() => void refreshPorts(), [refreshPorts]);
   /** 根据当前会话状态触发连接或断开操作。 */
   const toggleConnection = useCallback(() => connected ? void disconnect() : void connect(), [connected, connect, disconnect]);
@@ -476,7 +497,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) event.currentTarget.form?.requestSubmit();
   }, []);
 
-  /** 两种串口事件均订阅成功后才允许连接；失败或卸载时忽略迟到的注册结果。 */
+  /** 两种串口事件均订阅成功后才允许连接；失败通知一次，卸载时忽略迟到的注册结果。 */
   useEffect(() => {
     mountedRef.current = true;
     const lifecycle = lifecycleRef.current + 1;
@@ -529,18 +550,18 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
       if (registeredCount === 2) { setListenersReady(true); void refreshPorts(); }
     /** 订阅失败时释放已注册监听并向界面报告错误。 */
     }).catch((error: unknown) => {
-      if (disposed) return;
+      if (disposed || setupFailed) return;
       setupFailed = true;
       unlistenData?.();
       unlistenError?.();
       setListenersReady(false);
-      setStatus(String(error));
+      notify({ kind: "error", message: String(error) });
     });
-    /** 将后端异常显示到状态区并同步复位连接展示。 */
+    /** 将每次后端异常事件通知用户并同步复位连接展示。 */
     void listen<string>("serial:error", (event) => {
       if (disposed) return;
       flushPendingRxRef.current();
-      setStatus(`${SERIAL_COPY[localeRef.current].error}: ${event.payload}`);
+      notify({ kind: "error", message: `${SERIAL_COPY[localeRef.current].error}: ${event.payload}` });
       setConnected(false);
     /** 记录错误订阅句柄；订阅失败时由对应 catch 清理部分注册。 */
     }).then((unlisten) => {
@@ -550,12 +571,12 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
       if (registeredCount === 2) { setListenersReady(true); void refreshPorts(); }
     /** 保持连接按钮禁用并显示监听注册错误。 */
     }).catch((error: unknown) => {
-      if (disposed) return;
+      if (disposed || setupFailed) return;
       setupFailed = true;
       unlistenData?.();
       unlistenError?.();
       setListenersReady(false);
-      setStatus(String(error));
+      notify({ kind: "error", message: String(error) });
     });
     return () => {
       disposed = true;
@@ -566,12 +587,18 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
       unlistenData?.();
       unlistenError?.();
     };
-  }, [clearRxFlushTimer, commitRxBurst, desktop, log, refreshPorts, scheduleRxFlush]);
+  }, [clearRxFlushTimer, commitRxBurst, desktop, log, notify, refreshPorts, scheduleRxFlush]);
+
+  /** 浏览器预览缺少串口底层能力时发一次全局通知，不受当前隐藏页面影响。 */
+  useEffect(() => {
+    if (desktop || unavailableNoticeShownRef.current) return;
+    unavailableNoticeShownRef.current = true;
+    notify({ kind: "info", message: copy.unavailable });
+  }, [copy.unavailable, desktop, notify]);
 
   return (
     <main className="serial-page" id="serial-page">
       <section className="console-area">
-        {!desktop && <div className="notice" role="status"><SvgIcon name="info" />{copy.unavailable}</div>}
         <section className="log-panel" aria-label={copy.console}>
           <div className="log-toolbar">
             <Checkbox className="log-hex-option" label={copy.hexDisplay} checked={hexDisplay} onChange={updateHexDisplay} />
@@ -581,7 +608,6 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
             </div>
           </div>
           {lines.length ? <VerticalScrollbar className="serial-log-scroll" viewportClassName="serial-log-viewport" height="100%" viewportLabel={copy.logViewport} autoScrollToBottom><Terminal className="serial-terminal" lines={lines} /></VerticalScrollbar> : <div className="empty-state"><div className="empty-icon"><SvgIcon name="wave" size={22} /></div><strong>{copy.empty}</strong></div>}
-          {(status || saveError) && <div className="error-line" role="alert"><SvgIcon name="info" />{saveError || status}</div>}
         </section>
         <footer className="console-footer"><span className="console-byte-counts"><span>{copy.sent}{byteCounts.sent.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")} {copy.byteUnit}</span><span>{copy.received}{byteCounts.received.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")} {copy.byteUnit}</span></span><span>{connected ? copy.connected : copy.disconnected}</span></footer>
       </section>

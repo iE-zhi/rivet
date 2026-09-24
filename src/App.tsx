@@ -1,6 +1,6 @@
 import { useEffect, useState, type MouseEvent } from "react";
 import appIcon from "../src-tauri/icons/128x128.png";
-import { SvgIcon } from "./components/ui";
+import { NotificationProvider, SvgIcon } from "./components/ui";
 import SerialPage, { type Locale } from "./pages/SerialPage";
 import SettingsPage, { type FontMode, type ThemeMode } from "./pages/SettingsPage";
 import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
@@ -283,12 +283,14 @@ export default function App() {
         </a>
       </nav>
       <div className="app-content">
-        <div className="app-view serial-view" hidden={page !== "serial"}>
-          <SerialPage locale={locale} serialDefaults={serialDefaults} useSerialDefaults={useSerialDefaults} serialRxSettings={serialRxSettings} />
-        </div>
-        <div className="app-view settings-view" hidden={page !== "settings"}>
-          <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} />
-        </div>
+        <NotificationProvider locale={locale}>
+          <div className="app-view serial-view" hidden={page !== "serial"}>
+            <SerialPage locale={locale} serialDefaults={serialDefaults} useSerialDefaults={useSerialDefaults} serialRxSettings={serialRxSettings} />
+          </div>
+          <div className="app-view settings-view" hidden={page !== "settings"}>
+            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} />
+          </div>
+        </NotificationProvider>
       </div>
     </div>
   );

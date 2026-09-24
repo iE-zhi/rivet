@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Button,
   Checkbox,
   Input,
+  NotificationProvider,
   Radio,
   SearchInput,
   Select,
@@ -12,6 +13,7 @@ import {
   Terminal,
   Textarea,
   VerticalScrollbar,
+  useNotification,
 } from "../components/ui";
 import "./preview.css";
 
@@ -29,6 +31,20 @@ function Row({ label, children, open = false }: { label: string; children: React
       {children}
     </div>
   );
+}
+
+/** 将正式通知组件的浅色/深色示例保持为静态可操作状态。 */
+function NotificationPreviewSamples() {
+  const { notify } = useNotification();
+
+  /** 预览只在挂载时添加三种语义示例，并设为手动关闭以便检查样式。 */
+  useEffect(() => {
+    notify({ kind: "success", title: "连接成功", message: "已连接到 COM3 · 115200 8N1", durationMs: 0 });
+    notify({ kind: "info", title: "日志已保存", message: "串口日志已保存到本地文件。", durationMs: 0 });
+    notify({ kind: "warning", title: "检查设置", message: "无效输入已恢复到上次有效值。", durationMs: 0 });
+  }, [notify]);
+
+  return <div className="preview-notification-note">成功、信息与警告通知示例；卡片可手动关闭。</div>;
 }
 
 /** 根据组件标识渲染带可访问名称的交互预览控件。 */
@@ -138,6 +154,8 @@ function ComponentPreview({ id, dark }: { id: string; dark: boolean }) {
       );
     case "terminal":
       return <div className="preview-terminal"><Terminal lines={terminalLines} /></div>;
+    case "notification":
+      return <NotificationPreviewSamples />;
     default:
       return <p>未知组件：{id}</p>;
   }
@@ -147,11 +165,13 @@ function ThemePreview({ id, dark }: { id: string; dark: boolean }) {
   const title = document.body.dataset.title ?? id;
   return (
     <section className={`preview-theme rivet-ui ${dark ? "rivet-theme-dark" : "rivet-theme-light"}`}>
-      <h1 className="preview-title">{title}</h1>
-      <p className="preview-subtitle">{dark ? "Dark" : "Light"} · Rivet component preview</p>
-      <div className="preview-demo">
-        <ComponentPreview id={id} dark={dark} />
-      </div>
+      <NotificationProvider locale="zh" viewportMode="absolute">
+        <h1 className="preview-title">{title}</h1>
+        <p className="preview-subtitle">{dark ? "Dark" : "Light"} · Rivet component preview</p>
+        <div className="preview-demo">
+          <ComponentPreview id={id} dark={dark} />
+        </div>
+      </NotificationProvider>
     </section>
   );
 }
