@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
+    "icons:generate": "node scripts/generate-icons.mjs",
     "tauri": "tauri",
     "license:check": "node scripts/check-licenses.mjs"
   },
