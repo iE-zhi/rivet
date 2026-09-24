@@ -317,7 +317,7 @@
   border-radius: 8px;
   background: var(--r-terminal-bg);
   color: var(--r-terminal-text);
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-family: var(--rivet-font-family);
   font-size: 13px;
   line-height: 1.7;
   overflow: auto;

@@ -1,0 +1,9 @@
+/* 西文优先使用 JetBrains Mono，中文由 LXGW WenKai 的 CJK 子集补齐；字体随应用打包。 */
+@import "@fontsource-variable/jetbrains-mono/wght.css";
+@import "lxgw-wenkai-webfont/lxgwwenkai-regular.css";
+@import "lxgw-wenkai-webfont/lxgwwenkai-bold.css";
+
+:root {
+  --rivet-font-family: "JetBrains Mono Variable", "LXGW WenKai", monospace;
+  font-family: var(--rivet-font-family);
+}

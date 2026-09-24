@@ -12,7 +12,9 @@
     "license:check": "node scripts/check-licenses.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "5.3.0",
     "@tauri-apps/api": "^2.8.0",
+    "lxgw-wenkai-webfont": "1.7.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

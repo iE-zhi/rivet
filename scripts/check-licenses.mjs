@@ -6,6 +6,8 @@ import { spawnSync } from "node:child_process";
 const allowed = new Set(["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib"]);
 /** 用户已批准的精确包版本例外；许可证标识也必须与审查时一致。 */
 const approvedExceptions = new Map([
+  ["@fontsource-variable/jetbrains-mono@5.3.0", "OFL-1.1"],
+  ["lightningcss-darwin-arm64@1.33.0", "MPL-2.0"],
   ["lightningcss@1.33.0", "MPL-2.0"],
   ["lightningcss-win32-x64-msvc@1.33.0", "MPL-2.0"],
   ["cssparser@0.36.0", "MPL-2.0"],
@@ -107,6 +109,8 @@ function collectNpmLicenses() {
   const violations = [];
   const seen = new Set();
   for (const snapshot of readdirSync(virtualStore, { withFileTypes: true })) {
+    // pnpm 虚拟存储也包含 lock.yaml 等文件，只扫描依赖目录。
+    if (!snapshot.isDirectory()) continue;
     const packageRoot = join(virtualStore, snapshot.name, "node_modules");
     let entries;
     try {
