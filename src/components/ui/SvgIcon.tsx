@@ -1,18 +1,20 @@
 import type { CSSProperties } from "react";
 import checkIcon from "../../assets/svg/check.svg?url";
 import chevronIcon from "../../assets/svg/chevron.svg?url";
+import displayIcon from "../../assets/svg/display.svg?url";
 import globeIcon from "../../assets/svg/globe.svg?url";
 import infoIcon from "../../assets/svg/info.svg?url";
 import plugIcon from "../../assets/svg/plug.svg?url";
 import refreshIcon from "../../assets/svg/refresh.svg?url";
 import searchIcon from "../../assets/svg/search.svg?url";
+import settingIcon from "../../assets/svg/setting.svg?url";
 import sendIcon from "../../assets/svg/send.svg?url";
 import serialIcon from "../../assets/svg/serial.svg?url";
 import unplugIcon from "../../assets/svg/unplug.svg?url";
 import waveIcon from "../../assets/svg/wave.svg?url";
 
 /** 可共用的单色图标标识；SVG 通过 CSS mask 继承所在位置的文字颜色。 */
-export type SvgIconName = "check" | "chevron" | "globe" | "info" | "plug" | "refresh" | "search" | "send" | "serial" | "unplug" | "wave";
+export type SvgIconName = "check" | "chevron" | "display" | "globe" | "info" | "plug" | "refresh" | "search" | "send" | "serial" | "setting" | "unplug" | "wave";
 
 /** SVG 图标组件参数；尺寸以 CSS 像素计，默认 17px。 */
 export interface SvgIconProps {
@@ -28,6 +30,7 @@ export interface SvgIconProps {
 const SVG_ICON_SOURCES: Record<SvgIconName, string> = {
   check: checkIcon,
   chevron: chevronIcon,
+  display: displayIcon,
   globe: globeIcon,
   info: infoIcon,
   plug: plugIcon,
@@ -35,6 +38,7 @@ const SVG_ICON_SOURCES: Record<SvgIconName, string> = {
   search: searchIcon,
   send: sendIcon,
   serial: serialIcon,
+  setting: settingIcon,
   unplug: unplugIcon,
   wave: waveIcon,
 };

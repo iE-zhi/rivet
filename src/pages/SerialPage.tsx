@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Button, Checkbox, Input, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, type TerminalLine } from "../components/ui";
 import { buildSerialBytes } from "./serialBytes";
 import { appendSerialLogEntry, createSerialLogBuffer, getSerialLogLines, serializeSerialLogLines, type SerialLogEntry } from "./serialLog";
+import { serialDefaultsEqual, type SerialDefaults } from "./serialDefaults";
 
 /** 串口功能页：维护串口会话、事件订阅、日志和设备收发控件。 */
 
@@ -28,22 +29,23 @@ type SerialByteCounts = {
 /** 串口页面按当前语言展示的文案。 */
 const SERIAL_COPY = {
   zh: {
-    connect: "连接设备", disconnect: "断开连接", settings: "串口配置", baud: "波特率", data: "数据位", parity: "校验位", stop: "停止位", flow: "流控", send: "发送", sending: "发送中…", save: "保存", saveFailed: "保存失败：", clear: "清空", hexDisplay: "Hex显示", empty: "等待串口数据", unavailable: "请在 Rivet 桌面应用中使用串口功能。", message: "输入要发送的文本…", hexMessage: "输入 Hex 字节，例如：48 65 6C 6C 6F…", timestamp: "时间戳", hexSend: "Hex发送", cr: "\\r", lf: "\\n", hexEmpty: "Hex 数据不能为空。", hexInvalid: "Hex 数据仅接受 0-9、A-F，可按字节用空白分隔或连续输入偶数位。", hexOdd: "Hex 数据必须由完整的两位字节组成。", connecting: "正在连接…", connected: "已连接", disconnected: "已断开", placeholder: "串口设备", console: "串口控制台", logViewport: "串口日志滚动区域", panelViewport: "串口配置与发送控件滚动区域", flowNone: "无", flowHardware: "硬件 RTS/CTS", parityNone: "无校验", parityEven: "偶校验", parityOdd: "奇校验", bit: "位", refresh: "刷新设备", selectPort: "选择设备", error: "串口错误", sent: "已发送：", received: "已接收：", byteUnit: "字节",
+    connect: "连接设备", disconnect: "断开连接", settings: "串口配置", baud: "波特率", data: "数据位", parity: "校验位", stop: "停止位", flow: "流控", send: "发送", sending: "发送中…", save: "保存", saveFailed: "保存失败：", clear: "清空", hexDisplay: "Hex显示", empty: "等待串口数据", unavailable: "请在 Rivet 桌面应用中使用串口功能。", message: "输入要发送的文本…", hexMessage: "输入 Hex 字节，例如：48 65 6C 6C 6F…", timestamp: "时间戳", hexSend: "Hex发送", cr: "\\r", lf: "\\n", hexEmpty: "Hex 数据不能为空。", hexInvalid: "Hex 数据仅接受 0-9、A-F，可按字节用空白分隔或连续输入偶数位。", hexOdd: "Hex 数据必须由完整的两位字节组成。", connecting: "正在连接…", connected: "已连接", disconnected: "已断开", placeholder: "串口设备", console: "串口控制台", logViewport: "串口日志滚动区域", panelViewport: "串口配置与发送控件滚动区域", flowNone: "无", flowHardware: "硬件 RTS/CTS", flowSoftware: "软件 XON/XOFF", parityNone: "无校验", parityEven: "偶校验", parityOdd: "奇校验", bit: "位", refresh: "刷新设备", selectPort: "选择设备", error: "串口错误", sent: "已发送：", received: "已接收：", byteUnit: "字节",
   },
   en: {
-    connect: "Connect device", disconnect: "Disconnect", settings: "Port configuration", baud: "Baud rate", data: "Data bits", parity: "Parity", stop: "Stop bits", flow: "Flow control", send: "Send", sending: "Sending…", save: "Save", saveFailed: "Could not save log: ", clear: "Clear", hexDisplay: "Hex display", empty: "Waiting for serial data", unavailable: "Use the Rivet desktop app to access serial devices.", message: "Message to send…", hexMessage: "Hex bytes, e.g. 48 65 6C 6C 6F…", timestamp: "Timestamp", hexSend: "Hex send", cr: "\\r", lf: "\\n", hexEmpty: "Hex data cannot be empty.", hexInvalid: "Use only 0-9 and A-F; separate byte pairs with whitespace or enter an even number of hex digits continuously.", hexOdd: "Hex data must contain complete two-digit bytes.", connecting: "Connecting…", connected: "Connected", disconnected: "Disconnected", placeholder: "Serial device", console: "Serial console", logViewport: "Serial log scroll area", panelViewport: "Serial settings and send controls scroll area", flowNone: "None", flowHardware: "Hardware RTS/CTS", parityNone: "No parity", parityEven: "Even", parityOdd: "Odd", bit: "bit", refresh: "Refresh ports", selectPort: "Choose device", error: "Serial error", sent: "Sent: ", received: "Received: ", byteUnit: "bytes",
+    connect: "Connect device", disconnect: "Disconnect", settings: "Port configuration", baud: "Baud rate", data: "Data bits", parity: "Parity", stop: "Stop bits", flow: "Flow control", send: "Send", sending: "Sending…", save: "Save", saveFailed: "Could not save log: ", clear: "Clear", hexDisplay: "Hex display", empty: "Waiting for serial data", unavailable: "Use the Rivet desktop app to access serial devices.", message: "Message to send…", hexMessage: "Hex bytes, e.g. 48 65 6C 6C 6F…", timestamp: "Timestamp", hexSend: "Hex send", cr: "\\r", lf: "\\n", hexEmpty: "Hex data cannot be empty.", hexInvalid: "Use only 0-9 and A-F; separate byte pairs with whitespace or enter an even number of hex digits continuously.", hexOdd: "Hex data must contain complete two-digit bytes.", connecting: "Connecting…", connected: "Connected", disconnected: "Disconnected", placeholder: "Serial device", console: "Serial console", logViewport: "Serial log scroll area", panelViewport: "Serial settings and send controls scroll area", flowNone: "None", flowHardware: "Hardware RTS/CTS", flowSoftware: "Software XON/XOFF", parityNone: "No parity", parityEven: "Even", parityOdd: "Odd", bit: "bit", refresh: "Refresh ports", selectPort: "Choose device", error: "Serial error", sent: "Sent: ", received: "Received: ", byteUnit: "bytes",
   },
 } as const;
 
-/** 串口页面的语言输入；语言状态由应用外壳持有。 */
-export type SerialPageProps = { locale: Locale };
+/** 串口页面接收由应用外壳持有的语言和通信默认值。 */
+export type SerialPageProps = { locale: Locale; serialDefaults: SerialDefaults };
 
 /**
  * 提供串口收发界面、设备配置、事件日志及中英文字段。
  * @param locale 当前文案语言，由应用外壳持有。
+ * @param serialDefaults 当前应用持久化的默认通信参数；活动会话配置保存在页面本地。
  * @returns 串口控制台及其设备、日志和收发控件。
  */
-export default function SerialPage({ locale }: SerialPageProps) {
+export default function SerialPage({ locale, serialDefaults }: SerialPageProps) {
   /** 设备、串口配置、发送草稿和日志在页面挂载期间保留。 */
   const [ports, setPorts] = useState<PortInfo[]>([]);
   const [path, setPath] = useState("");
@@ -51,11 +53,12 @@ export default function SerialPage({ locale }: SerialPageProps) {
   const [connecting, setConnecting] = useState(false);
   const [listenersReady, setListenersReady] = useState(false);
   const [sending, setSending] = useState(false);
-  const [baudRate, setBaudRate] = useState("115200");
-  const [dataBits, setDataBits] = useState("8");
-  const [parity, setParity] = useState("none");
-  const [stopBits, setStopBits] = useState("1");
-  const [flowControl, setFlowControl] = useState("none");
+  /** 当前串口页会话参数仅从应用默认值初始化或响应默认值变更。 */
+  const [baudRate, setBaudRate] = useState(String(serialDefaults.baudRate));
+  const [dataBits, setDataBits] = useState(String(serialDefaults.dataBits));
+  const [parity, setParity] = useState<string>(serialDefaults.parity);
+  const [stopBits, setStopBits] = useState(String(serialDefaults.stopBits));
+  const [flowControl, setFlowControl] = useState(String(serialDefaults.flowControl));
   /** 默认勾选；仅为此后新增日志添加时间前缀。 */
   const [timestampEnabled, setTimestampEnabled] = useState(true);
   /** 默认未勾选；选中后将输入按十六进制字节解析。 */
@@ -81,6 +84,10 @@ export default function SerialPage({ locale }: SerialPageProps) {
   /** 在 React 重绘前同步阻止并发重复保存。 */
   const savingRef = useRef(false);
   const [status, setStatus] = useState("");
+  /** 上次处理的默认值用于忽略相同参数对象，避免普通断开复位手动配置。 */
+  const observedSerialDefaultsRef = useRef(serialDefaults);
+  /** 连接期间变更的默认值延迟到连接关闭后应用。 */
+  const pendingSerialDefaultsRef = useRef<SerialDefaults | null>(null);
   /** 仅桌面容器能调用串口命令和事件接口。 */
   const desktop = isTauri();
   /** 在多个数据事件间保留 UTF-8 解码器状态，新建连接时重置。 */
@@ -92,6 +99,38 @@ export default function SerialPage({ locale }: SerialPageProps) {
   const timestampEnabledRef = useRef(timestampEnabled);
   timestampEnabledRef.current = timestampEnabled;
   const copy = SERIAL_COPY[locale];
+
+  /**
+   * 将有效默认参数复制到串口页本地会话状态，不会反向写入全局默认值。
+   * @param defaults 已由应用层校验的默认通信参数。
+   * @returns 无；更新五项本地会话配置。
+   */
+  const applySerialDefaults = useCallback((defaults: SerialDefaults) => {
+    setBaudRate(String(defaults.baudRate));
+    setDataBits(String(defaults.dataBits));
+    setParity(defaults.parity);
+    setStopBits(String(defaults.stopBits));
+    setFlowControl(defaults.flowControl);
+  }, []);
+
+  useEffect(() => {
+    /** 只处理值确实变化的默认参数；连接或连接中时保留待应用值。 */
+    if (!serialDefaultsEqual(observedSerialDefaultsRef.current, serialDefaults)) {
+      observedSerialDefaultsRef.current = serialDefaults;
+      if (connected || connecting) {
+        pendingSerialDefaultsRef.current = serialDefaults;
+      } else {
+        applySerialDefaults(serialDefaults);
+        pendingSerialDefaultsRef.current = null;
+      }
+    }
+
+    /** 连接结束后只应用期间变更过的默认值；普通断开不覆盖会话手动参数。 */
+    if (!connected && !connecting && pendingSerialDefaultsRef.current !== null) {
+      applySerialDefaults(pendingSerialDefaultsRef.current);
+      pendingSerialDefaultsRef.current = null;
+    }
+  }, [applySerialDefaults, connected, connecting, serialDefaults]);
 
   /**
    * 将日志追加到有界原始缓存，并按最近一次选择刷新终端显示行。
@@ -347,8 +386,8 @@ export default function SerialPage({ locale }: SerialPageProps) {
             <div className="field device-select"><span>{copy.selectPort}</span><div className="device-select-controls"><Select className="device-select-control" ariaLabel={copy.selectPort} value={path} onChange={setPath} disabled={!desktop || connected || connecting || ports.length === 0} options={ports.length ? ports.map((port) => ({ value: port.path, label: port.name })) : [{ value: "", label: copy.placeholder }]} /><Button type="button" variant="secondary" className="refresh-button" onClick={refreshFromButton} disabled={!desktop || connected || connecting} aria-label={copy.refresh} title={copy.refresh}><SvgIcon name="refresh" size={18} /></Button></div></div>
             <section className="settings-group" aria-label={copy.settings}>
               <label className="field"><span>{copy.baud}</span><Input value={baudRate} onChange={updateBaudRate} inputMode="numeric" disabled={connected || connecting} /></label>
-              <div className="field-grid"><div className="field"><span>{copy.data}</span><Select ariaLabel={copy.data} value={dataBits} onChange={setDataBits} disabled={connected || connecting} options={[{ value: "8", label: `8 ${copy.bit}` }, { value: "7", label: `7 ${copy.bit}` }]} /></div><div className="field"><span>{copy.parity}</span><Select ariaLabel={copy.parity} value={parity} onChange={setParity} disabled={connected || connecting} options={[{ value: "none", label: copy.parityNone }, { value: "even", label: copy.parityEven }, { value: "odd", label: copy.parityOdd }]} /></div></div>
-              <div className="field-grid"><div className="field"><span>{copy.stop}</span><Select ariaLabel={copy.stop} value={stopBits} onChange={setStopBits} disabled={connected || connecting} options={[{ value: "1", label: `1 ${copy.bit}` }, { value: "2", label: `2 ${copy.bit}` }]} /></div><div className="field"><span>{copy.flow}</span><Select ariaLabel={copy.flow} value={flowControl} onChange={setFlowControl} disabled={connected || connecting} options={[{ value: "none", label: copy.flowNone }, { value: "hardware", label: copy.flowHardware }]} /></div></div>
+              <div className="field-grid"><div className="field"><span>{copy.data}</span><Select ariaLabel={copy.data} value={dataBits} onChange={setDataBits} disabled={connected || connecting} options={[{ value: "8", label: `8 ${copy.bit}` }, { value: "7", label: `7 ${copy.bit}` }, { value: "6", label: `6 ${copy.bit}` }, { value: "5", label: `5 ${copy.bit}` }]} /></div><div className="field"><span>{copy.parity}</span><Select ariaLabel={copy.parity} value={parity} onChange={setParity} disabled={connected || connecting} options={[{ value: "none", label: copy.parityNone }, { value: "even", label: copy.parityEven }, { value: "odd", label: copy.parityOdd }]} /></div></div>
+              <div className="field-grid"><div className="field"><span>{copy.stop}</span><Select ariaLabel={copy.stop} value={stopBits} onChange={setStopBits} disabled={connected || connecting} options={[{ value: "1", label: `1 ${copy.bit}` }, { value: "2", label: `2 ${copy.bit}` }]} /></div><div className="field"><span>{copy.flow}</span><Select ariaLabel={copy.flow} value={flowControl} onChange={setFlowControl} disabled={connected || connecting} options={[{ value: "none", label: copy.flowNone }, { value: "hardware", label: copy.flowHardware }, { value: "software", label: copy.flowSoftware }]} /></div></div>
             </section>
             <Button className="connect-button" variant={connected ? "danger" : "primary"} onClick={toggleConnection} disabled={!desktop || connecting || (!connected && (!path || !listenersReady))}><SvgIcon name={connected ? "unplug" : "plug"} />{connected ? copy.disconnect : connecting ? copy.connecting : copy.connect}</Button>
             <div className="section-divider" />

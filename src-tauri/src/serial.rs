@@ -116,7 +116,7 @@ pub fn list_ports() -> Result<Vec<PortInfo>, String> {
         .collect())
 }
 
-/// 校验帧参数、打开设备并启动有界读取循环；已连接时拒绝覆盖活动会话。
+/// 校验 5–8 位数据帧及 none、RTS/CTS、XON/XOFF 流控配置后打开设备并启动有界读取循环；已有会话时拒绝覆盖。
 #[tauri::command]
 pub fn open_port(
     app: AppHandle,
@@ -135,10 +135,13 @@ pub fn open_port(
     let mut port = SerialPort::open(&config.path, |mut settings: Settings| {
         settings.set_raw();
         settings.set_baud_rate(config.baud_rate)?;
-        settings.set_char_size(if config.data_bits == 7 {
-            CharSize::Bits7
-        } else {
-            CharSize::Bits8
+        // 前置校验将数据位限制为 5–8；兜底分支保留 8 位映射。
+        settings.set_char_size(match config.data_bits {
+            5 => CharSize::Bits5,
+            6 => CharSize::Bits6,
+            7 => CharSize::Bits7,
+            8 => CharSize::Bits8,
+            _ => CharSize::Bits8,
         });
         settings.set_stop_bits(if config.stop_bits == 2 {
             StopBits::Two
@@ -150,10 +153,10 @@ pub fn open_port(
             "odd" => Parity::Odd,
             _ => Parity::None,
         });
-        settings.set_flow_control(if config.flow_control == "hardware" {
-            FlowControl::RtsCts
-        } else {
-            FlowControl::None
+        settings.set_flow_control(match config.flow_control.as_str() {
+            "hardware" => FlowControl::RtsCts,
+            "software" => FlowControl::XonXoff,
+            _ => FlowControl::None,
         });
         Ok(settings)
     })
