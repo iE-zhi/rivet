@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { SvgIcon } from "./SvgIcon";
 import "./ui.css";
 
 export interface SelectOption {
@@ -17,7 +18,18 @@ export interface SelectProps {
   disabled?: boolean;
 }
 
-/** 使用项目样式绘制可访问的单选菜单，并支持受控值与禁用状态。 */
+/**
+ * 使用项目样式绘制可访问的单选菜单，并支持受控值与禁用状态。
+ * @param options 依次展示的值与标签；空列表时菜单不含选项。
+ * @param value 可选受控值；未传时使用内部状态。
+ * @param defaultValue 非受控初始值；省略时取首个选项或空字符串。
+ * @param defaultOpen 是否初始展开。
+ * @param className 容器附加样式类。
+ * @param onChange 用户选择后收到的新值。
+ * @param ariaLabel 触发按钮的可访问名称。
+ * @param disabled 是否禁用菜单交互。
+ * @returns 包含触发按钮、菜单及共享 SVG 图标的单选控件。
+ */
 export function Select({
   options,
   value,
@@ -71,7 +83,7 @@ export function Select({
         onClick={toggleOpen}
       >
         {selected?.label ?? ""}
-        <svg className="rivet-select-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 4.5 3.5 3.5 3.5-3.5" /></svg>
+        <SvgIcon name="chevron" size={12} className="rivet-select-chevron" />
       </button>
       {open && !disabled && (
         <div className="rivet-select-menu" role="listbox">
@@ -87,7 +99,7 @@ export function Select({
                 className={`rivet-select-option ${isSelected ? "is-selected" : ""}`.trim()}
                 onClick={handleOptionClick(option)}
               >
-                {isSelected && <svg className="rivet-select-check" viewBox="0 0 12 12" aria-hidden="true"><path d="m2 6 2.5 2.5L10 3" /></svg>}
+                {isSelected && <SvgIcon name="check" size={12} className="rivet-select-check" />}
                 {option.label}
               </button>
             );

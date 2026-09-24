@@ -20,3 +20,5 @@ tauri-build = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serial2 = "=0.2.38"
 tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tempfile = "3"

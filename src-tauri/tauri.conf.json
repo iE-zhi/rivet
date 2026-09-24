@@ -14,8 +14,8 @@
       "title": "Rivet Serial",
       "width": 1024,
       "height": 600,
-      "minWidth": 620,
-      "minHeight": 560,
+      "minWidth": 1024,
+      "minHeight": 600,
       "center": true
     }],
     "security": {}

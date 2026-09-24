@@ -91,7 +91,7 @@
   display: grid;
   place-items: center;
 }
-.rivet-search-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.rivet-svg-icon { display: inline-block; flex: 0 0 auto; vertical-align: middle; }
 
 .rivet-select {
   position: relative;
@@ -116,11 +116,7 @@
   width: 12px;
   height: 12px;
   transform: translateY(-50%);
-  fill: none;
-  stroke: var(--r-muted);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  color: var(--r-muted);
 }
 .rivet-select-trigger:focus-visible,
 .rivet-select.is-focus .rivet-select-trigger {
@@ -157,7 +153,7 @@
   font-weight: 700;
   background: linear-gradient(90deg, var(--r-primary), var(--r-primary-light));
 }
-.rivet-select-check { width: 12px; height: 12px; margin-right: 6px; vertical-align: -2px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.rivet-select-check { margin-right: 6px; vertical-align: -2px; }
 
 .rivet-choice {
   display: inline-flex;
@@ -181,7 +177,7 @@
 .rivet-checkbox { border-radius: 3px; }
 .rivet-checkbox:checked { background: var(--r-primary-light); border-color: var(--r-primary-light); }
 .rivet-choice { position: relative; }
-.rivet-checkbox-icon { position: absolute; left: 2px; width: 12px; height: 12px; opacity: 0; pointer-events: none; fill: none; stroke: #fff; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.rivet-checkbox-icon { position: absolute; left: 2px; color: #fff; opacity: 0; pointer-events: none; }
 .rivet-checkbox:checked + .rivet-checkbox-icon { opacity: 1; }
 .rivet-radio { border-radius: 50%; }
 .rivet-radio:checked {

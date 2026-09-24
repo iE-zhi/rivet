@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Button, Input, Select, Terminal, Textarea, VerticalScrollbar, type TerminalLine } from "../components/ui";
+import { Button, Checkbox, Input, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, type TerminalLine } from "../components/ui";
+import { buildSerialBytes } from "./serialBytes";
+import { appendSerialLogEntry, createSerialLogBuffer, getSerialLogLines, serializeSerialLogLines, type SerialLogEntry } from "./serialLog";
 
 /** 串口功能页：维护串口会话、事件订阅、日志和设备收发控件。 */
 
@@ -13,23 +15,34 @@ type PortInfo = { path: string; name: string };
 type PortConfig = { path: string; baudRate: number; dataBits: number; stopBits: number; parity: string; flowControl: string };
 /** Rust 事件中的一次原始读取字节块，前端解码器跨事件保留 UTF-8 状态。 */
 type DataEvent = { bytes: number[] };
-/** 每次文本发送可追加的行尾协议。 */
-type Ending = "none" | "lf" | "crlf";
 /** 串口清单刷新后的选择与提示保留策略。 */
 type PortRefreshOptions = { preservePath?: boolean; preserveStatus?: boolean };
+/** 页面当前统计周期中的串口原始字节数，组件卸载时结束。 */
+type SerialByteCounts = {
+  /** 当前周期内由后端确认发送成功的字节总数，单位为字节。 */
+  sent: bigint;
+  /** 当前周期内 serial:data 事件携带的字节总数，单位为字节。 */
+  received: bigint;
+};
 
-/** 前端最多保留的日志条目数，超出时丢弃最早条目。 */
-const LOG_LIMIT = 500;
 /** 串口页面按当前语言展示的文案。 */
 const SERIAL_COPY = {
-  zh: { title: "串口工作台", device: "设备", connect: "连接设备", disconnect: "断开连接", settings: "串口配置", baud: "波特率", data: "数据位", parity: "校验位", stop: "停止位", flow: "流控", send: "发送", sending: "发送中…", clear: "清空日志", empty: "等待串口数据", hint: "连接设备后，收发记录会显示在这里。", unavailable: "请在 Rivet 桌面应用中使用串口功能。", port: "未连接设备", message: "输入要发送的文本…", ending: "行尾", none: "无", lf: "LF", crlf: "CRLF", ready: "就绪", connecting: "正在连接…", connected: "已连接", disconnected: "已断开", placeholder: "串口设备", console: "串口控制台", stream: "串口日志", logViewport: "串口日志滚动区域", panelViewport: "设备与发送控件滚动区域", flowNone: "无", flowHardware: "硬件 RTS/CTS", parityNone: "无校验", parityEven: "偶校验", parityOdd: "奇校验", bit: "位", refresh: "刷新设备", selectPort: "选择设备", bytes: "字节", error: "串口错误", hintSend: "Ctrl + Enter 发送", textMode: "文本" },
-  en: { title: "Serial Console", device: "Device", connect: "Connect device", disconnect: "Disconnect", settings: "Port configuration", baud: "Baud rate", data: "Data bits", parity: "Parity", stop: "Stop bits", flow: "Flow control", send: "Send", sending: "Sending…", clear: "Clear log", empty: "Waiting for serial data", hint: "Connect a device to see incoming and outgoing messages here.", unavailable: "Use the Rivet desktop app to access serial devices.", port: "No device connected", message: "Message to send…", ending: "Line ending", none: "None", lf: "LF", crlf: "CRLF", ready: "Ready", connecting: "Connecting…", connected: "Connected", disconnected: "Disconnected", placeholder: "Serial device", console: "Serial console", stream: "Serial log", logViewport: "Serial log scroll area", panelViewport: "Device and send controls scroll area", flowNone: "None", flowHardware: "Hardware RTS/CTS", parityNone: "None", parityEven: "Even", parityOdd: "Odd", bit: "bit", refresh: "Refresh ports", selectPort: "Choose device", bytes: "bytes", error: "Serial error", hintSend: "Ctrl + Enter to send", textMode: "Text" },
+  zh: {
+    connect: "连接设备", disconnect: "断开连接", settings: "串口配置", baud: "波特率", data: "数据位", parity: "校验位", stop: "停止位", flow: "流控", send: "发送", sending: "发送中…", save: "保存", saveFailed: "保存失败：", clear: "清空", hexDisplay: "Hex显示", empty: "等待串口数据", unavailable: "请在 Rivet 桌面应用中使用串口功能。", message: "输入要发送的文本…", hexMessage: "输入 Hex 字节，例如：48 65 6C 6C 6F…", timestamp: "时间戳", hexSend: "Hex发送", cr: "\\r", lf: "\\n", hexEmpty: "Hex 数据不能为空。", hexInvalid: "Hex 数据仅接受 0-9、A-F，可按字节用空白分隔或连续输入偶数位。", hexOdd: "Hex 数据必须由完整的两位字节组成。", connecting: "正在连接…", connected: "已连接", disconnected: "已断开", placeholder: "串口设备", console: "串口控制台", logViewport: "串口日志滚动区域", panelViewport: "串口配置与发送控件滚动区域", flowNone: "无", flowHardware: "硬件 RTS/CTS", parityNone: "无校验", parityEven: "偶校验", parityOdd: "奇校验", bit: "位", refresh: "刷新设备", selectPort: "选择设备", error: "串口错误", sent: "已发送：", received: "已接收：", byteUnit: "字节",
+  },
+  en: {
+    connect: "Connect device", disconnect: "Disconnect", settings: "Port configuration", baud: "Baud rate", data: "Data bits", parity: "Parity", stop: "Stop bits", flow: "Flow control", send: "Send", sending: "Sending…", save: "Save", saveFailed: "Could not save log: ", clear: "Clear", hexDisplay: "Hex display", empty: "Waiting for serial data", unavailable: "Use the Rivet desktop app to access serial devices.", message: "Message to send…", hexMessage: "Hex bytes, e.g. 48 65 6C 6C 6F…", timestamp: "Timestamp", hexSend: "Hex send", cr: "\\r", lf: "\\n", hexEmpty: "Hex data cannot be empty.", hexInvalid: "Use only 0-9 and A-F; separate byte pairs with whitespace or enter an even number of hex digits continuously.", hexOdd: "Hex data must contain complete two-digit bytes.", connecting: "Connecting…", connected: "Connected", disconnected: "Disconnected", placeholder: "Serial device", console: "Serial console", logViewport: "Serial log scroll area", panelViewport: "Serial settings and send controls scroll area", flowNone: "None", flowHardware: "Hardware RTS/CTS", parityNone: "No parity", parityEven: "Even", parityOdd: "Odd", bit: "bit", refresh: "Refresh ports", selectPort: "Choose device", error: "Serial error", sent: "Sent: ", received: "Received: ", byteUnit: "bytes",
+  },
 } as const;
 
 /** 串口页面的语言输入；语言状态由应用外壳持有。 */
 export type SerialPageProps = { locale: Locale };
 
-/** 提供串口收发界面、设备配置、事件日志及中英文字段。 */
+/**
+ * 提供串口收发界面、设备配置、事件日志及中英文字段。
+ * @param locale 当前文案语言，由应用外壳持有。
+ * @returns 串口控制台及其设备、日志和收发控件。
+ */
 export default function SerialPage({ locale }: SerialPageProps) {
   /** 设备、串口配置、发送草稿和日志在页面挂载期间保留。 */
   const [ports, setPorts] = useState<PortInfo[]>([]);
@@ -43,9 +56,30 @@ export default function SerialPage({ locale }: SerialPageProps) {
   const [parity, setParity] = useState("none");
   const [stopBits, setStopBits] = useState("1");
   const [flowControl, setFlowControl] = useState("none");
-  const [ending, setEnding] = useState<Ending>("lf");
+  /** 默认勾选；仅为此后新增日志添加时间前缀。 */
+  const [timestampEnabled, setTimestampEnabled] = useState(true);
+  /** 默认未勾选；选中后将输入按十六进制字节解析。 */
+  const [hexSend, setHexSend] = useState(false);
+  /** 默认未勾选；选中后在正文后、LF 前追加 CR。 */
+  const [appendCR, setAppendCR] = useState(false);
+  /** 默认勾选；选中后在正文或 CR 后追加 LF。 */
+  const [appendLF, setAppendLF] = useState(true);
   const [message, setMessage] = useState("");
+  /** 当前 Hex 展示开关；原始行数据保留，切换时只重建显示文本。 */
+  const [hexDisplay, setHexDisplay] = useState(false);
+  /** 保存命令进行期间禁用保存按钮。 */
+  const [saving, setSaving] = useState(false);
   const [lines, setLines] = useState<TerminalLine[]>([]);
+  /** 收发字节数按页面挂载周期累计；清空日志时重置，断开或重连时保留。 */
+  const [byteCounts, setByteCounts] = useState<SerialByteCounts>({ sent: 0n, received: 0n });
+  /** 保存命令独立显示错误，下一次保存尝试会清除过期提示。 */
+  const [saveError, setSaveError] = useState("");
+  /** 保存当前有界日志及三种数据视图的字节计数。 */
+  const logBufferRef = useRef(createSerialLogBuffer());
+  /** 保存事件回调最新使用的 Hex 模式，避免异步保存读取旧视图。 */
+  const hexDisplayRef = useRef(false);
+  /** 在 React 重绘前同步阻止并发重复保存。 */
+  const savingRef = useRef(false);
   const [status, setStatus] = useState("");
   /** 仅桌面容器能调用串口命令和事件接口。 */
   const desktop = isTauri();
@@ -54,18 +88,35 @@ export default function SerialPage({ locale }: SerialPageProps) {
   /** 事件回调读取最新语言，避免监听器重建时丢失订阅。 */
   const localeRef = useRef(locale);
   localeRef.current = locale;
+  /** 日志回调读取最新时间戳选项，避免切换时重新订阅 Tauri 事件。 */
+  const timestampEnabledRef = useRef(timestampEnabled);
+  timestampEnabledRef.current = timestampEnabled;
   const copy = SERIAL_COPY[locale];
 
-  /** 按上限保留最近日志，并将超限数据从最早端移除。 */
-  const appendLines = useCallback((additions: TerminalLine[]) => {
-    setLines((current) => [...current, ...additions].slice(-LOG_LIMIT));
+  /**
+   * 将日志追加到有界原始缓存，并按最近一次选择刷新终端显示行。
+   * @param addition 新增文本行及可选的串口原始字节。
+   * @returns 无；副作用仅更新有界缓存和 React 显示状态。
+   */
+  const appendLine = useCallback((addition: SerialLogEntry) => {
+    const buffer = logBufferRef.current;
+    appendSerialLogEntry(buffer, addition);
+    setLines(getSerialLogLines(buffer, hexDisplayRef.current));
   }, []);
 
-  /** 创建带本地时间和方向标识的日志行。 */
-  const log = useCallback((kind: "info" | "rx" | "tx" | "ok", text: string) => {
-    const timestamp = new Date().toLocaleTimeString(localeRef.current === "zh" ? "zh-CN" : "en-US", { hour12: false });
-    appendLines([{ kind, prefix: `[${timestamp}] ${kind.toUpperCase()}`, text }]);
-  }, [appendLines]);
+  /**
+   * 为新日志添加类别和本地时间前缀，并保留对应 TX/RX 原始字节。
+   * @param kind 日志类别；只有 rx/tx 行使用原始字节切换 Hex 显示。
+   * @param text 当前文本模式下的正文。
+   * @param rawBytes 可选串口字节序列，由有界缓冲区复制尾部并保留。
+   * @returns 无；追加操作更新日志缓存及显示状态。
+   */
+  const log = useCallback((kind: "info" | "rx" | "tx" | "ok", text: string, rawBytes?: ArrayLike<number>) => {
+    const timestamp = timestampEnabledRef.current
+      ? `[${new Date().toLocaleTimeString(localeRef.current === "zh" ? "zh-CN" : "en-US", { hour12: false })}] `
+      : "";
+    appendLine({ kind, prefix: `${timestamp}${kind.toUpperCase()}`, text, ...(rawBytes === undefined ? {} : { rawBytes }) });
+  }, [appendLine]);
 
   /** 刷新系统端口清单；默认修正失效选择并清除提示，连接收尾可保留两者。 */
   const refreshPorts = useCallback(async ({ preservePath = false, preserveStatus = false }: PortRefreshOptions = {}) => {
@@ -111,15 +162,29 @@ export default function SerialPage({ locale }: SerialPageProps) {
     }
   }, [copy.disconnected, log]);
 
-  /** 将文本按 UTF-8 编码为字节并追加用户指定的行尾后发送。 */
+  /**
+   * 按当前模式构造并发送串口字节，成功后计数并保留实际发送字节；失败时保留草稿。
+   * @param event 表单提交事件；函数会阻止浏览器默认提交行为。
+   * @returns 发送与界面状态处理完成后的 Promise；后端错误显示在状态区。
+   */
   const send = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!connected || sending || !message.length) return;
+    if (!connected || sending) return;
+    if (!hexSend && !message.length) return;
+    const result = buildSerialBytes(message, { hex: hexSend, appendCR, appendLF });
+    if (!result.ok) {
+      setStatus(result.error === "empty" ? copy.hexEmpty : result.error === "odd" ? copy.hexOdd : copy.hexInvalid);
+      return;
+    }
+
     setSending(true);
-    const suffix = ending === "lf" ? "\n" : ending === "crlf" ? "\r\n" : "";
     try {
-      await invoke("send_bytes", { bytes: Array.from(new TextEncoder().encode(message + suffix)) });
-      log("tx", message + (ending === "lf" ? "\\n" : ending === "crlf" ? "\\r\\n" : ""));
+      await invoke("send_bytes", { bytes: result.bytes });
+      setByteCounts((counts) => ({ ...counts, sent: counts.sent + BigInt(result.bytes.length) }));
+      const txText = hexSend
+        ? result.bytes.map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join(" ")
+        : `${message}${appendCR ? "\\r" : ""}${appendLF ? "\\n" : ""}`;
+      log("tx", txText, result.bytes);
       setMessage("");
       setStatus("");
     } catch (error) {
@@ -127,10 +192,51 @@ export default function SerialPage({ locale }: SerialPageProps) {
     } finally {
       setSending(false);
     }
-  }, [connected, ending, log, message, sending]);
+  }, [appendCR, appendLF, connected, copy, hexSend, log, message, sending]);
 
-  /** 清空当前内存中的串口日志。 */
-  const clearLog = useCallback(() => setLines([]), []);
+  /**
+   * 清空日志、原始字节缓存、收发统计及保存错误提示；后续字节增量计入新周期。
+   * @returns 无；重建日志缓冲区并更新对应的 React 状态。
+   */
+  const clearLog = useCallback(() => {
+    logBufferRef.current = createSerialLogBuffer();
+    setLines([]);
+    setByteCounts({ sent: 0n, received: 0n });
+    setSaveError("");
+  }, []);
+  /**
+   * 按用户选择重建日志视图；原始文本和字节缓存保持不变。
+   * @param event Hex显示复选框的变化事件。
+   * @returns 无；更新模式引用、复选框状态和 Terminal 行。
+   */
+  const updateHexDisplay = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const enabled = event.target.checked;
+    hexDisplayRef.current = enabled;
+    setHexDisplay(enabled);
+    setLines(getSerialLogLines(logBufferRef.current, enabled));
+  }, []);
+  /**
+   * 保存点击时的可见日志快照；取消不提示，后端错误显示在状态区。
+   * @returns 保存请求完成后的 Promise；重复请求、浏览器环境或空日志直接返回。
+   */
+  const saveLog = useCallback(async () => {
+    if (!desktop || savingRef.current) return;
+    const snapshot = getSerialLogLines(logBufferRef.current, hexDisplayRef.current);
+    if (!snapshot.length) return;
+
+    const content = serializeSerialLogLines(snapshot);
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await invoke<boolean>("save_log", { content });
+    } catch (error) {
+      setSaveError(`${copy.saveFailed}${String(error)}`);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }, [copy.saveFailed, desktop]);
   /** 执行用户主动刷新并按默认策略修正设备选择及状态提示。 */
   const refreshFromButton = useCallback(() => void refreshPorts(), [refreshPorts]);
   /** 根据当前会话状态触发连接或断开操作。 */
@@ -139,8 +245,18 @@ export default function SerialPage({ locale }: SerialPageProps) {
   const updateBaudRate = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     setBaudRate(event.target.value.replace(/[^0-9]/g, ""));
   }, []);
-  /** 仅提交行尾菜单定义的三种发送模式。 */
-  const updateEnding = useCallback((value: string) => setEnding(value as Ending), []);
+  /** 更新后续日志是否附带本地时间前缀。 */
+  const updateTimestampEnabled = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const enabled = event.target.checked;
+    timestampEnabledRef.current = enabled;
+    setTimestampEnabled(enabled);
+  }, []);
+  /** 切换待发送输入是否按十六进制字节解析。 */
+  const updateHexSend = useCallback((event: ChangeEvent<HTMLInputElement>) => setHexSend(event.target.checked), []);
+  /** 切换发送正文后是否追加 CR 字节。 */
+  const updateAppendCR = useCallback((event: ChangeEvent<HTMLInputElement>) => setAppendCR(event.target.checked), []);
+  /** 切换发送正文后是否追加 LF 字节。 */
+  const updateAppendLF = useCallback((event: ChangeEvent<HTMLInputElement>) => setAppendLF(event.target.checked), []);
   /** 更新待发送的串口文本内容。 */
   const updateMessage = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => setMessage(event.target.value), []);
   /** 保留普通回车换行，仅由 Ctrl/Command+Enter 提交文本。 */
@@ -157,11 +273,15 @@ export default function SerialPage({ locale }: SerialPageProps) {
     let setupFailed = false;
     let registeredCount = 0;
     setListenersReady(false);
-    /** 解码接收字节并检查组件生命周期，避免卸载后的异步事件更新状态。 */
+    /** 先按事件原始字节计数，再将字节和解码文本一并入日志；即使文本为空也保留接收字节。 */
     void listen<DataEvent>("serial:data", (event) => {
       if (disposed) return;
-      const text = decoderRef.current.decode(new Uint8Array(event.payload.bytes), { stream: true });
-      if (text) log("rx", text);
+      setByteCounts((counts) => ({ ...counts, received: counts.received + BigInt(event.payload.bytes.length) }));
+      /** 把后端 number[] 转成解码字节，并将同一输入交给缓存复制保留尾部。 */
+      const bytes = new Uint8Array(event.payload.bytes);
+      if (!bytes.length) return;
+      const text = decoderRef.current.decode(bytes, { stream: true });
+      log("rx", text, bytes);
     /** 记录数据订阅句柄，仅全部订阅成功后允许连接。 */
     }).then((unlisten) => {
       if (disposed || setupFailed) { unlisten(); return; }
@@ -204,51 +324,49 @@ export default function SerialPage({ locale }: SerialPageProps) {
     };
   }, [desktop, log, refreshPorts]);
 
-  /** 更新并显示可见连接状态标签。 */
-  const stateLabel = connected ? copy.connected : connecting ? copy.connecting : copy.ready;
-
   return (
     <main className="serial-page" id="serial-page">
       <section className="console-area">
-        <header className="topbar"><div><h1>{copy.title}</h1></div><div className={`connection-pill ${connected ? "is-connected" : connecting ? "is-connecting" : ""}`}><i />{stateLabel}</div></header>
-        {!desktop && <div className="notice" role="status"><Icon name="info" />{copy.unavailable}</div>}
+        {!desktop && <div className="notice" role="status"><SvgIcon name="info" />{copy.unavailable}</div>}
         <section className="log-panel" aria-label={copy.console}>
-          <div className="log-toolbar"><div className="log-heading"><span className="live-dot" /><strong>{copy.stream}</strong><span>{lines.length} / {LOG_LIMIT}</span></div><Button variant="secondary" className="clear-button" onClick={clearLog} disabled={!lines.length}><Icon name="trash" />{copy.clear}</Button></div>
-          {lines.length ? <VerticalScrollbar className="serial-log-scroll" viewportClassName="serial-log-viewport" height="100%" viewportLabel={copy.logViewport}><Terminal className="serial-terminal" lines={lines} /></VerticalScrollbar> : <div className="empty-state"><div className="empty-icon"><Icon name="wave" /></div><strong>{copy.empty}</strong><span>{copy.hint}</span></div>}
-          {status && <div className="error-line" role="alert"><Icon name="info" />{status}</div>}
+          <div className="log-toolbar">
+            <Checkbox className="log-hex-option" label={copy.hexDisplay} checked={hexDisplay} onChange={updateHexDisplay} />
+            <div className="log-toolbar-actions">
+              <Button type="button" variant="secondary" className="save-button" onClick={saveLog} disabled={!desktop || !lines.length || saving}>{copy.save}</Button>
+              <Button type="button" variant="secondary" className="clear-button" onClick={clearLog} disabled={!lines.length && byteCounts.sent === 0n && byteCounts.received === 0n}>{copy.clear}</Button>
+            </div>
+          </div>
+          {lines.length ? <VerticalScrollbar className="serial-log-scroll" viewportClassName="serial-log-viewport" height="100%" viewportLabel={copy.logViewport}><Terminal className="serial-terminal" lines={lines} /></VerticalScrollbar> : <div className="empty-state"><div className="empty-icon"><SvgIcon name="wave" size={22} /></div><strong>{copy.empty}</strong></div>}
+          {(status || saveError) && <div className="error-line" role="alert"><SvgIcon name="info" />{saveError || status}</div>}
         </section>
-        <footer className="console-footer"><span><kbd>UTF-8</kbd><span>{copy.textMode}</span></span><span>{connected ? copy.connected : copy.disconnected}</span></footer>
+        <footer className="console-footer"><span className="console-byte-counts"><span>{copy.sent}{byteCounts.sent.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")} {copy.byteUnit}</span><span>{copy.received}{byteCounts.received.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")} {copy.byteUnit}</span></span><span>{connected ? copy.connected : copy.disconnected}</span></footer>
       </section>
       <aside className="control-panel">
         <VerticalScrollbar className="control-panel-scroll" viewportClassName="control-panel-viewport" height="100%" viewportLabel={copy.panelViewport}>
           <div className="control-panel-content">
-            <div className="panel-title"><div><h2>{copy.device}</h2></div><span className="panel-icon"><Icon name="sliders" /></span></div>
-            <div className="device-row"><span className={`device-indicator ${connected ? "on" : ""}`} /><div><strong>{connected ? ports.find((port) => port.path === path)?.name ?? path : copy.placeholder}</strong><span>{connected ? copy.connected : copy.port}</span></div><button className="refresh-button" onClick={refreshFromButton} disabled={!desktop || connected || connecting} aria-label={copy.refresh} title={copy.refresh}><Icon name="refresh" /></button></div>
-            <Button className="connect-button" variant={connected ? "danger" : "primary"} onClick={toggleConnection} disabled={!desktop || connecting || (!connected && (!path || !listenersReady))}><Icon name={connected ? "unplug" : "plug"} />{connected ? copy.disconnect : connecting ? copy.connecting : copy.connect}</Button>
-            <label className="field device-select"><span>{copy.selectPort}</span><Select ariaLabel={copy.selectPort} value={path} onChange={setPath} disabled={!desktop || connected || connecting || ports.length === 0} options={ports.length ? ports.map((port) => ({ value: port.path, label: port.name })) : [{ value: "", label: copy.placeholder }]} /></label>
-            <div className="section-divider" />
-            <section className="settings-group"><h3>{copy.settings}</h3>
+            <div className="field device-select"><span>{copy.selectPort}</span><div className="device-select-controls"><Select className="device-select-control" ariaLabel={copy.selectPort} value={path} onChange={setPath} disabled={!desktop || connected || connecting || ports.length === 0} options={ports.length ? ports.map((port) => ({ value: port.path, label: port.name })) : [{ value: "", label: copy.placeholder }]} /><Button type="button" variant="secondary" className="refresh-button" onClick={refreshFromButton} disabled={!desktop || connected || connecting} aria-label={copy.refresh} title={copy.refresh}><SvgIcon name="refresh" size={18} /></Button></div></div>
+            <section className="settings-group" aria-label={copy.settings}>
               <label className="field"><span>{copy.baud}</span><Input value={baudRate} onChange={updateBaudRate} inputMode="numeric" disabled={connected || connecting} /></label>
-              <div className="field-grid"><label className="field"><span>{copy.data}</span><Select ariaLabel={copy.data} value={dataBits} onChange={setDataBits} disabled={connected || connecting} options={[{ value: "8", label: `8 ${copy.bit}` }, { value: "7", label: `7 ${copy.bit}` }]} /></label><label className="field"><span>{copy.parity}</span><Select ariaLabel={copy.parity} value={parity} onChange={setParity} disabled={connected || connecting} options={[{ value: "none", label: copy.parityNone }, { value: "even", label: copy.parityEven }, { value: "odd", label: copy.parityOdd }]} /></label></div>
-              <div className="field-grid"><label className="field"><span>{copy.stop}</span><Select ariaLabel={copy.stop} value={stopBits} onChange={setStopBits} disabled={connected || connecting} options={[{ value: "1", label: `1 ${copy.bit}` }, { value: "2", label: `2 ${copy.bit}` }]} /></label><label className="field"><span>{copy.flow}</span><Select ariaLabel={copy.flow} value={flowControl} onChange={setFlowControl} disabled={connected || connecting} options={[{ value: "none", label: copy.flowNone }, { value: "hardware", label: copy.flowHardware }]} /></label></div>
+              <div className="field-grid"><div className="field"><span>{copy.data}</span><Select ariaLabel={copy.data} value={dataBits} onChange={setDataBits} disabled={connected || connecting} options={[{ value: "8", label: `8 ${copy.bit}` }, { value: "7", label: `7 ${copy.bit}` }]} /></div><div className="field"><span>{copy.parity}</span><Select ariaLabel={copy.parity} value={parity} onChange={setParity} disabled={connected || connecting} options={[{ value: "none", label: copy.parityNone }, { value: "even", label: copy.parityEven }, { value: "odd", label: copy.parityOdd }]} /></div></div>
+              <div className="field-grid"><div className="field"><span>{copy.stop}</span><Select ariaLabel={copy.stop} value={stopBits} onChange={setStopBits} disabled={connected || connecting} options={[{ value: "1", label: `1 ${copy.bit}` }, { value: "2", label: `2 ${copy.bit}` }]} /></div><div className="field"><span>{copy.flow}</span><Select ariaLabel={copy.flow} value={flowControl} onChange={setFlowControl} disabled={connected || connecting} options={[{ value: "none", label: copy.flowNone }, { value: "hardware", label: copy.flowHardware }]} /></div></div>
             </section>
+            <Button className="connect-button" variant={connected ? "danger" : "primary"} onClick={toggleConnection} disabled={!desktop || connecting || (!connected && (!path || !listenersReady))}><SvgIcon name={connected ? "unplug" : "plug"} />{connected ? copy.disconnect : connecting ? copy.connecting : copy.connect}</Button>
             <div className="section-divider" />
-            <section className="send-section"><div className="send-heading"><h3>{copy.send}</h3><span className="shortcut">{copy.hintSend}</span></div>
-              <form onSubmit={send}><Textarea className="message-input" value={message} onChange={updateMessage} onKeyDown={handleMessageKeyDown} placeholder={copy.message} disabled={!connected || sending} /><div className="send-options"><label>{copy.ending}<Select ariaLabel={copy.ending} value={ending} onChange={updateEnding} options={[{ value: "none", label: copy.none }, { value: "lf", label: copy.lf }, { value: "crlf", label: copy.crlf }]} /></label></div><Button type="submit" className="send-button" disabled={!connected || !message.length || sending}><Icon name="send" />{sending ? copy.sending : copy.send}<span><Icon name="enter" /></span></Button></form>
+            <section className="send-section" aria-label={copy.send}>
+              <form onSubmit={send}>
+                <Textarea className="message-input" value={message} onChange={updateMessage} onKeyDown={handleMessageKeyDown} placeholder={hexSend ? copy.hexMessage : copy.message} disabled={!connected || sending} />
+                <div className="send-options">
+                  <Checkbox className="send-option" label={copy.timestamp} checked={timestampEnabled} onChange={updateTimestampEnabled} />
+                  <Checkbox className="send-option" label={copy.hexSend} checked={hexSend} onChange={updateHexSend} />
+                  <Checkbox className="send-option" label={copy.cr} checked={appendCR} onChange={updateAppendCR} />
+                  <Checkbox className="send-option" label={copy.lf} checked={appendLF} onChange={updateAppendLF} />
+                </div>
+                <Button type="submit" className="send-button" disabled={!connected || (!hexSend && !message.length) || sending}><SvgIcon name="send" />{sending ? copy.sending : copy.send}</Button>
+              </form>
             </section>
           </div>
         </VerticalScrollbar>
       </aside>
     </main>
   );
-}
-
-/** 串口功能页中可绘制的单色 SVG 图标标识。 */
-type IconName = "info" | "trash" | "wave" | "sliders" | "plug" | "unplug" | "send" | "refresh" | "enter";
-
-/** 绘制符合项目图标尺寸和线宽规范的单色 SVG 图标。 */
-function Icon({ name }: { name: IconName }) {
-  /** 图标路径按标识索引，供 SVG 路径属性直接使用。 */
-  const paths: Record<IconName, string> = { info: "M12 16v-4m0-4h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z", trash: "M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6", wave: "M2 12h3l3-8 5 16 3-8h6", sliders: "M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M2 14h4m4-6h4m4 8h4", plug: "M12 22v-5m-5-12v5m10-5v5M5 10h14v2a7 7 0 0 1-14 0z", unplug: "M10 14l-3 3a4 4 0 0 1-6-6l3-3m10 0 3-3a4 4 0 0 1 6 6l-3 3M8 8l8 8", send: "m22 2-7 20-4-9-9-4 20-7zM22 2 11 13", refresh: "M20 7v5h-5M4 17v-5h5m10-3a7 7 0 0 0-12-2L4 12m16 0-3 5a7 7 0 0 1-12-2", enter: "M9 10l3 3 3-3M12 13V3M5 17v3h14v-3" };
-  return <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]} /></svg>;
 }

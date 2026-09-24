@@ -1,5 +1,5 @@
 /**
- * 从唯一 SVG 图稿生成 Tauri 桌面图标，并固定 ICNS chunk 顺序以保证生成稳定。
+ * 从桌面应用 SVG 图稿生成 Tauri 桌面图标，并固定 ICNS chunk 顺序以保证生成稳定。
  * 输出限于 src-tauri/icons 中已有的桌面图标；临时目录中的移动端产物会清理。
  */
 import { execFileSync } from 'node:child_process';
@@ -16,7 +16,8 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const sourceSvgPath = join(projectRoot, 'design', 'app-icon.svg');
+/** 桌面图标的唯一 SVG 源图保存在共享图标目录中。 */
+const sourceSvgPath = join(projectRoot, 'src', 'assets', 'svg', 'app-icon.svg');
 const iconDirectory = join(projectRoot, 'src-tauri', 'icons');
 
 // 仅复制 Tauri 配置和仓库中已有的桌面端图标，不带入移动端生成文件。
@@ -157,7 +158,7 @@ function generateIcons() {
       }
     }
     replaceIcons(copyPlan);
-    console.log(`已从 design/app-icon.svg 生成 ${copyPlan.length} 个桌面图标。`);
+    console.log(`已从 src/assets/svg/app-icon.svg 生成 ${copyPlan.length} 个桌面图标。`);
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }
