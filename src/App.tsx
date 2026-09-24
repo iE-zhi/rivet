@@ -1,4 +1,5 @@
 import { useState } from "react";
+import appIcon from "../src-tauri/icons/128x128.png";
 import SerialPage, { type Locale } from "./pages/SerialPage";
 
 /** 串口工作台外壳所需的导航、品牌和语言切换文案。 */
@@ -19,7 +20,7 @@ export default function App() {
     <div className="app-shell rivet-ui">
       <nav className="rail" aria-label={copy.navigation}>
         <a className="brand-mark" href="#serial-page" aria-label={copy.brand} title="Rivet">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19V5h7a5 5 0 0 1 1.4 9.8L19 19h-4l-4-4H9v4zm3-7h4a2 2 0 1 0 0-4H9z" /></svg>
+          <img src={appIcon} alt="" aria-hidden="true" />
         </a>
         <a className="rail-link active" href="#serial-page" aria-current="page" aria-label={copy.serial} title={copy.serial}>
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6l6 6-6 6M12 18h8" /></svg>
