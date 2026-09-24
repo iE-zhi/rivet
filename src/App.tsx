@@ -3,7 +3,7 @@ import appIcon from "../src-tauri/icons/128x128.png";
 import { SvgIcon } from "./components/ui";
 import SerialPage, { type Locale } from "./pages/SerialPage";
 import SettingsPage, { type FontMode, type ThemeMode } from "./pages/SettingsPage";
-import { deserializeSerialDefaults, isSerialDefaults, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
+import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
 
 /** 串口工作台外壳所需的导航与品牌文案。 */
 const SHELL_COPY = {
@@ -102,6 +102,19 @@ function readSerialDefaultsPreference(): SerialDefaults {
 }
 
 /**
+ * 从白名单布尔值读取串口默认参数开关；存储不可用时保持启用状态。
+ * @returns 是否在每次启动时采用设置页默认通信参数。
+ */
+function readSerialDefaultsEnabledPreference(): boolean {
+  try {
+    return deserializeSerialDefaultsEnabled(window.localStorage.getItem(SERIAL_DEFAULTS_ENABLED_STORAGE_KEY));
+  } catch (error) {
+    console.warn("Rivet 无法读取默认通信参数开关，将保持启用。", error);
+    return true;
+  }
+}
+
+/**
  * 读取系统当前深色外观状态；缺少 matchMedia 时按浅色安全默认值处理。
  * @returns 系统当前是否偏好深色外观。
  */
@@ -124,6 +137,8 @@ export default function App() {
   const [font, setFont] = useState<FontMode>(() => readStoredPreference(PREFERENCE_STORAGE_KEYS.font, isFontMode, "builtin"));
   /** 应用级串口默认通信参数；只有设置页能修改，串口会话持有自己的临时配置。 */
   const [serialDefaults, setSerialDefaults] = useState<SerialDefaults>(readSerialDefaultsPreference);
+  /** 控制每次启动串口页时是否采用设置页中的默认通信参数。 */
+  const [useSerialDefaults, setUseSerialDefaults] = useState(readSerialDefaultsEnabledPreference);
   /** 系统外观状态仅在主题模式为 system 时决定最终颜色方案。 */
   const [systemPrefersDark, setSystemPrefersDark] = useState(readSystemPrefersDark);
   /** 一级页面切换不卸载 SerialPage，以维持串口会话、事件订阅和日志状态。 */
@@ -169,6 +184,11 @@ export default function App() {
     /** 串口默认参数仅在设置页更新后持久化，串口页临时配置不会写回。 */
     persistPreference(SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults(serialDefaults));
   }, [serialDefaults]);
+
+  useEffect(() => {
+    /** 保存经过布尔状态约束的开关值；缺少或无效存储值启动时默认为开启。 */
+    persistPreference(SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, useSerialDefaults ? "true" : "false");
+  }, [useSerialDefaults]);
 
   /**
    * 导航到串口页；阻止浏览器修改 URL hash。
@@ -232,10 +252,10 @@ export default function App() {
       </nav>
       <div className="app-content">
         <div className="app-view serial-view" hidden={page !== "serial"}>
-          <SerialPage locale={locale} serialDefaults={serialDefaults} />
+          <SerialPage locale={locale} serialDefaults={serialDefaults} useSerialDefaults={useSerialDefaults} />
         </div>
         <div className="app-view settings-view" hidden={page !== "settings"}>
-          <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} />
+          <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} />
         </div>
       </div>
     </div>

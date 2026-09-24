@@ -7,7 +7,9 @@ import test from "node:test";
 import {
   DEFAULT_SERIAL_DEFAULTS,
   deserializeSerialDefaults,
+  deserializeSerialDefaultsEnabled,
   isSerialDefaults,
+  selectSerialStartupDefaults,
   serializeSerialDefaults,
 } from "../src/pages/serialDefaults.ts";
 
@@ -18,6 +20,15 @@ test("缺少或损坏的串口默认参数回退到安全值", () => {
   assert.deepEqual(deserializeSerialDefaults("null"), DEFAULT_SERIAL_DEFAULTS);
   assert.deepEqual(deserializeSerialDefaults("[]"), DEFAULT_SERIAL_DEFAULTS);
   assert.deepEqual(deserializeSerialDefaults(`${JSON.stringify(DEFAULT_SERIAL_DEFAULTS)}${" ".repeat(257)}`), DEFAULT_SERIAL_DEFAULTS);
+});
+
+/** 确认缺失或非白名单开关值均保留默认启用行为。 */
+test("默认通信参数开关缺失或非法时默认启用", () => {
+  assert.equal(deserializeSerialDefaultsEnabled(null), true);
+  assert.equal(deserializeSerialDefaultsEnabled("true"), true);
+  assert.equal(deserializeSerialDefaultsEnabled("false"), false);
+  assert.equal(deserializeSerialDefaultsEnabled("FALSE"), true);
+  assert.equal(deserializeSerialDefaultsEnabled("0"), true);
 });
 
 /** 确认所有字段都由持久化数据恢复，且返回对象与默认常量隔离。 */
@@ -33,6 +44,29 @@ test("有效串口默认参数完成序列化往返", () => {
 
   assert.deepEqual(restored, expected);
   assert.notEqual(restored, DEFAULT_SERIAL_DEFAULTS);
+});
+
+/** 确认自定义串口参数使用既有严格校验完成恢复，并在损坏时回退到当前设置值。 */
+test("last-used 串口参数往返有效且损坏时回退到设置默认值", () => {
+  const defaults = { ...DEFAULT_SERIAL_DEFAULTS, baudRate: 38400, dataBits: 7 };
+  const lastUsed = { ...DEFAULT_SERIAL_DEFAULTS, baudRate: 921600, parity: "odd", flowControl: "hardware" };
+
+  assert.deepEqual(deserializeSerialDefaults(serializeSerialDefaults(lastUsed), defaults), lastUsed);
+  assert.deepEqual(deserializeSerialDefaults("{", defaults), defaults);
+  assert.deepEqual(deserializeSerialDefaults(null, defaults), defaults);
+});
+
+/** 确认两种启动模式选择各自参数，并覆盖 disabled 下 last-used 缺失或损坏的回退。 */
+test("启动参数按默认开关选择并为缺失 last-used 使用当前默认值", () => {
+  const defaults = { ...DEFAULT_SERIAL_DEFAULTS, baudRate: 38400, dataBits: 7 };
+  const lastUsed = { ...DEFAULT_SERIAL_DEFAULTS, baudRate: 921600, parity: "odd" };
+  const serializedLastUsed = serializeSerialDefaults(lastUsed);
+
+  assert.deepEqual(selectSerialStartupDefaults(true, defaults, serializedLastUsed), defaults);
+  assert.deepEqual(selectSerialStartupDefaults(false, defaults, serializedLastUsed), lastUsed);
+  assert.deepEqual(selectSerialStartupDefaults(false, defaults, null), defaults);
+  assert.deepEqual(selectSerialStartupDefaults(false, defaults, "invalid"), defaults);
+  assert.deepEqual(selectSerialStartupDefaults(true, { ...defaults, baudRate: 0 }, serializedLastUsed), DEFAULT_SERIAL_DEFAULTS);
 });
 
 /** 确认波特率的 u32 边界及字段合法值均被接受。 */

@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Button, Checkbox, Input, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, type TerminalLine } from "../components/ui";
 import { buildSerialBytes } from "./serialBytes";
 import { appendSerialLogEntry, createSerialLogBuffer, getSerialLogLines, serializeSerialLogLines, type SerialLogEntry } from "./serialLog";
-import { serialDefaultsEqual, type SerialDefaults } from "./serialDefaults";
+import { isSerialDefaults, LAST_USED_SERIAL_CONFIG_STORAGE_KEY, selectSerialStartupDefaults, serialDefaultsEqual, serializeSerialDefaults, type SerialDefaults } from "./serialDefaults";
 
 /** 串口功能页：维护串口会话、事件订阅、日志和设备收发控件。 */
 
@@ -36,16 +36,43 @@ const SERIAL_COPY = {
   },
 } as const;
 
-/** 串口页面接收由应用外壳持有的语言和通信默认值。 */
-export type SerialPageProps = { locale: Locale; serialDefaults: SerialDefaults };
+/** 串口页面从应用外壳接收界面语言、默认参数及本次启动策略。 */
+export interface SerialPageProps {
+  /** 当前界面使用的文案语言。 */
+  locale: Locale;
+  /** 设置页持久化并经严格校验的默认通信参数。 */
+  serialDefaults: SerialDefaults;
+  /** 是否在应用启动时使用设置页默认参数；当前会话运行时切换不会重置连接。 */
+  useSerialDefaults: boolean;
+}
+
+/**
+ * 在串口页面首次渲染前恢复启动参数，确保关闭默认模式时先读取 last-used。
+ * @param useSerialDefaults 是否在本次启动采用设置页默认通信参数。
+ * @param serialDefaults 已验证的设置页默认通信参数。
+ * @returns last-used 有效配置，或按启动模式选择的安全回退配置。
+ */
+function readInitialSerialDefaults(useSerialDefaults: boolean, serialDefaults: SerialDefaults): SerialDefaults {
+  if (useSerialDefaults) {
+    return selectSerialStartupDefaults(true, serialDefaults, null);
+  }
+
+  try {
+    return selectSerialStartupDefaults(false, serialDefaults, window.localStorage.getItem(LAST_USED_SERIAL_CONFIG_STORAGE_KEY));
+  } catch (error) {
+    console.warn("Rivet 无法读取上次串口通信参数，将使用当前默认参数。", error);
+    return selectSerialStartupDefaults(false, serialDefaults, null);
+  }
+}
 
 /**
  * 提供串口收发界面、设备配置、事件日志及中英文字段。
  * @param locale 当前文案语言，由应用外壳持有。
  * @param serialDefaults 当前应用持久化的默认通信参数；活动会话配置保存在页面本地。
+ * @param useSerialDefaults 是否在启动时使用设置页默认参数。
  * @returns 串口控制台及其设备、日志和收发控件。
  */
-export default function SerialPage({ locale, serialDefaults }: SerialPageProps) {
+export default function SerialPage({ locale, serialDefaults, useSerialDefaults }: SerialPageProps) {
   /** 设备、串口配置、发送草稿和日志在页面挂载期间保留。 */
   const [ports, setPorts] = useState<PortInfo[]>([]);
   const [path, setPath] = useState("");
@@ -53,12 +80,14 @@ export default function SerialPage({ locale, serialDefaults }: SerialPageProps) 
   const [connecting, setConnecting] = useState(false);
   const [listenersReady, setListenersReady] = useState(false);
   const [sending, setSending] = useState(false);
-  /** 当前串口页会话参数仅从应用默认值初始化或响应默认值变更。 */
-  const [baudRate, setBaudRate] = useState(String(serialDefaults.baudRate));
-  const [dataBits, setDataBits] = useState(String(serialDefaults.dataBits));
-  const [parity, setParity] = useState<string>(serialDefaults.parity);
-  const [stopBits, setStopBits] = useState(String(serialDefaults.stopBits));
-  const [flowControl, setFlowControl] = useState(String(serialDefaults.flowControl));
+  /** 首屏先按开关模式恢复完整参数，避免首次持久化副作用覆盖 last-used。 */
+  const [initialSerialDefaults] = useState(() => readInitialSerialDefaults(useSerialDefaults, serialDefaults));
+  /** 当前串口页会话参数在默认模式下响应默认值变化，在自定义模式下单独持久化。 */
+  const [baudRate, setBaudRate] = useState(String(initialSerialDefaults.baudRate));
+  const [dataBits, setDataBits] = useState(String(initialSerialDefaults.dataBits));
+  const [parity, setParity] = useState<string>(initialSerialDefaults.parity);
+  const [stopBits, setStopBits] = useState(String(initialSerialDefaults.stopBits));
+  const [flowControl, setFlowControl] = useState(String(initialSerialDefaults.flowControl));
   /** 默认勾选；仅为此后新增日志添加时间前缀。 */
   const [timestampEnabled, setTimestampEnabled] = useState(true);
   /** 默认未勾选；选中后将输入按十六进制字节解析。 */
@@ -84,8 +113,10 @@ export default function SerialPage({ locale, serialDefaults }: SerialPageProps) 
   /** 在 React 重绘前同步阻止并发重复保存。 */
   const savingRef = useRef(false);
   const [status, setStatus] = useState("");
-  /** 上次处理的默认值用于忽略相同参数对象，避免普通断开复位手动配置。 */
+  /** 上次处理的默认值用于识别设置页的真实参数变化。 */
   const observedSerialDefaultsRef = useRef(serialDefaults);
+  /** 上次处理的模式用于在运行期间切换后保留当前会话配置。 */
+  const observedUseSerialDefaultsRef = useRef(useSerialDefaults);
   /** 连接期间变更的默认值延迟到连接关闭后应用。 */
   const pendingSerialDefaultsRef = useRef<SerialDefaults | null>(null);
   /** 仅桌面容器能调用串口命令和事件接口。 */
@@ -114,9 +145,18 @@ export default function SerialPage({ locale, serialDefaults }: SerialPageProps) 
   }, []);
 
   useEffect(() => {
-    /** 只处理值确实变化的默认参数；连接或连接中时保留待应用值。 */
-    if (!serialDefaultsEqual(observedSerialDefaultsRef.current, serialDefaults)) {
-      observedSerialDefaultsRef.current = serialDefaults;
+    /** 只在启用模式时应用默认值变更；连接或连接中时延迟到会话结束。 */
+    const defaultsChanged = !serialDefaultsEqual(observedSerialDefaultsRef.current, serialDefaults);
+    const modeChanged = observedUseSerialDefaultsRef.current !== useSerialDefaults;
+    observedSerialDefaultsRef.current = serialDefaults;
+    observedUseSerialDefaultsRef.current = useSerialDefaults;
+
+    if (!useSerialDefaults) {
+      pendingSerialDefaultsRef.current = null;
+      return;
+    }
+
+    if (defaultsChanged || modeChanged) {
       if (connected || connecting) {
         pendingSerialDefaultsRef.current = serialDefaults;
       } else {
@@ -125,12 +165,36 @@ export default function SerialPage({ locale, serialDefaults }: SerialPageProps) 
       }
     }
 
-    /** 连接结束后只应用期间变更过的默认值；普通断开不覆盖会话手动参数。 */
+    /** 启用默认模式期间，连接结束后应用排队的最新默认值。 */
     if (!connected && !connecting && pendingSerialDefaultsRef.current !== null) {
       applySerialDefaults(pendingSerialDefaultsRef.current);
       pendingSerialDefaultsRef.current = null;
     }
-  }, [applySerialDefaults, connected, connecting, serialDefaults]);
+  }, [applySerialDefaults, connected, connecting, serialDefaults, useSerialDefaults]);
+
+  useEffect(() => {
+    /** 关闭默认模式时只写入五项均有效的配置；无效波特率草稿不会污染 last-used。 */
+    if (useSerialDefaults) {
+      return;
+    }
+
+    const currentDefaults = {
+      baudRate: Number(baudRate),
+      dataBits: Number(dataBits),
+      parity,
+      stopBits: Number(stopBits),
+      flowControl,
+    };
+    if (!isSerialDefaults(currentDefaults)) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(LAST_USED_SERIAL_CONFIG_STORAGE_KEY, serializeSerialDefaults(currentDefaults));
+    } catch (error) {
+      console.warn("Rivet 无法保存上次有效串口通信参数；本次会话中仍会生效。", error);
+    }
+  }, [baudRate, dataBits, flowControl, parity, stopBits, useSerialDefaults]);
 
   /**
    * 将日志追加到有界原始缓存，并按最近一次选择刷新终端显示行。

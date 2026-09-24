@@ -1,14 +1,14 @@
-/** 串口默认通信参数的持久化结构；波特率单位为 bit/s。 */
+/** 串口默认值与最近会话参数共用的持久化结构；波特率单位为 bit/s。 */
 export interface SerialDefaults {
-  /** 默认波特率，取值范围为 1 到 Rust `u32::MAX`。 */
+  /** 波特率，取值范围为 1 到 Rust `u32::MAX`。 */
   baudRate: number;
-  /** 默认数据位数，仅支持 5、6、7 或 8 位。 */
+  /** 数据位数，仅支持 5、6、7 或 8 位。 */
   dataBits: number;
-  /** 默认奇偶校验方式。 */
+  /** 奇偶校验方式。 */
   parity: SerialParity;
-  /** 默认停止位数，仅支持 1 或 2 位。 */
+  /** 停止位数，仅支持 1 或 2 位。 */
   stopBits: number;
-  /** 默认流控方式。 */
+  /** 流控方式。 */
   flowControl: SerialFlowControl;
 }
 
@@ -20,6 +20,12 @@ export type SerialFlowControl = "none" | "hardware" | "software";
 
 /** 串口默认参数在 localStorage 中使用的键名。 */
 export const SERIAL_DEFAULTS_STORAGE_KEY = "rivet.serialDefaults";
+
+/** 启动串口页时是否采用设置页默认参数的持久化键名。 */
+export const SERIAL_DEFAULTS_ENABLED_STORAGE_KEY = "rivet.serialDefaultsEnabled";
+
+/** 串口页最近一次有效通信参数的持久化键名。 */
+export const LAST_USED_SERIAL_CONFIG_STORAGE_KEY = "rivet.lastUsedSerialConfig";
 
 /** 配置损坏、缺失或不受支持时使用的安全默认通信参数。 */
 export const DEFAULT_SERIAL_DEFAULTS: SerialDefaults = Object.freeze({
@@ -42,11 +48,11 @@ export const SERIAL_STOP_BITS = Object.freeze([1, 2] as const);
 /** 序列化结构小于此长度；上限避免超大本地存储值占用解析时间与内存。 */
 const MAX_SERIAL_DEFAULTS_JSON_LENGTH = 256;
 
-/** 仅允许持久化结构中的五个字段，防止未知字段被误认为已验证参数。 */
+/** 仅允许串口参数结构中的五个字段，防止未知字段被误认为已验证参数。 */
 const SERIAL_DEFAULT_KEYS = ["baudRate", "dataBits", "parity", "stopBits", "flowControl"] as const;
 
 /**
- * 严格校验运行时对象中的所有串口默认字段。
+ * 严格校验运行时对象中的所有串口参数字段。
  * @param value 从浏览器存储或界面边界取得的未信任值。
  * @returns 对象符合完整持久化结构及所有参数范围时为 true。
  */
@@ -77,9 +83,9 @@ export function isSerialDefaults(value: unknown): value is SerialDefaults {
 }
 
 /**
- * 比较两组已校验的串口默认参数。
- * @param left 第一组串口参数。
- * @param right 第二组串口参数。
+ * 比较两组已校验的串口参数。
+ * @param left 第一组通信参数。
+ * @param right 第二组通信参数。
  * @returns 五个参数值完全一致时为 true。
  */
 export function serialDefaultsEqual(left: SerialDefaults, right: SerialDefaults): boolean {
@@ -91,19 +97,30 @@ export function serialDefaultsEqual(left: SerialDefaults, right: SerialDefaults)
 }
 
 /**
- * 反序列化并验证串口默认参数；损坏或不支持的数据整体回退到安全默认值。
+ * 解析是否启用默认通信参数；缺失或非法值均保持启用以兼容旧版行为。
+ * @param serialized localStorage 中的布尔字符串；仅精确的 `false` 会关闭该选项。
+ * @returns 配置值为 `false` 时返回 false，其余情况返回 true。
+ */
+export function deserializeSerialDefaultsEnabled(serialized: string | null): boolean {
+  return serialized !== "false";
+}
+
+/**
+ * 反序列化并验证串口参数；损坏或不支持的数据整体回退到调用方给出的有效参数。
  * @param serialized localStorage 中的 JSON 字符串；null 表示尚未保存。
+ * @param fallback 缺失或无效数据的回退值；无效回退值自身会改用安全默认参数。
  * @returns 新建的有效参数对象，不会保留存储对象的可变引用。
  */
-export function deserializeSerialDefaults(serialized: string | null): SerialDefaults {
+export function deserializeSerialDefaults(serialized: string | null, fallback: SerialDefaults = DEFAULT_SERIAL_DEFAULTS): SerialDefaults {
+  const safeFallback = isSerialDefaults(fallback) ? fallback : DEFAULT_SERIAL_DEFAULTS;
   if (serialized === null || serialized.length > MAX_SERIAL_DEFAULTS_JSON_LENGTH) {
-    return { ...DEFAULT_SERIAL_DEFAULTS };
+    return { ...safeFallback };
   }
 
   try {
     const parsed: unknown = JSON.parse(serialized);
     if (!isSerialDefaults(parsed)) {
-      return { ...DEFAULT_SERIAL_DEFAULTS };
+      return { ...safeFallback };
     }
     return {
       baudRate: parsed.baudRate,
@@ -113,13 +130,32 @@ export function deserializeSerialDefaults(serialized: string | null): SerialDefa
       flowControl: parsed.flowControl,
     };
   } catch {
-    return { ...DEFAULT_SERIAL_DEFAULTS };
+    return { ...safeFallback };
   }
 }
 
 /**
- * 将有效串口默认参数编码为 localStorage JSON。
- * @param defaults 待保存的串口参数；运行时仍会验证，避免写入无效数据。
+ * 选择串口页启动参数；默认模式用设置页值，关闭模式优先恢复最后一次有效值。
+ * @param useDefaults 是否在本次启动采用设置页默认通信参数。
+ * @param defaults 当前已验证的设置页默认通信参数。
+ * @param serializedLastUsed localStorage 中保存的最后一次有效串口参数。
+ * @returns 新建的有效串口参数对象；last-used 缺失或损坏时回退到 defaults。
+ */
+export function selectSerialStartupDefaults(
+  useDefaults: boolean,
+  defaults: SerialDefaults,
+  serializedLastUsed: string | null,
+): SerialDefaults {
+  const safeDefaults = isSerialDefaults(defaults) ? defaults : DEFAULT_SERIAL_DEFAULTS;
+  if (useDefaults) {
+    return { ...safeDefaults };
+  }
+  return deserializeSerialDefaults(serializedLastUsed, safeDefaults);
+}
+
+/**
+ * 将有效串口参数编码为 localStorage JSON。
+ * @param defaults 待保存的串口通信参数；运行时仍会验证，避免写入无效数据。
  * @returns 可持久化的 JSON 字符串。
  * @throws 参数包含未知字段或任一字段越界、类型不符时抛出 TypeError。
  */

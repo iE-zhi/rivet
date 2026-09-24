@@ -1,5 +1,5 @@
-import { useEffect, useState, type ChangeEvent } from "react";
-import { Input, Select, SvgIcon, type SelectOption } from "../components/ui";
+import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent } from "react";
+import { Input, Select, SvgIcon, Switch, type SelectOption } from "../components/ui";
 import { MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialDefaults, type SerialFlowControl, type SerialParity } from "./serialDefaults";
 import type { Locale } from "./SerialPage";
 
@@ -21,6 +21,8 @@ interface SettingsPageCopy {
   groupTitle: string;
   /** 串口默认参数组标题，呈现在设置列表容器之外。 */
   serialGroupTitle: string;
+  /** 是否在启动串口页时采用默认通信参数的设置项。 */
+  useSerialDefaults: string;
   /** 语言设置行标题。 */
   language: string;
   /** 主题设置行标题。 */
@@ -63,6 +65,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serial: "串口",
     groupTitle: "界面偏好",
     serialGroupTitle: "默认通信参数",
+    useSerialDefaults: "启用默认通信参数",
     language: "语言",
     theme: "主题",
     font: "字体",
@@ -104,6 +107,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serial: "Serial",
     groupTitle: "Appearance",
     serialGroupTitle: "Default communication parameters",
+    useSerialDefaults: "Use default communication parameters",
     language: "Language",
     theme: "Theme",
     font: "Font",
@@ -159,6 +163,10 @@ export interface SettingsPageProps {
   serialDefaults: SerialDefaults;
   /** 更新经过界面校验的串口默认参数。 */
   onSerialDefaultsChange: (defaults: SerialDefaults) => void;
+  /** 当前启动时是否采用设置页默认通信参数。 */
+  useSerialDefaults: boolean;
+  /** 更新默认通信参数开关；新状态会持久化并影响后续启动。 */
+  onUseSerialDefaultsChange: (enabled: boolean) => void;
 }
 
 /** 设置页右侧当前展示的分组。 */
@@ -214,9 +222,11 @@ function parseBaudRate(value: string): number | null {
  * @param onFontChange 用户选择新字体模式后的回调。
  * @param serialDefaults 当前应用级串口默认通信参数。
  * @param onSerialDefaultsChange 用户修改串口默认参数后的回调。
+ * @param useSerialDefaults 启动串口页时是否采用设置页默认通信参数。
+ * @param onUseSerialDefaultsChange 用户切换默认通信参数开关后的回调。
  * @returns 设置侧栏和显示偏好分组。
  */
-export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, serialDefaults, onSerialDefaultsChange }: SettingsPageProps) {
+export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange }: SettingsPageProps) {
   /** 取当前界面语言的文案和选项列表。 */
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 设置页默认展示显示偏好；栏目切换只影响右侧当前分组。 */
@@ -225,6 +235,8 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   const [baudDraft, setBaudDraft] = useState(String(serialDefaults.baudRate));
   /** 波特率无效时保留草稿并给出即时反馈，失焦后恢复最后一个有效值。 */
   const [baudInvalid, setBaudInvalid] = useState(false);
+  /** 开关指针激活造成输入框失焦时，阻止草稿提交到默认通信参数。 */
+  const suppressBaudBlurCommitRef = useRef(false);
 
   useEffect(() => {
     /** 外部默认值变化时同步波特率输入，避免显示陈旧草稿。 */
@@ -288,11 +300,32 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     setBaudInvalid(parseBaudRate(value) === null);
   };
 
+  /** 记录指针是否正在点击开关，以识别关闭操作触发的波特率失焦。 */
+  const handleUseSerialDefaultsPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.target instanceof Element && event.target.closest('[role="switch"]')) {
+      suppressBaudBlurCommitRef.current = useSerialDefaults;
+    }
+  };
+
+  /** 切换默认参数开关，并在关闭时恢复未提交波特率草稿为已保存值并清除错误。 */
+  const handleUseSerialDefaultsChange = (enabled: boolean) => {
+    suppressBaudBlurCommitRef.current = false;
+    if (!enabled) {
+      setBaudDraft(String(serialDefaults.baudRate));
+      setBaudInvalid(false);
+    }
+    onUseSerialDefaultsChange(enabled);
+  };
+
   /**
    * 有效波特率离开输入框时提交；无效草稿回退到最近一次已保存值。
    * @returns 无；有效值更新应用默认参数，无效值只恢复显示草稿。
    */
   const handleBaudRateBlur = () => {
+    if (suppressBaudBlurCommitRef.current || !useSerialDefaults) {
+      suppressBaudBlurCommitRef.current = false;
+      return;
+    }
     const baudRate = parseBaudRate(baudDraft);
     if (baudRate === null) {
       setBaudDraft(String(serialDefaults.baudRate));
@@ -388,6 +421,10 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
             <section className="settings-section" aria-labelledby="settings-group-title">
               <h1 className="settings-section-title" id="settings-group-title">{copy.serialGroupTitle}</h1>
               <div className="settings-list">
+                <div className="settings-row" onPointerDown={handleUseSerialDefaultsPointerDown}>
+                  <span className="settings-row-label">{copy.useSerialDefaults}</span>
+                  <Switch checked={useSerialDefaults} onCheckedChange={handleUseSerialDefaultsChange} ariaLabel={copy.useSerialDefaults} />
+                </div>
                 <div className={`settings-row${baudInvalid ? " has-feedback" : ""}`}>
                   <span className="settings-row-label">{copy.baud}</span>
                   <div className="settings-row-control">
@@ -396,6 +433,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                       aria-invalid={baudInvalid}
                       aria-describedby={baudInvalid ? "serial-baud-error" : undefined}
                       className="settings-input"
+                      disabled={!useSerialDefaults}
                       inputMode="numeric"
                       maxLength={10}
                       value={baudDraft}
@@ -407,19 +445,19 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                 </div>
                 <div className="settings-row">
                   <span className="settings-row-label">{copy.dataBits}</span>
-                  <Select className="settings-select" ariaLabel={copy.dataBits} options={copy.dataBitOptions} value={String(serialDefaults.dataBits)} onChange={handleDataBitsChange} />
+                  <Select className="settings-select" ariaLabel={copy.dataBits} options={copy.dataBitOptions} value={String(serialDefaults.dataBits)} onChange={handleDataBitsChange} disabled={!useSerialDefaults} />
                 </div>
                 <div className="settings-row">
                   <span className="settings-row-label">{copy.parity}</span>
-                  <Select className="settings-select" ariaLabel={copy.parity} options={copy.parityOptions} value={serialDefaults.parity} onChange={handleParityChange} />
+                  <Select className="settings-select" ariaLabel={copy.parity} options={copy.parityOptions} value={serialDefaults.parity} onChange={handleParityChange} disabled={!useSerialDefaults} />
                 </div>
                 <div className="settings-row">
                   <span className="settings-row-label">{copy.stopBits}</span>
-                  <Select className="settings-select" ariaLabel={copy.stopBits} options={copy.stopBitOptions} value={String(serialDefaults.stopBits)} onChange={handleStopBitsChange} />
+                  <Select className="settings-select" ariaLabel={copy.stopBits} options={copy.stopBitOptions} value={String(serialDefaults.stopBits)} onChange={handleStopBitsChange} disabled={!useSerialDefaults} />
                 </div>
                 <div className="settings-row">
                   <span className="settings-row-label">{copy.flowControl}</span>
-                  <Select className="settings-select" ariaLabel={copy.flowControl} options={copy.flowControlOptions} value={serialDefaults.flowControl} onChange={handleFlowControlChange} />
+                  <Select className="settings-select" ariaLabel={copy.flowControl} options={copy.flowControlOptions} value={serialDefaults.flowControl} onChange={handleFlowControlChange} disabled={!useSerialDefaults} />
                 </div>
               </div>
             </section>
