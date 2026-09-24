@@ -4,8 +4,14 @@ import {
   SERIAL_LOG_BYTE_LIMIT,
   appendSerialLogEntry,
   createSerialLogBuffer,
+  flattenSerialRxBurst,
   formatSerialBytes,
   getSerialLogLines,
+  appendSerialRxBurst,
+  isSerialRxBurstIdle,
+  SERIAL_RX_BURST_BYTE_LIMIT,
+  SERIAL_RX_IDLE_MS,
+  splitSerialRxBytes,
   serializeSerialLogLines,
 } from "../src/pages/serialLog.ts";
 
@@ -83,4 +89,98 @@ test("serializes the current visible lines with one newline per row", () => {
     ]),
     "RX 00 0A\nready\n",
   );
+});
+
+/** 验证不同长度的数据事件在 100ms 空闲窗口内合成一包，并按末块时间重新计时。 */
+test("coalesces 1-byte and 3-byte RX events until the final 100ms idle window", () => {
+  const first = appendSerialRxBurst(null, 10, "A", [0x41], "[00:00:01.000] RX");
+  const second = appendSerialRxBurst(first.pending, 90, "BCD", [0x42, 0x43, 0x44], "later prefix");
+
+  assert.equal(first.completed, null);
+  assert.equal(second.completed, null);
+  assert.equal(second.pending.prefix, "[00:00:01.000] RX");
+  assert.equal(second.pending.lastReceivedAt, 90);
+  const flattened = flattenSerialRxBurst(second.pending);
+  assert.equal(flattened.text, "ABCD");
+  assert.equal(formatSerialBytes(flattened.rawBytes), "41 42 43 44");
+  assert.equal(isSerialRxBurstIdle(second.pending, 90 + SERIAL_RX_IDLE_MS - 1), false);
+  assert.equal(isSerialRxBurstIdle(second.pending, 90 + SERIAL_RX_IDLE_MS), true);
+});
+
+/** 验证计时器延迟期间若新事件到达时已静默满 100ms，旧包先于新包完成。 */
+test("starts a new RX burst when the prior burst already crossed the idle window", () => {
+  const first = appendSerialRxBurst(null, 10, "A", [0x41], "RX");
+  const next = appendSerialRxBurst(first.pending, 10 + SERIAL_RX_IDLE_MS, "B", [0x42], "RX");
+
+  assert.equal(flattenSerialRxBurst(next.completed).text, "A");
+  assert.equal(formatSerialBytes(flattenSerialRxBurst(next.completed).rawBytes), "41");
+  assert.equal(flattenSerialRxBurst(next.pending).text, "B");
+  assert.equal(formatSerialBytes(flattenSerialRxBurst(next.pending).rawBytes), "42");
+});
+
+/** 验证 UTF-8 字符可跨数据事件解码，合并后的文本、Hex 与保存视图均保留原始字节。 */
+test("preserves split UTF-8 bytes across RX events and both saved views", () => {
+  const decoder = new TextDecoder("utf-8", { fatal: false });
+  const bytes = [[0xe4], [0xb8], [0xad]];
+  let burst = null;
+  for (let index = 0; index < bytes.length; index += 1) {
+    const chunk = Uint8Array.from(bytes[index]);
+    const merged = appendSerialRxBurst(
+      burst,
+      index * 20,
+      decoder.decode(chunk, { stream: true }),
+      chunk,
+      `[00:00:02.000] RX`,
+    );
+    assert.equal(merged.completed, null);
+    burst = merged.pending;
+  }
+
+  const buffer = createSerialLogBuffer();
+  const flattened = flattenSerialRxBurst(burst);
+  appendSerialLogEntry(buffer, { kind: "rx", prefix: burst.prefix, text: flattened.text, rawBytes: flattened.rawBytes });
+  assert.deepEqual(getSerialLogLines(buffer, false).map((line) => line.text), ["中"]);
+  assert.deepEqual(getSerialLogLines(buffer, true).map((line) => line.text), ["E4 B8 AD"]);
+  assert.equal(serializeSerialLogLines(getSerialLogLines(buffer, false)), "[00:00:02.000] RX 中\n");
+  assert.equal(serializeSerialLogLines(getSerialLogLines(buffer, true)), "[00:00:02.000] RX E4 B8 AD\n");
+});
+
+/** 验证包到达 4096 字节上限后先完成旧包，新包仅保留后续原始字节。 */
+test("flushes before the 4096-byte RX aggregation cap", () => {
+  const maximum = new Uint8Array(SERIAL_RX_BURST_BYTE_LIMIT).fill(0x41);
+  const first = appendSerialRxBurst(null, 0, "A", maximum, "RX");
+  const next = appendSerialRxBurst(first.pending, 1, "B", [0x42], "RX");
+
+  assert.equal(first.pending.rawByteLength, SERIAL_RX_BURST_BYTE_LIMIT);
+  assert.equal(next.completed.rawByteLength, SERIAL_RX_BURST_BYTE_LIMIT);
+  assert.equal(next.pending.rawByteLength, 1);
+  const flattened = flattenSerialRxBurst(next.pending);
+  assert.equal(flattened.text, "B");
+  assert.equal(flattened.rawBytes[0], 0x42);
+  assert.throws(
+    () => appendSerialRxBurst(null, 2, "", new Uint8Array(SERIAL_RX_BURST_BYTE_LIMIT + 1), "RX"),
+    RangeError,
+  );
+  assert.throws(() => appendSerialRxBurst(null, 3, "", [], "RX"), RangeError);
+});
+
+/** 验证较短空闲窗口和低于 Rust 读取大小的自定义单包上限会影响聚合边界。 */
+test("uses custom RX idle timeout and 256-byte packets below the backend read size", () => {
+  const source = Uint8Array.from({ length: 600 }, (_, index) => index & 0xff);
+  const chunks = [...splitSerialRxBytes(source, 256)];
+  assert.deepEqual(chunks.map((chunk) => chunk.length), [256, 256, 88]);
+  assert.equal(chunks[1][0], source[256]);
+
+  const first = appendSerialRxBurst(null, 10, "A", chunks[0], "RX", 25, 256);
+  const capacityFlush = appendSerialRxBurst(first.pending, 20, "B", chunks[1], "RX", 25, 256);
+  assert.equal(capacityFlush.completed.rawByteLength, 256);
+  assert.equal(flattenSerialRxBurst(capacityFlush.completed).text, "A");
+
+  const idleFlush = appendSerialRxBurst(capacityFlush.pending, 45, "C", chunks[2], "RX", 25, 256);
+  assert.equal(flattenSerialRxBurst(idleFlush.completed).text, "B");
+  assert.equal(idleFlush.pending.rawByteLength, 88);
+  assert.equal(isSerialRxBurstIdle(idleFlush.pending, 69, 25), false);
+  assert.equal(isSerialRxBurstIdle(idleFlush.pending, 70, 25), true);
+  assert.throws(() => appendSerialRxBurst(null, 80, "", source.subarray(0, 300), "RX", 25, 256), RangeError);
+  assert.throws(() => [...splitSerialRxBytes(source, 255)], RangeError);
 });

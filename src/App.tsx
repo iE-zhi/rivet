@@ -4,6 +4,7 @@ import { SvgIcon } from "./components/ui";
 import SerialPage, { type Locale } from "./pages/SerialPage";
 import SettingsPage, { type FontMode, type ThemeMode } from "./pages/SettingsPage";
 import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
+import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
 
 /** 串口工作台外壳所需的导航与品牌文案。 */
 const SHELL_COPY = {
@@ -115,6 +116,19 @@ function readSerialDefaultsEnabledPreference(): boolean {
 }
 
 /**
+ * 从独立存储项恢复 RX 显示分包参数；存储 API 不可用时返回经过校验的默认值。
+ * @returns 已验证的空闲判包时间和单包最大字节数。
+ */
+function readSerialRxSettingsPreference(): SerialRxSettings {
+  try {
+    return deserializeSerialRxSettings(window.localStorage.getItem(SERIAL_RX_SETTINGS_STORAGE_KEY));
+  } catch (error) {
+    console.warn("Rivet 无法读取 RX 分包设置，将使用安全默认值。", error);
+    return deserializeSerialRxSettings(null);
+  }
+}
+
+/**
  * 读取系统当前深色外观状态；缺少 matchMedia 时按浅色安全默认值处理。
  * @returns 系统当前是否偏好深色外观。
  */
@@ -139,6 +153,8 @@ export default function App() {
   const [serialDefaults, setSerialDefaults] = useState<SerialDefaults>(readSerialDefaultsPreference);
   /** 控制每次启动串口页时是否采用设置页中的默认通信参数。 */
   const [useSerialDefaults, setUseSerialDefaults] = useState(readSerialDefaultsEnabledPreference);
+  /** 前端 RX 展示分包参数；与串口通信默认值分开持久化和传递。 */
+  const [serialRxSettings, setSerialRxSettings] = useState<SerialRxSettings>(readSerialRxSettingsPreference);
   /** 系统外观状态仅在主题模式为 system 时决定最终颜色方案。 */
   const [systemPrefersDark, setSystemPrefersDark] = useState(readSystemPrefersDark);
   /** 一级页面切换不卸载 SerialPage，以维持串口会话、事件订阅和日志状态。 */
@@ -190,6 +206,11 @@ export default function App() {
     persistPreference(SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, useSerialDefaults ? "true" : "false");
   }, [useSerialDefaults]);
 
+  /** RX 展示分包设置使用独立存储键，通信默认值开关不会影响该偏好。 */
+  useEffect(() => {
+    persistPreference(SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings(serialRxSettings));
+  }, [serialRxSettings]);
+
   /**
    * 导航到串口页；阻止浏览器修改 URL hash。
    * @param event 串口导航链接的点击事件。
@@ -218,6 +239,17 @@ export default function App() {
   const updateSerialDefaults = (defaults: SerialDefaults) => {
     if (isSerialDefaults(defaults)) {
       setSerialDefaults({ ...defaults });
+    }
+  };
+
+  /**
+   * 校验设置页提交的 RX 分包参数并复制到应用状态。
+   * @param settings 设置页提交的候选 RX 配置。
+   * @returns 无；无效对象不会更新持久化状态。
+   */
+  const updateSerialRxSettings = (settings: SerialRxSettings) => {
+    if (isSerialRxSettings(settings)) {
+      setSerialRxSettings({ ...settings });
     }
   };
 
@@ -252,10 +284,10 @@ export default function App() {
       </nav>
       <div className="app-content">
         <div className="app-view serial-view" hidden={page !== "serial"}>
-          <SerialPage locale={locale} serialDefaults={serialDefaults} useSerialDefaults={useSerialDefaults} />
+          <SerialPage locale={locale} serialDefaults={serialDefaults} useSerialDefaults={useSerialDefaults} serialRxSettings={serialRxSettings} />
         </div>
         <div className="app-view settings-view" hidden={page !== "settings"}>
-          <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} />
+          <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} />
         </div>
       </div>
     </div>

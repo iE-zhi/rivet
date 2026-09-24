@@ -1,7 +1,19 @@
 import type { TerminalLine } from "../components/ui";
+import {
+  DEFAULT_SERIAL_RX_SETTINGS,
+  SERIAL_RX_IDLE_MS_MAX,
+  SERIAL_RX_IDLE_MS_MIN,
+  SERIAL_RX_PACKET_BYTES_MAX,
+  SERIAL_RX_PACKET_BYTES_MIN,
+} from "./serialRxSettings.ts";
 
 /** 原始字节及任一日志视图最多保留的 UTF-8 字节数。 */
 export const SERIAL_LOG_BYTE_LIMIT = 64 * 1024;
+
+/** 默认 RX 空闲判定窗口；具体会话值来自持久化的前端分包设置。 */
+export const SERIAL_RX_IDLE_MS = DEFAULT_SERIAL_RX_SETTINGS.idleMs;
+/** 默认单包字节数；这是前端显示分组上限，不改变 Rust 读取缓冲区。 */
+export const SERIAL_RX_BURST_BYTE_LIMIT = DEFAULT_SERIAL_RX_SETTINGS.maxPacketBytes;
 
 /** 十六进制展示所用的大写数字表。 */
 const HEX_DIGITS = "0123456789ABCDEF";
@@ -12,6 +24,44 @@ const HEX_BYTES_PER_BYTE = 3;
 export interface SerialLogEntry extends TerminalLine {
   /** RX/TX 行对应的串口原始字节；INFO/OK 行不设置此字段。 */
   rawBytes?: ArrayLike<number>;
+}
+
+/** 不可变的反向接收块节点；追加时仅复制新块，提交时再按顺序扁平化。 */
+interface SerialRxChunk {
+  /** 本次串口事件分块的独立字节副本。 */
+  readonly bytes: Uint8Array;
+  /** 此分块在持续 TextDecoder 下产生的文本增量。 */
+  readonly text: string;
+  /** 前一个到达的数据块；链节点总量受当前单包字节上限限制。 */
+  readonly previous: SerialRxChunk | null;
+}
+
+/** 以首块显示前缀和末块单调时刻标记的有界接收包。 */
+export interface SerialRxBurst {
+  /** 最近一个数据事件的单调时钟值，供空闲窗口比较。 */
+  readonly lastReceivedAt: number;
+  /** 已累计的原始字节数，严格限制在用户配置的单包上限内。 */
+  readonly rawByteLength: number;
+  /** 最新事件节点；previous 链从新到旧，展示时按原顺序复制。 */
+  readonly tail: SerialRxChunk;
+  /** 接收类别及首块时刻生成的显示前缀。 */
+  readonly prefix: string;
+}
+
+/** 聚合一块 RX 数据后的新包及因空闲或容量边界完成的旧包。 */
+export interface SerialRxAppendResult {
+  /** 已空闲或达到配置容量边界前完成的旧包；无需收尾时为 null。 */
+  completed: SerialRxBurst | null;
+  /** 包含最新数据的新待处理包。 */
+  pending: SerialRxBurst;
+}
+
+/** 完成聚合后一次扁平化得到的显示文本与原始字节。 */
+export interface FlattenedSerialRxBurst {
+  /** 按事件到达顺序拼接的解码文本。 */
+  text: string;
+  /** 精确长度且顺序与文本事件一致的原始串口字节。 */
+  rawBytes: Uint8Array;
 }
 
 /** 有界串口日志；headIndex 之前的数组槽位会置空并定期压缩。 */
@@ -205,6 +255,109 @@ export function appendSerialLogEntry(buffer: SerialLogBuffer, addition: SerialLo
     buffer.entries = buffer.entries.slice(buffer.headIndex);
     buffer.headIndex = 0;
   }
+}
+
+/**
+ * 追加一个已解码 RX 块；旧包已空闲或达到配置容量时先完成旧包。
+ * @param current 当前尚未提交的接收包。
+ * @param lastReceivedAt 当前事件到达时的单调时刻，单位为毫秒。
+ * @param text 由持续复用的 TextDecoder 解码出的本事件文本增量。
+ * @param rawBytes 当前分块的原始字节，不得超过配置的单包上限。
+ * @param prefix 首块数据对应的 RX 显示前缀；旧包完成后此值归新包。
+ * @param idleMs 判定前后两个事件属于同一包的空闲窗口，单位为毫秒。
+ * @param maxPacketBytes 单包原始字节上限，单位为字节；较大的事件由调用方预先拆分。
+ * @returns 空闲/容量边界完成的旧包和复制输入后的新待处理包。
+ * @throws RangeError 分块为空、超过包上限或配置值不在允许范围内时。
+ */
+export function appendSerialRxBurst(
+  current: SerialRxBurst | null,
+  lastReceivedAt: number,
+  text: string,
+  rawBytes: ArrayLike<number>,
+  prefix: string,
+  idleMs = SERIAL_RX_IDLE_MS,
+  maxPacketBytes = SERIAL_RX_BURST_BYTE_LIMIT,
+): SerialRxAppendResult {
+  if (!Number.isSafeInteger(idleMs) || idleMs < SERIAL_RX_IDLE_MS_MIN || idleMs > SERIAL_RX_IDLE_MS_MAX) {
+    throw new RangeError(`RX 空闲时间必须是 ${SERIAL_RX_IDLE_MS_MIN} 到 ${SERIAL_RX_IDLE_MS_MAX} 毫秒之间的整数`);
+  }
+  if (!Number.isSafeInteger(maxPacketBytes) || maxPacketBytes < SERIAL_RX_PACKET_BYTES_MIN || maxPacketBytes > SERIAL_RX_PACKET_BYTES_MAX) {
+    throw new RangeError(`RX 单包上限必须是 ${SERIAL_RX_PACKET_BYTES_MIN} 到 ${SERIAL_RX_PACKET_BYTES_MAX} 字节之间的整数`);
+  }
+  if (rawBytes.length === 0 || rawBytes.length > maxPacketBytes) {
+    throw new RangeError(`单个 RX 分块必须包含 1 到 ${maxPacketBytes} 字节`);
+  }
+  const completed = current && (isSerialRxBurstIdle(current, lastReceivedAt, idleMs)
+    || current.rawByteLength + rawBytes.length > maxPacketBytes)
+    ? current
+    : null;
+  const base = completed ? null : current;
+  const bytes = Uint8Array.from(rawBytes);
+  return {
+    completed,
+    pending: {
+      lastReceivedAt,
+      rawByteLength: (base?.rawByteLength ?? 0) + bytes.length,
+      tail: { bytes, text, previous: base?.tail ?? null },
+      prefix: base?.prefix ?? prefix,
+    },
+  };
+}
+
+/**
+ * 按前端单包字节上限惰性拆分一次 serial:data 事件。
+ * @param bytes 已复制的串口事件字节；为空时产生零个分块。
+ * @param maxPacketBytes 每个分块最多包含的原始字节数，范围为 256 到 16384。
+ * @returns 按输入顺序产生的原数组视图；调用方应避免在迭代期间修改源数组。
+ * @throws RangeError 单包上限不是受支持的安全整数时。
+ */
+export function* splitSerialRxBytes(bytes: Uint8Array, maxPacketBytes: number): IterableIterator<Uint8Array> {
+  if (!Number.isSafeInteger(maxPacketBytes) || maxPacketBytes < SERIAL_RX_PACKET_BYTES_MIN || maxPacketBytes > SERIAL_RX_PACKET_BYTES_MAX) {
+    throw new RangeError(`RX 单包上限必须是 ${SERIAL_RX_PACKET_BYTES_MIN} 到 ${SERIAL_RX_PACKET_BYTES_MAX} 字节之间的整数`);
+  }
+  for (let offset = 0; offset < bytes.length; offset += maxPacketBytes) {
+    yield bytes.subarray(offset, Math.min(offset + maxPacketBytes, bytes.length));
+  }
+}
+
+/**
+ * 将反向链接的 RX 数据块按原到达顺序一次复制字节并拼接文本增量。
+ * @param burst 已完成或待显示的接收包；累计长度不超过当前配置的单包上限。
+ * @returns 精确长度的原始字节及解码文本，供 Hex、显示和保存视图共用。
+ */
+export function flattenSerialRxBurst(burst: SerialRxBurst): FlattenedSerialRxBurst {
+  const chunks: SerialRxChunk[] = [];
+  let chunk: SerialRxChunk | null = burst.tail;
+  while (chunk) {
+    chunks.push(chunk);
+    chunk = chunk.previous;
+  }
+
+  const rawBytes = new Uint8Array(burst.rawByteLength);
+  const textParts = new Array<string>(chunks.length);
+  let offset = 0;
+  for (let index = chunks.length - 1; index >= 0; index -= 1) {
+    const orderedChunk = chunks[index];
+    rawBytes.set(orderedChunk.bytes, offset);
+    offset += orderedChunk.bytes.length;
+    textParts[chunks.length - index - 1] = orderedChunk.text;
+  }
+  return { rawBytes, text: textParts.join("") };
+}
+
+/**
+ * 检查一个 RX 包是否已在最后数据到达后静默达到配置窗口。
+ * @param burst 当前待处理接收包；空包由调用方直接跳过。
+ * @param now 当前单调时刻，单位为毫秒。
+ * @param idleMs 空闲窗口，默认使用前端设置的 100 毫秒初始值。
+ * @returns 仅在经过时间大于或等于窗口时返回 true。
+ */
+export function isSerialRxBurstIdle(
+  burst: SerialRxBurst,
+  now: number,
+  idleMs = SERIAL_RX_IDLE_MS,
+): boolean {
+  return now - burst.lastReceivedAt >= idleMs;
 }
 
 /**

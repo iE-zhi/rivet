@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent } from "react";
 import { Input, Select, SvgIcon, Switch, type SelectOption } from "../components/ui";
 import { MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialDefaults, type SerialFlowControl, type SerialParity } from "./serialDefaults";
+import { SERIAL_RX_IDLE_MS_MAX, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_PACKET_BYTES_MAX, SERIAL_RX_PACKET_BYTES_MIN, type SerialRxSettings } from "./serialRxSettings";
 import type { Locale } from "./SerialPage";
 
 /** 支持的主题模式；system 会随操作系统外观变化。 */
@@ -21,6 +22,8 @@ interface SettingsPageCopy {
   groupTitle: string;
   /** 串口默认参数组标题，呈现在设置列表容器之外。 */
   serialGroupTitle: string;
+  /** 串口接收分包组标题，呈现在设置列表容器之外。 */
+  receiveGroupTitle: string;
   /** 是否在启动串口页时采用默认通信参数的设置项。 */
   useSerialDefaults: string;
   /** 语言设置行标题。 */
@@ -41,6 +44,14 @@ interface SettingsPageCopy {
   flowControl: string;
   /** 波特率输入无效时说明约束的反馈。 */
   invalidBaud: string;
+  /** RX 空闲判包时间设置行标题。 */
+  receiveIdleMs: string;
+  /** RX 单包最大字节数设置行标题。 */
+  receiveMaxPacketBytes: string;
+  /** RX 空闲时间输入无效时说明约束的反馈。 */
+  invalidReceiveIdleMs: string;
+  /** RX 单包字节数输入无效时说明约束的反馈。 */
+  invalidReceiveMaxPacketBytes: string;
   /** 语言下拉选项。 */
   languageOptions: SelectOption[];
   /** 主题下拉选项。 */
@@ -65,6 +76,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serial: "串口",
     groupTitle: "界面偏好",
     serialGroupTitle: "默认通信参数",
+    receiveGroupTitle: "接收分包",
     useSerialDefaults: "启用默认通信参数",
     language: "语言",
     theme: "主题",
@@ -75,6 +87,10 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     stopBits: "停止位",
     flowControl: "流控",
     invalidBaud: "请输入 1 到 4,294,967,295 之间的整数。",
+    receiveIdleMs: "空闲判包时间（毫秒）",
+    receiveMaxPacketBytes: "单包最大字节数",
+    invalidReceiveIdleMs: "请输入 1 到 60,000 之间的整数。",
+    invalidReceiveMaxPacketBytes: "请输入 256 到 16,384 之间的整数。",
     languageOptions: [
       { value: "zh", label: "中文 (简体)" },
       { value: "en", label: "English" },
@@ -107,6 +123,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serial: "Serial",
     groupTitle: "Appearance",
     serialGroupTitle: "Default communication parameters",
+    receiveGroupTitle: "Receive grouping",
     useSerialDefaults: "Use default communication parameters",
     language: "Language",
     theme: "Theme",
@@ -117,6 +134,10 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     stopBits: "Stop bits",
     flowControl: "Flow control",
     invalidBaud: "Enter an integer from 1 to 4,294,967,295.",
+    receiveIdleMs: "Packet idle timeout (ms)",
+    receiveMaxPacketBytes: "Maximum packet size (bytes)",
+    invalidReceiveIdleMs: "Enter an integer from 1 to 60,000.",
+    invalidReceiveMaxPacketBytes: "Enter an integer from 256 to 16,384.",
     languageOptions: [
       { value: "zh", label: "Chinese (Simplified)" },
       { value: "en", label: "English" },
@@ -167,6 +188,10 @@ export interface SettingsPageProps {
   useSerialDefaults: boolean;
   /** 更新默认通信参数开关；新状态会持久化并影响后续启动。 */
   onUseSerialDefaultsChange: (enabled: boolean) => void;
+  /** 当前独立持久化的前端 RX 分包参数。 */
+  serialRxSettings: SerialRxSettings;
+  /** 更新经过范围校验的 RX 分包参数；不受默认通信参数开关影响。 */
+  onSerialRxSettingsChange: (settings: SerialRxSettings) => void;
 }
 
 /** 设置页右侧当前展示的分组。 */
@@ -213,6 +238,21 @@ function parseBaudRate(value: string): number | null {
 }
 
 /**
+ * 将十进制 RX 设置草稿解析为指定范围内的安全整数。
+ * @param value 输入框中的原始文本。
+ * @param minimum 允许的最小整数值。
+ * @param maximum 允许的最大整数值。
+ * @returns 有效整数；空白、非十进制、非安全整数或越界值返回 null。
+ */
+function parseBoundedInteger(value: string, minimum: number, maximum: number): number | null {
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
+}
+
+/**
  * 显示界面语言、主题和字体选择，并保留设置分类导航入口。
  * @param locale 当前应用语言。
  * @param onLocaleChange 用户选择新语言后的回调。
@@ -224,9 +264,11 @@ function parseBaudRate(value: string): number | null {
  * @param onSerialDefaultsChange 用户修改串口默认参数后的回调。
  * @param useSerialDefaults 启动串口页时是否采用设置页默认通信参数。
  * @param onUseSerialDefaultsChange 用户切换默认通信参数开关后的回调。
+ * @param serialRxSettings 当前的接收显示分包参数。
+ * @param onSerialRxSettingsChange 用户修改接收分包参数后的回调。
  * @returns 设置侧栏和显示偏好分组。
  */
-export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange }: SettingsPageProps) {
+export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange }: SettingsPageProps) {
   /** 取当前界面语言的文案和选项列表。 */
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 设置页默认展示显示偏好；栏目切换只影响右侧当前分组。 */
@@ -235,6 +277,12 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   const [baudDraft, setBaudDraft] = useState(String(serialDefaults.baudRate));
   /** 波特率无效时保留草稿并给出即时反馈，失焦后恢复最后一个有效值。 */
   const [baudInvalid, setBaudInvalid] = useState(false);
+  /** RX 数字项仅在失焦时提交；编辑期间草稿不进入应用持久化状态。 */
+  const [receiveIdleDraft, setReceiveIdleDraft] = useState(String(serialRxSettings.idleMs));
+  const [receiveMaxPacketDraft, setReceiveMaxPacketDraft] = useState(String(serialRxSettings.maxPacketBytes));
+  /** 两个 RX 草稿分别保留无效状态，便于输入时立即显示对应范围反馈。 */
+  const [receiveIdleInvalid, setReceiveIdleInvalid] = useState(false);
+  const [receiveMaxPacketInvalid, setReceiveMaxPacketInvalid] = useState(false);
   /** 开关指针激活造成输入框失焦时，阻止草稿提交到默认通信参数。 */
   const suppressBaudBlurCommitRef = useRef(false);
 
@@ -243,6 +291,14 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     setBaudDraft(String(serialDefaults.baudRate));
     setBaudInvalid(false);
   }, [serialDefaults.baudRate]);
+
+  /** 父级 RX 配置变化时同步未提交的字段草稿，避免设置页显示旧值。 */
+  useEffect(() => {
+    setReceiveIdleDraft(String(serialRxSettings.idleMs));
+    setReceiveMaxPacketDraft(String(serialRxSettings.maxPacketBytes));
+    setReceiveIdleInvalid(false);
+    setReceiveMaxPacketInvalid(false);
+  }, [serialRxSettings.idleMs, serialRxSettings.maxPacketBytes]);
 
   /**
    * 只把受支持的语言值转交给外层状态。
@@ -340,6 +396,64 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   };
 
   /**
+   * 校验 RX 空闲时间草稿并即时显示范围错误。
+   * @param event RX 空闲时间输入框的文本变化事件。
+   * @returns 无；只更新草稿和错误提示。
+   */
+  const handleReceiveIdleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.currentTarget.value;
+    setReceiveIdleDraft(value);
+    setReceiveIdleInvalid(parseBoundedInteger(value, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_IDLE_MS_MAX) === null);
+  };
+
+  /**
+   * RX 空闲时间失焦时提交有效值，无效草稿恢复到最近一次已保存值。
+   * @returns 无；有效值立即更新应用设置，无效值只恢复草稿显示。
+   */
+  const handleReceiveIdleBlur = () => {
+    const idleMs = parseBoundedInteger(receiveIdleDraft, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_IDLE_MS_MAX);
+    if (idleMs === null) {
+      setReceiveIdleDraft(String(serialRxSettings.idleMs));
+      setReceiveIdleInvalid(false);
+      return;
+    }
+    setReceiveIdleDraft(String(idleMs));
+    setReceiveIdleInvalid(false);
+    if (idleMs !== serialRxSettings.idleMs) {
+      onSerialRxSettingsChange({ ...serialRxSettings, idleMs });
+    }
+  };
+
+  /**
+   * 校验 RX 单包字节数草稿并即时显示范围错误。
+   * @param event RX 单包上限输入框的文本变化事件。
+   * @returns 无；只更新草稿和错误提示。
+   */
+  const handleReceiveMaxPacketChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.currentTarget.value;
+    setReceiveMaxPacketDraft(value);
+    setReceiveMaxPacketInvalid(parseBoundedInteger(value, SERIAL_RX_PACKET_BYTES_MIN, SERIAL_RX_PACKET_BYTES_MAX) === null);
+  };
+
+  /**
+   * RX 单包字节数失焦时提交有效值，无效草稿恢复到最近一次已保存值。
+   * @returns 无；有效值立即更新应用设置，无效值只恢复草稿显示。
+   */
+  const handleReceiveMaxPacketBlur = () => {
+    const maxPacketBytes = parseBoundedInteger(receiveMaxPacketDraft, SERIAL_RX_PACKET_BYTES_MIN, SERIAL_RX_PACKET_BYTES_MAX);
+    if (maxPacketBytes === null) {
+      setReceiveMaxPacketDraft(String(serialRxSettings.maxPacketBytes));
+      setReceiveMaxPacketInvalid(false);
+      return;
+    }
+    setReceiveMaxPacketDraft(String(maxPacketBytes));
+    setReceiveMaxPacketInvalid(false);
+    if (maxPacketBytes !== serialRxSettings.maxPacketBytes) {
+      onSerialRxSettingsChange({ ...serialRxSettings, maxPacketBytes });
+    }
+  };
+
+  /**
    * 仅接收支持的数据位选项并更新默认参数。
    * @param value 下拉组件返回的候选数据位字符串。
    * @returns 无；无效候选值不改变默认参数。
@@ -418,49 +532,90 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
               </div>
             </section>
           ) : (
-            <section className="settings-section" aria-labelledby="settings-group-title">
-              <h1 className="settings-section-title" id="settings-group-title">{copy.serialGroupTitle}</h1>
-              <div className="settings-list">
-                <div className="settings-row" onPointerDown={handleUseSerialDefaultsPointerDown}>
-                  <span className="settings-row-label">{copy.useSerialDefaults}</span>
-                  <Switch checked={useSerialDefaults} onCheckedChange={handleUseSerialDefaultsChange} ariaLabel={copy.useSerialDefaults} />
-                </div>
-                <div className={`settings-row${baudInvalid ? " has-feedback" : ""}`}>
-                  <span className="settings-row-label">{copy.baud}</span>
-                  <div className="settings-row-control">
-                    <Input
-                      aria-label={copy.baud}
-                      aria-invalid={baudInvalid}
-                      aria-describedby={baudInvalid ? "serial-baud-error" : undefined}
-                      className="settings-input"
-                      disabled={!useSerialDefaults}
-                      inputMode="numeric"
-                      maxLength={10}
-                      value={baudDraft}
-                      onChange={handleBaudRateChange}
-                      onBlur={handleBaudRateBlur}
-                    />
-                    {baudInvalid && <span className="settings-row-feedback" id="serial-baud-error" role="alert">{copy.invalidBaud}</span>}
+            <>
+              <section className="settings-section" aria-labelledby="settings-group-title">
+                <h1 className="settings-section-title" id="settings-group-title">{copy.serialGroupTitle}</h1>
+                <div className="settings-list">
+                  <div className="settings-row" onPointerDown={handleUseSerialDefaultsPointerDown}>
+                    <span className="settings-row-label">{copy.useSerialDefaults}</span>
+                    <Switch checked={useSerialDefaults} onCheckedChange={handleUseSerialDefaultsChange} ariaLabel={copy.useSerialDefaults} />
+                  </div>
+                  <div className={`settings-row${baudInvalid ? " has-feedback" : ""}`}>
+                    <span className="settings-row-label">{copy.baud}</span>
+                    <div className="settings-row-control">
+                      <Input
+                        aria-label={copy.baud}
+                        aria-invalid={baudInvalid}
+                        aria-describedby={baudInvalid ? "serial-baud-error" : undefined}
+                        className="settings-input"
+                        disabled={!useSerialDefaults}
+                        inputMode="numeric"
+                        maxLength={10}
+                        value={baudDraft}
+                        onChange={handleBaudRateChange}
+                        onBlur={handleBaudRateBlur}
+                      />
+                      {baudInvalid && <span className="settings-row-feedback" id="serial-baud-error" role="alert">{copy.invalidBaud}</span>}
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.dataBits}</span>
+                    <Select className="settings-select" ariaLabel={copy.dataBits} options={copy.dataBitOptions} value={String(serialDefaults.dataBits)} onChange={handleDataBitsChange} disabled={!useSerialDefaults} />
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.parity}</span>
+                    <Select className="settings-select" ariaLabel={copy.parity} options={copy.parityOptions} value={serialDefaults.parity} onChange={handleParityChange} disabled={!useSerialDefaults} />
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.stopBits}</span>
+                    <Select className="settings-select" ariaLabel={copy.stopBits} options={copy.stopBitOptions} value={String(serialDefaults.stopBits)} onChange={handleStopBitsChange} disabled={!useSerialDefaults} />
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.flowControl}</span>
+                    <Select className="settings-select" ariaLabel={copy.flowControl} options={copy.flowControlOptions} value={serialDefaults.flowControl} onChange={handleFlowControlChange} disabled={!useSerialDefaults} />
                   </div>
                 </div>
-                <div className="settings-row">
-                  <span className="settings-row-label">{copy.dataBits}</span>
-                  <Select className="settings-select" ariaLabel={copy.dataBits} options={copy.dataBitOptions} value={String(serialDefaults.dataBits)} onChange={handleDataBitsChange} disabled={!useSerialDefaults} />
+              </section>
+              <section className="settings-section" aria-labelledby="settings-receive-group-title">
+                <h1 className="settings-section-title" id="settings-receive-group-title">{copy.receiveGroupTitle}</h1>
+                <div className="settings-list">
+                  <div className={`settings-row${receiveIdleInvalid ? " has-feedback" : ""}`}>
+                    <span className="settings-row-label">{copy.receiveIdleMs}</span>
+                    <div className="settings-row-control">
+                      <Input
+                        aria-label={copy.receiveIdleMs}
+                        aria-invalid={receiveIdleInvalid}
+                        aria-describedby={receiveIdleInvalid ? "serial-rx-idle-error" : undefined}
+                        className="settings-input"
+                        inputMode="numeric"
+                        maxLength={5}
+                        value={receiveIdleDraft}
+                        onChange={handleReceiveIdleChange}
+                        onBlur={handleReceiveIdleBlur}
+                      />
+                      {receiveIdleInvalid && <span className="settings-row-feedback" id="serial-rx-idle-error" role="alert">{copy.invalidReceiveIdleMs}</span>}
+                    </div>
+                  </div>
+                  <div className={`settings-row${receiveMaxPacketInvalid ? " has-feedback" : ""}`}>
+                    <span className="settings-row-label">{copy.receiveMaxPacketBytes}</span>
+                    <div className="settings-row-control">
+                      <Input
+                        aria-label={copy.receiveMaxPacketBytes}
+                        aria-invalid={receiveMaxPacketInvalid}
+                        aria-describedby={receiveMaxPacketInvalid ? "serial-rx-packet-error" : undefined}
+                        className="settings-input"
+                        inputMode="numeric"
+                        maxLength={5}
+                        value={receiveMaxPacketDraft}
+                        onChange={handleReceiveMaxPacketChange}
+                        onBlur={handleReceiveMaxPacketBlur}
+                      />
+                      {receiveMaxPacketInvalid && <span className="settings-row-feedback" id="serial-rx-packet-error" role="alert">{copy.invalidReceiveMaxPacketBytes}</span>}
+                    </div>
+                  </div>
                 </div>
-                <div className="settings-row">
-                  <span className="settings-row-label">{copy.parity}</span>
-                  <Select className="settings-select" ariaLabel={copy.parity} options={copy.parityOptions} value={serialDefaults.parity} onChange={handleParityChange} disabled={!useSerialDefaults} />
-                </div>
-                <div className="settings-row">
-                  <span className="settings-row-label">{copy.stopBits}</span>
-                  <Select className="settings-select" ariaLabel={copy.stopBits} options={copy.stopBitOptions} value={String(serialDefaults.stopBits)} onChange={handleStopBitsChange} disabled={!useSerialDefaults} />
-                </div>
-                <div className="settings-row">
-                  <span className="settings-row-label">{copy.flowControl}</span>
-                  <Select className="settings-select" ariaLabel={copy.flowControl} options={copy.flowControlOptions} value={serialDefaults.flowControl} onChange={handleFlowControlChange} disabled={!useSerialDefaults} />
-                </div>
-              </div>
-            </section>
+              </section>
+            </>
           )}
         </div>
       </main>

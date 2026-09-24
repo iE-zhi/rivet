@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Button, Checkbox, Input, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, type TerminalLine } from "../components/ui";
 import { buildSerialBytes } from "./serialBytes";
-import { appendSerialLogEntry, createSerialLogBuffer, getSerialLogLines, serializeSerialLogLines, type SerialLogEntry } from "./serialLog";
+import { appendSerialLogEntry, appendSerialRxBurst, createSerialLogBuffer, flattenSerialRxBurst, getSerialLogLines, isSerialRxBurstIdle, serializeSerialLogLines, splitSerialRxBytes, type SerialLogEntry, type SerialRxBurst } from "./serialLog";
 import { isSerialDefaults, LAST_USED_SERIAL_CONFIG_STORAGE_KEY, selectSerialStartupDefaults, serialDefaultsEqual, serializeSerialDefaults, type SerialDefaults } from "./serialDefaults";
+import type { SerialRxSettings } from "./serialRxSettings";
 
 /** 串口功能页：维护串口会话、事件订阅、日志和设备收发控件。 */
 
@@ -44,6 +45,8 @@ export interface SerialPageProps {
   serialDefaults: SerialDefaults;
   /** 是否在应用启动时使用设置页默认参数；当前会话运行时切换不会重置连接。 */
   useSerialDefaults: boolean;
+  /** 持久化且严格校验的前端 RX 分包参数；不改变 Rust 读取行为。 */
+  serialRxSettings: SerialRxSettings;
 }
 
 /**
@@ -66,13 +69,29 @@ function readInitialSerialDefaults(useSerialDefaults: boolean, serialDefaults: S
 }
 
 /**
+ * 生成日志类别与本地毫秒精度时间前缀；RX 使用首个 serial:data 事件到达前端的时刻。
+ * @param kind 日志类别；决定追加到时间前缀后的英文类别标记。
+ * @param timestamp 本地 Unix 毫秒；RX 时刻是前端事件到达时间，不代表设备物理首字节时刻。
+ * @param enabled 是否为本行附加时间前缀。
+ * @param locale 当前 UI 语言；决定本地化时钟格式。
+ * @returns 带可选毫秒时间和大写类别的 Terminal 前缀。
+ */
+function createLogPrefix(kind: "info" | "rx" | "tx" | "ok", timestamp: number, enabled: boolean, locale: Locale): string {
+  const time = enabled
+    ? `[${new Date(timestamp).toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3, hour12: false })}] `
+    : "";
+  return `${time}${kind.toUpperCase()}`;
+}
+
+/**
  * 提供串口收发界面、设备配置、事件日志及中英文字段。
  * @param locale 当前文案语言，由应用外壳持有。
  * @param serialDefaults 当前应用持久化的默认通信参数；活动会话配置保存在页面本地。
  * @param useSerialDefaults 是否在启动时使用设置页默认参数。
+ * @param serialRxSettings 当前持久化的前端 RX 展示分包参数。
  * @returns 串口控制台及其设备、日志和收发控件。
  */
-export default function SerialPage({ locale, serialDefaults, useSerialDefaults }: SerialPageProps) {
+export default function SerialPage({ locale, serialDefaults, useSerialDefaults, serialRxSettings }: SerialPageProps) {
   /** 设备、串口配置、发送草稿和日志在页面挂载期间保留。 */
   const [ports, setPorts] = useState<PortInfo[]>([]);
   const [path, setPath] = useState("");
@@ -80,6 +99,8 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults }
   const [connecting, setConnecting] = useState(false);
   const [listenersReady, setListenersReady] = useState(false);
   const [sending, setSending] = useState(false);
+  /** 同步拦截 React 重绘前的重复发送提交。 */
+  const sendingRef = useRef(false);
   /** 首屏先按开关模式恢复完整参数，避免首次持久化副作用覆盖 last-used。 */
   const [initialSerialDefaults] = useState(() => readInitialSerialDefaults(useSerialDefaults, serialDefaults));
   /** 当前串口页会话参数在默认模式下响应默认值变化，在自定义模式下单独持久化。 */
@@ -108,6 +129,21 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults }
   const [saveError, setSaveError] = useState("");
   /** 保存当前有界日志及三种数据视图的字节计数。 */
   const logBufferRef = useRef(createSerialLogBuffer());
+  /** 最多暂存配置上限内的原始接收字节，超出时先提交当前包。 */
+  const rxBurstRef = useRef<SerialRxBurst | null>(null);
+  /** 当前活动 RX 参数；事件监听和计时器从此引用读取以免重建订阅。 */
+  const serialRxSettingsRef = useRef(serialRxSettings);
+  /** 以最后一个 serial:data 到达时刻重新排程的空闲提交定时器。 */
+  const rxFlushTimerRef = useRef<number | null>(null);
+  /** 生命周期令牌阻止卸载后的定时器和异步回调重写日志。 */
+  const mountedRef = useRef(false);
+  const lifecycleRef = useRef(0);
+  /** 清空时递增，避免旧发送结果污染新统计周期。 */
+  const logCycleRef = useRef(0);
+  /** 非 RX 日志需先提交当前包；ref 避免日志回调之间形成依赖环。 */
+  const flushPendingRxRef = useRef<() => void>(() => {});
+  /** 空闲检查发现计时器提前触发时，通过 ref 重新排程而不产生回调依赖环。 */
+  const scheduleRxFlushRef = useRef<(lifecycle: number, delayMs?: number) => void>(() => {});
   /** 保存事件回调最新使用的 Hex 模式，避免异步保存读取旧视图。 */
   const hexDisplayRef = useRef(false);
   /** 在 React 重绘前同步阻止并发重复保存。 */
@@ -207,18 +243,77 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults }
     setLines(getSerialLogLines(buffer, hexDisplayRef.current));
   }, []);
 
+  /** 取消当前空闲定时器；清空、提交和卸载均调用此方法释放句柄。 */
+  const clearRxFlushTimer = useCallback(() => {
+    if (rxFlushTimerRef.current !== null) {
+      window.clearTimeout(rxFlushTimerRef.current);
+      rxFlushTimerRef.current = null;
+    }
+  }, []);
+
+  /** 将反向链接的接收块单次扁平化并写入日志，原始字节用于 Hex 与保存视图。 */
+  const commitRxBurst = useCallback((burst: SerialRxBurst) => {
+    if (!mountedRef.current) return;
+    const flattened = flattenSerialRxBurst(burst);
+    appendLine({ kind: "rx", prefix: burst.prefix, text: flattened.text, rawBytes: flattened.rawBytes });
+  }, [appendLine]);
+
+  /** 提交当前接收包；发送、保存、切换视图和断开等显式边界可提前结束空闲窗口。 */
+  const flushPendingRx = useCallback(() => {
+    clearRxFlushTimer();
+    const pending = rxBurstRef.current;
+    rxBurstRef.current = null;
+    if (pending) commitRxBurst(pending);
+  }, [clearRxFlushTimer, commitRxBurst]);
+  flushPendingRxRef.current = flushPendingRx;
+
   /**
-   * 为新日志添加类别和本地时间前缀，并保留对应 TX/RX 原始字节。
-   * @param kind 日志类别；只有 rx/tx 行使用原始字节切换 Hex 显示。
+   * 排定 RX 包提交并在回调中验证空闲窗口；重排会先取消前一个计时器。
+   * @param lifecycle 本页面订阅周期令牌；卸载或重订阅后的旧回调会被忽略。
+   * @param delayMs 本次等待时长；默认读取最新设置，提前触发时传入窗口剩余时长。
+   * @returns 无；延迟到空闲窗口满足后提交，清空和卸载会取消待处理句柄。
+   */
+  const scheduleRxFlush = useCallback((lifecycle: number, delayMs?: number) => {
+    clearRxFlushTimer();
+    const initialDelay = delayMs ?? serialRxSettingsRef.current.idleMs;
+    rxFlushTimerRef.current = window.setTimeout(() => {
+      rxFlushTimerRef.current = null;
+      const pending = rxBurstRef.current;
+      if (!mountedRef.current || lifecycleRef.current !== lifecycle || !pending) return;
+      const now = performance.now();
+      const idleMs = serialRxSettingsRef.current.idleMs;
+      if (isSerialRxBurstIdle(pending, now, idleMs)) {
+        flushPendingRx();
+        return;
+      }
+      // 只等待最新配置窗口的剩余时长，避免提前触发后再完整等待一轮。
+      // 最短延迟 1ms，避免在剩余窗口不足 1ms 时安排零延迟任务。
+      scheduleRxFlushRef.current(lifecycle, Math.max(1, idleMs - (now - pending.lastReceivedAt)));
+    }, initialDelay);
+  }, [clearRxFlushTimer, flushPendingRx]);
+  scheduleRxFlushRef.current = scheduleRxFlush;
+
+  /** 新 RX 参数生效前先完成旧参数下的接收包，并取消旧窗口定时器。 */
+  useLayoutEffect(() => {
+    const previous = serialRxSettingsRef.current;
+    if (previous.idleMs === serialRxSettings.idleMs && previous.maxPacketBytes === serialRxSettings.maxPacketBytes) {
+      return;
+    }
+    flushPendingRxRef.current();
+    serialRxSettingsRef.current = { ...serialRxSettings };
+  }, [serialRxSettings]);
+
+  /**
+   * 先提交此前 RX 包，再追加发送/状态日志并附带本地毫秒精度时间前缀。
+   * @param kind 状态或发送类别；TX 行保留原始字节以支持 Hex 显示。
    * @param text 当前文本模式下的正文。
    * @param rawBytes 可选串口字节序列，由有界缓冲区复制尾部并保留。
-   * @returns 无；追加操作更新日志缓存及显示状态。
+   * @returns 无；按顺序追加操作更新日志缓存及显示状态。
    */
-  const log = useCallback((kind: "info" | "rx" | "tx" | "ok", text: string, rawBytes?: ArrayLike<number>) => {
-    const timestamp = timestampEnabledRef.current
-      ? `[${new Date().toLocaleTimeString(localeRef.current === "zh" ? "zh-CN" : "en-US", { hour12: false })}] `
-      : "";
-    appendLine({ kind, prefix: `${timestamp}${kind.toUpperCase()}`, text, ...(rawBytes === undefined ? {} : { rawBytes }) });
+  const log = useCallback((kind: "info" | "tx" | "ok", text: string, rawBytes?: ArrayLike<number>) => {
+    flushPendingRxRef.current();
+    const prefix = createLogPrefix(kind, Date.now(), timestampEnabledRef.current, localeRef.current);
+    appendLine({ kind, prefix, text, ...(rawBytes === undefined ? {} : { rawBytes }) });
   }, [appendLine]);
 
   /** 刷新系统端口清单；默认修正失效选择并清除提示，连接收尾可保留两者。 */
@@ -235,9 +330,10 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults }
     }
   }, [desktop]);
 
-  /** 申请一次 Rust 侧连接；失败时恢复未连接状态并显示后端错误。 */
+  /** 先提交待处理 RX，再申请 Rust 侧连接；失败时恢复未连接状态并显示后端错误。 */
   const connect = useCallback(async () => {
     if (!desktop || !listenersReady || !path || connecting || connected) return;
+    flushPendingRxRef.current();
     setConnecting(true);
     setStatus("");
     const config: PortConfig = { path, baudRate: Number(baudRate), dataBits: Number(dataBits), stopBits: Number(stopBits), parity, flowControl };
@@ -254,8 +350,9 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults }
     }
   }, [baudRate, connected, connecting, dataBits, desktop, flowControl, listenersReady, log, parity, path, refreshPorts, stopBits]);
 
-  /** 仅在 Rust 确认会话关闭后复位连接状态；失败时保留实际连接状态。 */
+  /** 关闭前先提交待处理 RX；仅在 Rust 确认会话关闭后复位连接状态。 */
   const disconnect = useCallback(async () => {
+    flushPendingRxRef.current();
     try {
       await invoke("close_port");
       setConnected(false);
@@ -266,13 +363,13 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults }
   }, [copy.disconnected, log]);
 
   /**
-   * 按当前模式构造并发送串口字节，成功后计数并保留实际发送字节；失败时保留草稿。
+   * 校验后立即记录 TX 并发送字节；成功或失败均保留草稿，仅成功时累计字节数，失败显示后端原始错误。
    * @param event 表单提交事件；函数会阻止浏览器默认提交行为。
    * @returns 发送与界面状态处理完成后的 Promise；后端错误显示在状态区。
    */
   const send = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!connected || sending) return;
+    if (!connected || sendingRef.current) return;
     if (!hexSend && !message.length) return;
     const result = buildSerialBytes(message, { hex: hexSend, appendCR, appendLF });
     if (!result.ok) {
@@ -280,50 +377,62 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults }
       return;
     }
 
+    const txText = hexSend
+      ? result.bytes.map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join(" ")
+      : `${message}${appendCR ? "\\r" : ""}${appendLF ? "\\n" : ""}`;
+    const cycle = logCycleRef.current;
+    const lifecycle = lifecycleRef.current;
+    // log 会先提交待处理 RX，再同步追加正式 TX；invoke 因而在 RX/TX 顺序确定后才启动。
+    log("tx", txText, result.bytes);
+    sendingRef.current = true;
     setSending(true);
     try {
       await invoke("send_bytes", { bytes: result.bytes });
-      setByteCounts((counts) => ({ ...counts, sent: counts.sent + BigInt(result.bytes.length) }));
-      const txText = hexSend
-        ? result.bytes.map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join(" ")
-        : `${message}${appendCR ? "\\r" : ""}${appendLF ? "\\n" : ""}`;
-      log("tx", txText, result.bytes);
-      setMessage("");
-      setStatus("");
+      if (mountedRef.current && lifecycleRef.current === lifecycle && logCycleRef.current === cycle) {
+        setByteCounts((counts) => ({ ...counts, sent: counts.sent + BigInt(result.bytes.length) }));
+        setStatus("");
+      }
     } catch (error) {
-      setStatus(String(error));
+      if (mountedRef.current && lifecycleRef.current === lifecycle) setStatus(String(error));
     } finally {
-      setSending(false);
+      sendingRef.current = false;
+      if (mountedRef.current && lifecycleRef.current === lifecycle) setSending(false);
     }
-  }, [appendCR, appendLF, connected, copy, hexSend, log, message, sending]);
+  }, [appendCR, appendLF, connected, copy, hexSend, log, message]);
 
   /**
-   * 清空日志、原始字节缓存、收发统计及保存错误提示；后续字节增量计入新周期。
+   * 丢弃待提交 RX 并清空日志、解码残留、收发统计及保存错误；旧发送结果不会污染新周期。
    * @returns 无；重建日志缓冲区并更新对应的 React 状态。
    */
   const clearLog = useCallback(() => {
+    clearRxFlushTimer();
+    rxBurstRef.current = null;
+    decoderRef.current = new TextDecoder("utf-8", { fatal: false });
+    logCycleRef.current += 1;
     logBufferRef.current = createSerialLogBuffer();
     setLines([]);
     setByteCounts({ sent: 0n, received: 0n });
     setSaveError("");
-  }, []);
+  }, [clearRxFlushTimer]);
   /**
-   * 按用户选择重建日志视图；原始文本和字节缓存保持不变。
+   * 先提交待处理 RX，再按用户选择重建日志视图；原始文本和字节缓存保持不变。
    * @param event Hex显示复选框的变化事件。
    * @returns 无；更新模式引用、复选框状态和 Terminal 行。
    */
   const updateHexDisplay = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    flushPendingRxRef.current();
     const enabled = event.target.checked;
     hexDisplayRef.current = enabled;
     setHexDisplay(enabled);
     setLines(getSerialLogLines(logBufferRef.current, enabled));
   }, []);
   /**
-   * 保存点击时的可见日志快照；取消不提示，后端错误显示在状态区。
+   * 保存前提交待处理 RX 并生成当前可见快照；取消不提示，后端错误显示在状态区。
    * @returns 保存请求完成后的 Promise；重复请求、浏览器环境或空日志直接返回。
    */
   const saveLog = useCallback(async () => {
     if (!desktop || savingRef.current) return;
+    flushPendingRxRef.current();
     const snapshot = getSerialLogLines(logBufferRef.current, hexDisplayRef.current);
     if (!snapshot.length) return;
 
@@ -369,22 +478,49 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults }
 
   /** 两种串口事件均订阅成功后才允许连接；失败或卸载时忽略迟到的注册结果。 */
   useEffect(() => {
-    if (!desktop) return;
+    mountedRef.current = true;
+    const lifecycle = lifecycleRef.current + 1;
+    lifecycleRef.current = lifecycle;
+    if (!desktop) {
+      return () => {
+        mountedRef.current = false;
+        lifecycleRef.current += 1;
+        clearRxFlushTimer();
+        rxBurstRef.current = null;
+      };
+    }
     let unlistenData: (() => void) | undefined;
     let unlistenError: (() => void) | undefined;
     let disposed = false;
     let setupFailed = false;
     let registeredCount = 0;
     setListenersReady(false);
-    /** 先按事件原始字节计数，再将字节和解码文本一并入日志；即使文本为空也保留接收字节。 */
+    /** 每个事件立即计入原始字节数，再按当前前端空闲时间和单包上限聚合显示。 */
     void listen<DataEvent>("serial:data", (event) => {
       if (disposed) return;
-      setByteCounts((counts) => ({ ...counts, received: counts.received + BigInt(event.payload.bytes.length) }));
-      /** 把后端 number[] 转成解码字节，并将同一输入交给缓存复制保留尾部。 */
-      const bytes = new Uint8Array(event.payload.bytes);
+      const payload = event.payload.bytes;
+      setByteCounts((counts) => ({ ...counts, received: counts.received + BigInt(payload.length) }));
+      /** 按当前前端单包上限切分；TextDecoder 状态跨块和事件保留。 */
+      const timestamp = Date.now();
+      const receivedAt = performance.now();
+      const bytes = Uint8Array.from(payload);
       if (!bytes.length) return;
-      const text = decoderRef.current.decode(bytes, { stream: true });
-      log("rx", text, bytes);
+      const rxSettings = serialRxSettingsRef.current;
+      for (const chunk of splitSerialRxBytes(bytes, rxSettings.maxPacketBytes)) {
+        const text = decoderRef.current.decode(chunk, { stream: true });
+        const merged = appendSerialRxBurst(
+          rxBurstRef.current,
+          receivedAt,
+          text,
+          chunk,
+          createLogPrefix("rx", timestamp, timestampEnabledRef.current, localeRef.current),
+          rxSettings.idleMs,
+          rxSettings.maxPacketBytes,
+        );
+        if (merged.completed) commitRxBurst(merged.completed);
+        rxBurstRef.current = merged.pending;
+      }
+      scheduleRxFlush(lifecycle);
     /** 记录数据订阅句柄，仅全部订阅成功后允许连接。 */
     }).then((unlisten) => {
       if (disposed || setupFailed) { unlisten(); return; }
@@ -403,6 +539,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults }
     /** 将后端异常显示到状态区并同步复位连接展示。 */
     void listen<string>("serial:error", (event) => {
       if (disposed) return;
+      flushPendingRxRef.current();
       setStatus(`${SERIAL_COPY[localeRef.current].error}: ${event.payload}`);
       setConnected(false);
     /** 记录错误订阅句柄；订阅失败时由对应 catch 清理部分注册。 */
@@ -422,10 +559,14 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults }
     });
     return () => {
       disposed = true;
+      mountedRef.current = false;
+      lifecycleRef.current += 1;
+      clearRxFlushTimer();
+      rxBurstRef.current = null;
       unlistenData?.();
       unlistenError?.();
     };
-  }, [desktop, log, refreshPorts]);
+  }, [clearRxFlushTimer, commitRxBurst, desktop, log, refreshPorts, scheduleRxFlush]);
 
   return (
     <main className="serial-page" id="serial-page">
