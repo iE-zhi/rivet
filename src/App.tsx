@@ -5,6 +5,7 @@ import SerialPage, { type Locale } from "./pages/SerialPage";
 import SettingsPage, { type FontMode, type ThemeMode } from "./pages/SettingsPage";
 import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
 import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
+import { deserializeNotificationSettings, isNotificationSettings, NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings, type NotificationSettings } from "./preferences/notificationSettings";
 
 /** 串口工作台外壳所需的导航与品牌文案。 */
 const SHELL_COPY = {
@@ -128,6 +129,16 @@ function readSerialRxSettingsPreference(): SerialRxSettings {
   }
 }
 
+/** 从独立存储项恢复三类通知弹窗开关；存储不可用时默认全部开启。 */
+function readNotificationSettingsPreference(): NotificationSettings {
+  try {
+    return deserializeNotificationSettings(window.localStorage.getItem(NOTIFICATION_SETTINGS_STORAGE_KEY));
+  } catch (error) {
+    console.warn("Rivet 无法读取通知设置，将默认显示全部通知。", error);
+    return deserializeNotificationSettings(null);
+  }
+}
+
 /**
  * 读取系统当前深色外观状态；缺少 matchMedia 时按浅色安全默认值处理。
  * @returns 系统当前是否偏好深色外观。
@@ -155,6 +166,8 @@ export default function App() {
   const [useSerialDefaults, setUseSerialDefaults] = useState(readSerialDefaultsEnabledPreference);
   /** 前端 RX 展示分包参数；与串口通信默认值分开持久化和传递。 */
   const [serialRxSettings, setSerialRxSettings] = useState<SerialRxSettings>(readSerialRxSettingsPreference);
+  /** 普通、警告和错误通知是否弹窗显示；普通开关同时控制 success 与 info。 */
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(readNotificationSettingsPreference);
   /** 系统外观状态仅在主题模式为 system 时决定最终颜色方案。 */
   const [systemPrefersDark, setSystemPrefersDark] = useState(readSystemPrefersDark);
   /** 一级页面切换不卸载 SerialPage，以维持串口会话、事件订阅和日志状态。 */
@@ -211,6 +224,11 @@ export default function App() {
     persistPreference(SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings(serialRxSettings));
   }, [serialRxSettings]);
 
+  /** 三类通知开关独立持久化；关闭只抑制弹窗，不影响业务流程和终端日志。 */
+  useEffect(() => {
+    persistPreference(NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings(notificationSettings));
+  }, [notificationSettings]);
+
   /**
    * 导航到串口页；阻止浏览器修改 URL hash。
    * @param event 串口导航链接的点击事件。
@@ -253,6 +271,13 @@ export default function App() {
     }
   };
 
+  /** 只接受结构严格的三类通知开关，避免无效设置进入全局状态。 */
+  const updateNotificationSettings = (settings: NotificationSettings) => {
+    if (isNotificationSettings(settings)) {
+      setNotificationSettings({ ...settings });
+    }
+  };
+
   return (
     <div className="app-shell rivet-ui" data-theme={resolvedTheme} data-font={font}>
       <nav className="rail" aria-label={copy.navigation}>
@@ -283,12 +308,12 @@ export default function App() {
         </a>
       </nav>
       <div className="app-content">
-        <NotificationProvider locale={locale}>
+        <NotificationProvider locale={locale} visibility={notificationSettings}>
           <div className="app-view serial-view" hidden={page !== "serial"}>
             <SerialPage locale={locale} serialDefaults={serialDefaults} useSerialDefaults={useSerialDefaults} serialRxSettings={serialRxSettings} />
           </div>
           <div className="app-view settings-view" hidden={page !== "settings"}>
-            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} />
+            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} />
           </div>
         </NotificationProvider>
       </div>

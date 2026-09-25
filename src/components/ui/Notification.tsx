@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent } from "react";
 import { SvgIcon } from "./SvgIcon";
 import { NotificationContext, type NotificationKind, type NotificationOptions, type NotificationProviderProps } from "./NotificationContext";
+import { DEFAULT_NOTIFICATION_SETTINGS } from "../../preferences/notificationSettings";
 
 /** 对外保留通知 API 的编译期类型；Hook 与上下文由独立模块提供。 */
 export type { NotificationKind, NotificationOptions, NotificationProviderProps } from "./NotificationContext";
@@ -79,7 +80,9 @@ function isNotificationKind(value: unknown): value is NotificationKind {
  * @param children 当前应用页面或预览内容。
  * @returns 页面内容和右上角通知堆栈。
  */
-export function NotificationProvider({ locale, viewportMode = "fixed", children }: NotificationProviderProps) {
+export function NotificationProvider({ locale, viewportMode = "fixed", visibility = DEFAULT_NOTIFICATION_SETTINGS, children }: NotificationProviderProps) {
+  /** 三类通知开关分别控制普通、警告和错误弹窗；success 与 info 共用普通开关。 */
+  const { general: showGeneral, warning: showWarning, error: showError } = visibility;
   /** 当前最多保留三条通知，包括正处于退出动画的通知。 */
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   /** 递增序号用于稳定标识，不依赖随机数或外部资源。 */
@@ -92,6 +95,10 @@ export function NotificationProvider({ locale, viewportMode = "fixed", children 
   */
   const notify = useCallback((options: NotificationOptions) => {
     if (typeof options !== "object" || options === null) return;
+    const kind = isNotificationKind(options.kind) ? options.kind : "info";
+    const enabled = kind === "error" ? showError : kind === "warning" ? showWarning : showGeneral;
+    if (!enabled) return;
+
     const message = limitNotificationText(options.message, MAX_NOTIFICATION_MESSAGE_LENGTH);
     if (!message) return;
 
@@ -108,13 +115,13 @@ export function NotificationProvider({ locale, viewportMode = "fixed", children 
       id,
       title,
       message,
-      kind: isNotificationKind(options.kind) ? options.kind : "info",
+      kind,
       durationMs,
       closing: false,
     };
 
     setNotifications((current) => [...current, notification].slice(-MAX_VISIBLE_NOTIFICATIONS));
-  }, []);
+  }, [showError, showGeneral, showWarning]);
 
   /**
    * 标记通知退出，交由卡片完成动画后移除。

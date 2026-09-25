@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import type { ReactNode } from "react";
+import type { NotificationSettings } from "../../preferences/notificationSettings";
 
 /**
  * 定义应用内通知的类型与访问上下文，供通知组件和页面共享。
@@ -27,6 +28,8 @@ export interface NotificationProviderProps {
   locale: "zh" | "en";
   /** 正式应用使用 fixed；组件预览可使用 absolute。 */
   viewportMode?: "fixed" | "absolute";
+  /** 三类通知是否允许显示为弹窗；普通通知同时控制 success 与 info。 */
+  visibility?: NotificationSettings;
   /** 可调用通知 API 的应用界面。 */
   children: ReactNode;
 }

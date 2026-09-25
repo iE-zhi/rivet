@@ -3,6 +3,7 @@ import { Input, Select, SvgIcon, Switch, useNotification, type SelectOption } fr
 import { MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialDefaults, type SerialFlowControl, type SerialParity } from "./serialDefaults";
 import { SERIAL_RX_IDLE_MS_MAX, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_PACKET_BYTES_MAX, SERIAL_RX_PACKET_BYTES_MIN, type SerialRxSettings } from "./serialRxSettings";
 import type { Locale } from "./SerialPage";
+import type { NotificationSettings } from "../preferences/notificationSettings";
 
 /** 支持的主题模式；system 会随操作系统外观变化。 */
 export type ThemeMode = "system" | "light" | "dark";
@@ -20,6 +21,14 @@ interface SettingsPageCopy {
   serial: string;
   /** 显示设置组标题，呈现在设置列表容器之外。 */
   groupTitle: string;
+  /** 通知设置组标题。 */
+  notificationGroupTitle: string;
+  /** 普通消息弹窗开关标题；同时覆盖 success 与 info。 */
+  generalNotifications: string;
+  /** 警告消息弹窗开关标题。 */
+  warningNotifications: string;
+  /** 错误消息弹窗开关标题。 */
+  errorNotifications: string;
   /** 串口默认参数组标题，呈现在设置列表容器之外。 */
   serialGroupTitle: string;
   /** 串口接收分包组标题，呈现在设置列表容器之外。 */
@@ -75,6 +84,10 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     display: "显示",
     serial: "串口",
     groupTitle: "界面偏好",
+    notificationGroupTitle: "通知设置",
+    generalNotifications: "普通通知",
+    warningNotifications: "警告通知",
+    errorNotifications: "错误通知",
     serialGroupTitle: "默认通信参数",
     receiveGroupTitle: "接收分包",
     useSerialDefaults: "启用默认通信参数",
@@ -122,6 +135,10 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     display: "Display",
     serial: "Serial",
     groupTitle: "Appearance",
+    notificationGroupTitle: "Notifications",
+    generalNotifications: "General notifications",
+    warningNotifications: "Warning notifications",
+    errorNotifications: "Error notifications",
     serialGroupTitle: "Default communication parameters",
     receiveGroupTitle: "Receive grouping",
     useSerialDefaults: "Use default communication parameters",
@@ -180,6 +197,10 @@ export interface SettingsPageProps {
   font: FontMode;
   /** 修改全局字体模式的回调。 */
   onFontChange: (font: FontMode) => void;
+  /** 当前三类通知弹窗开关。 */
+  notificationSettings: NotificationSettings;
+  /** 更新三类通知弹窗开关。 */
+  onNotificationSettingsChange: (settings: NotificationSettings) => void;
   /** 当前由应用外壳持有并持久化的串口默认参数。 */
   serialDefaults: SerialDefaults;
   /** 更新经过界面校验的串口默认参数。 */
@@ -260,6 +281,8 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
  * @param onThemeChange 用户选择新主题后的回调。
  * @param font 当前字体模式。
  * @param onFontChange 用户选择新字体模式后的回调。
+ * @param notificationSettings 当前普通、警告、错误通知弹窗开关。
+ * @param onNotificationSettingsChange 用户修改通知弹窗开关后的回调。
  * @param serialDefaults 当前应用级串口默认通信参数。
  * @param onSerialDefaultsChange 用户修改串口默认参数后的回调。
  * @param useSerialDefaults 启动串口页时是否采用设置页默认通信参数。
@@ -268,7 +291,7 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
  * @param onSerialRxSettingsChange 用户修改接收分包参数后的回调。
  * @returns 设置侧栏和显示偏好分组。
  */
-export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange }: SettingsPageProps) {
+export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, notificationSettings, onNotificationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange }: SettingsPageProps) {
   /** 取当前界面语言的文案和选项列表。 */
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 当前页面所有短时反馈均通过应用外壳中的全局通知发送。 */
@@ -518,23 +541,42 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
       <main className="settings-main" id="settings-display" aria-labelledby="settings-group-title">
         <div className="settings-main-content">
           {activeCategory === "display" ? (
-            <section className="settings-section" aria-labelledby="settings-group-title">
-              <h1 className="settings-section-title" id="settings-group-title">{copy.groupTitle}</h1>
-              <div className="settings-list">
-                <div className="settings-row">
-                  <span className="settings-row-label">{copy.language}</span>
-                  <Select className="settings-select" ariaLabel={copy.language} options={copy.languageOptions} value={locale} onChange={handleLocaleChange} />
+            <>
+              <section className="settings-section" aria-labelledby="settings-group-title">
+                <h1 className="settings-section-title" id="settings-group-title">{copy.groupTitle}</h1>
+                <div className="settings-list">
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.language}</span>
+                    <Select className="settings-select" ariaLabel={copy.language} options={copy.languageOptions} value={locale} onChange={handleLocaleChange} />
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.theme}</span>
+                    <Select className="settings-select" ariaLabel={copy.theme} options={copy.themeOptions} value={theme} onChange={handleThemeChange} />
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.font}</span>
+                    <Select className="settings-select" ariaLabel={copy.font} options={copy.fontOptions} value={font} onChange={handleFontChange} />
+                  </div>
                 </div>
-                <div className="settings-row">
-                  <span className="settings-row-label">{copy.theme}</span>
-                  <Select className="settings-select" ariaLabel={copy.theme} options={copy.themeOptions} value={theme} onChange={handleThemeChange} />
+              </section>
+              <section className="settings-section" aria-labelledby="settings-notification-group-title">
+                <h1 className="settings-section-title" id="settings-notification-group-title">{copy.notificationGroupTitle}</h1>
+                <div className="settings-list">
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.generalNotifications}</span>
+                    <Switch checked={notificationSettings.general} onCheckedChange={(general) => onNotificationSettingsChange({ ...notificationSettings, general })} ariaLabel={copy.generalNotifications} />
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.warningNotifications}</span>
+                    <Switch checked={notificationSettings.warning} onCheckedChange={(warning) => onNotificationSettingsChange({ ...notificationSettings, warning })} ariaLabel={copy.warningNotifications} />
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.errorNotifications}</span>
+                    <Switch checked={notificationSettings.error} onCheckedChange={(error) => onNotificationSettingsChange({ ...notificationSettings, error })} ariaLabel={copy.errorNotifications} />
+                  </div>
                 </div>
-                <div className="settings-row">
-                  <span className="settings-row-label">{copy.font}</span>
-                  <Select className="settings-select" ariaLabel={copy.font} options={copy.fontOptions} value={font} onChange={handleFontChange} />
-                </div>
-              </div>
-            </section>
+              </section>
+            </>
           ) : (
             <>
               <section className="settings-section" aria-labelledby="settings-group-title">
