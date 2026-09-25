@@ -34,6 +34,9 @@ type QuickDeleteTarget =
   | { kind: "command"; groupId: string; commandId: string }
   | null;
 
+/** 当前正在顶部区域编辑的快捷命令。 */
+type QuickEditTarget = { groupId: string; commandId: string } | null;
+
 /** 串口页面按当前语言展示的文案。 */
 const SERIAL_COPY = {
   zh: {
@@ -61,10 +64,13 @@ const SERIAL_QUICK_COMMAND_COPY = {
     formatHex: "Hex",
     append: "追加",
     cancel: "取消",
+    edit: "编辑",
     delete: "删除",
     deleteGroup: "删除分组",
+    moreActions: "更多操作",
     required: "名称、分组和发送内容不能为空。",
     created: "已创建：",
+    updated: "已更新：",
     deleted: "已删除：",
     groupDeleted: "已删除分组：",
     deleteCommandPrompt: (name: string) => "删除“" + name + "”？",
@@ -85,10 +91,13 @@ const SERIAL_QUICK_COMMAND_COPY = {
     formatHex: "Hex",
     append: "Append",
     cancel: "Cancel",
+    edit: "Edit",
     delete: "Delete",
     deleteGroup: "Delete group",
+    moreActions: "More actions",
     required: "Name, group, and payload are required.",
     created: "Created: ",
+    updated: "Updated: ",
     deleted: "Deleted: ",
     groupDeleted: "Deleted group: ",
     deleteCommandPrompt: (name: string) => "Delete “" + name + "”?",
@@ -220,6 +229,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   const [quickGroupPickerOpen, setQuickGroupPickerOpen] = useState(false);
   const [quickCollapsedGroupIds, setQuickCollapsedGroupIds] = useState<Set<string>>(() => new Set());
   const [quickMenuKey, setQuickMenuKey] = useState<string | null>(null);
+  const [quickEditTarget, setQuickEditTarget] = useState<QuickEditTarget>(null);
   const [quickDeleteTarget, setQuickDeleteTarget] = useState<QuickDeleteTarget>(null);
   /** 当前 Hex 展示开关；原始行数据保留，切换时只重建显示文本。 */
   const [hexDisplay, setHexDisplay] = useState(false);
@@ -636,10 +646,11 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     setQuickAppendLF(true);
   }, []);
 
-  /** 收起新建区并清理未保存草稿。 */
+  /** 收起顶部编辑区并清理未保存草稿及编辑目标。 */
   const closeQuickCreate = useCallback(() => {
     setQuickCreateOpen(false);
     setQuickGroupPickerOpen(false);
+    setQuickEditTarget(null);
     resetQuickCommandDraft();
   }, [resetQuickCommandDraft]);
 
@@ -665,7 +676,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     setQuickDeleteTarget(null);
   }, [closeQuickCreate, quickCreateOpen]);
 
-  /** 保存快捷命令；分组名称不存在时原子追加一个新分组。 */
+  /** 保存快捷命令；编辑时保留命令标识，并支持移动到已有或新分组。 */
   const saveQuickCommand = useCallback((event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const name = quickName.trim();
@@ -683,6 +694,51 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     });
     if (!validation.ok) {
       notifySerialBytesError(validation.error);
+      return;
+    }
+
+    if (quickEditTarget) {
+      const sourceGroup = quickGroups.find((group) => group.id === quickEditTarget.groupId);
+      const sourceCommand = sourceGroup?.commands.find((command) => command.id === quickEditTarget.commandId);
+      if (!sourceGroup || !sourceCommand) {
+        closeQuickCreate();
+        return;
+      }
+
+      const existingGroup = quickGroups.find((group) => group.name === groupName);
+      const destinationGroupId = existingGroup?.id ?? createSerialQuickCommandId("group");
+      const updatedCommand = {
+        ...sourceCommand,
+        name,
+        payload,
+        mode: quickMode,
+        appendCR: quickAppendCR,
+        appendLF: quickAppendLF,
+      };
+
+      setQuickGroups((current) => {
+        if (sourceGroup.name === groupName) {
+          return current.map((group) => group.id === sourceGroup.id
+            ? { ...group, commands: group.commands.map((command) => command.id === sourceCommand.id ? updatedCommand : command) }
+            : group);
+        }
+
+        const moved = current.map((group) => group.id === sourceGroup.id
+          ? { ...group, commands: group.commands.filter((command) => command.id !== sourceCommand.id) }
+          : group);
+        const targetIndex = moved.findIndex((group) => group.name === groupName);
+        if (targetIndex < 0) return [...moved, { id: destinationGroupId, name: groupName, commands: [updatedCommand] }];
+        return moved.map((group, index) => index === targetIndex
+          ? { ...group, commands: [...group.commands, updatedCommand] }
+          : group);
+      });
+      setQuickCollapsedGroupIds((current) => {
+        const next = new Set(current);
+        next.delete(destinationGroupId);
+        return next;
+      });
+      closeQuickCreate();
+      notify({ kind: "success", message: quickCopy.updated + name });
       return;
     }
 
@@ -719,6 +775,8 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     quickAppendLF,
     quickCopy.created,
     quickCopy.required,
+    quickCopy.updated,
+    quickEditTarget,
     quickGroupName,
     quickGroups,
     quickMode,
@@ -752,6 +810,25 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     setQuickGroupPickerOpen(false);
     setQuickMenuKey((current) => current === key ? null : key);
   }, []);
+
+  /** 将已保存命令加载到顶部编辑区。 */
+  const editQuickCommand = useCallback((groupId: string, commandId: string) => {
+    const group = quickGroups.find((item) => item.id === groupId);
+    const command = group?.commands.find((item) => item.id === commandId);
+    setQuickMenuKey(null);
+    if (!group || !command) return;
+
+    setQuickName(command.name);
+    setQuickGroupName(group.name);
+    setQuickPayload(command.payload);
+    setQuickMode(command.mode);
+    setQuickAppendCR(command.appendCR);
+    setQuickAppendLF(command.appendLF);
+    setQuickEditTarget({ groupId, commandId });
+    setQuickCreateOpen(true);
+    setQuickGroupPickerOpen(false);
+    setQuickDeleteTarget(null);
+  }, [quickGroups]);
 
   /** 请求删除整组，确认条固定显示在组标题与第一条命令之间。 */
   const requestDeleteQuickGroup = useCallback((groupId: string) => {
@@ -1128,7 +1205,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
                                   <button
                                     type="button"
                                     className="quick-command-more-button"
-                                    aria-label={quickCopy.delete}
+                                    aria-label={quickCopy.moreActions}
                                     aria-expanded={quickMenuKey === commandMenuKey}
                                     onClick={() => toggleQuickMenu(commandMenuKey)}
                                   >
@@ -1136,6 +1213,9 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
                                   </button>
                                   {quickMenuKey === commandMenuKey && (
                                     <div className="quick-command-menu">
+                                      <button type="button" className="quick-command-menu-item" onClick={() => editQuickCommand(group.id, command.id)}>
+                                        {quickCopy.edit}
+                                      </button>
                                       <button type="button" className="quick-command-menu-item is-danger" onClick={() => requestDeleteQuickCommand(group.id, command.id)}>
                                         {quickCopy.delete}
                                       </button>
