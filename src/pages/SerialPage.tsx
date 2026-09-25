@@ -2,9 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeE
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Button, Checkbox, Input, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, useNotification, type TerminalLine } from "../components/ui";
-import { buildSerialBytes } from "./serialBytes";
+import { buildSerialBytes, type HexInputError } from "./serialBytes";
 import { appendSerialLogEntry, appendSerialRxBurst, createSerialLogBuffer, flattenSerialRxBurst, getSerialLogLines, isSerialRxBurstIdle, serializeSerialLogLines, splitSerialRxBytes, type SerialLogEntry, type SerialRxBurst } from "./serialLog";
 import { isSerialDefaults, LAST_USED_SERIAL_CONFIG_STORAGE_KEY, selectSerialStartupDefaults, serialDefaultsEqual, serializeSerialDefaults, type SerialDefaults } from "./serialDefaults";
+import { createSerialQuickCommandId, deserializeSerialQuickCommands, SERIAL_QUICK_COMMANDS_STORAGE_KEY, serializeSerialQuickCommands, type SerialQuickCommandGroup, type SerialQuickCommandMode } from "./serialQuickCommands";
 import type { SerialRxSettings } from "./serialRxSettings";
 
 /** 串口功能页：维护串口会话、事件订阅、日志和设备收发控件。 */
@@ -27,6 +28,12 @@ type SerialByteCounts = {
   received: bigint;
 };
 
+/** 快捷命令删除确认目标；分组删除会同时删除其全部命令。 */
+type QuickDeleteTarget =
+  | { kind: "group"; groupId: string }
+  | { kind: "command"; groupId: string; commandId: string }
+  | null;
+
 /** 串口页面按当前语言展示的文案。 */
 const SERIAL_COPY = {
   zh: {
@@ -34,6 +41,58 @@ const SERIAL_COPY = {
   },
   en: {
     connect: "Connect device", disconnect: "Disconnect", settings: "Port configuration", baud: "Baud rate", data: "Data bits", parity: "Parity", stop: "Stop bits", flow: "Flow control", send: "Send", sending: "Sending…", save: "Save", saveFailed: "Could not save log: ", clear: "Clear", hexDisplay: "Hex display", empty: "Waiting for serial data", unavailable: "Use the Rivet desktop app to access serial devices.", message: "Message to send…", hexMessage: "Hex bytes, e.g. 48 65 6C 6C 6F…", timestamp: "Timestamp", hexSend: "Hex send", cr: "\\r", lf: "\\n", hexEmpty: "Hex data cannot be empty.", hexInvalid: "Use only 0-9 and A-F; separate byte pairs with whitespace or enter an even number of hex digits continuously.", hexOdd: "Hex data must contain complete two-digit bytes.", connecting: "Connecting…", connected: "Connected", disconnected: "Disconnected", placeholder: "Serial device", console: "Serial console", logViewport: "Serial log scroll area", panelViewport: "Serial settings and send controls scroll area", flowNone: "None", flowHardware: "Hardware RTS/CTS", flowSoftware: "Software XON/XOFF", parityNone: "No parity", parityEven: "Even", parityOdd: "Odd", bit: "bit", refresh: "Refresh ports", selectPort: "Choose device", error: "Serial error", sent: "Sent: ", received: "Received: ", byteUnit: "bytes",
+  },
+} as const;
+
+/** 快捷命令面板按当前语言展示的文案。 */
+const SERIAL_QUICK_COMMAND_COPY = {
+  zh: {
+    title: "快捷命令",
+    empty: "暂无快捷命令",
+    newCommand: "新建快捷命令",
+    name: "名称",
+    namePlaceholder: "输入名称",
+    group: "分组",
+    groupPlaceholder: "选择或输入分组",
+    payload: "发送内容",
+    payloadPlaceholder: "输入发送内容",
+    format: "格式",
+    formatText: "文本",
+    formatHex: "Hex",
+    append: "追加",
+    cancel: "取消",
+    delete: "删除",
+    deleteGroup: "删除分组",
+    required: "名称、分组和发送内容不能为空。",
+    created: "已创建：",
+    deleted: "已删除：",
+    groupDeleted: "已删除分组：",
+    deleteCommandPrompt: (name: string) => "删除“" + name + "”？",
+    deleteGroupPrompt: (count: number) => "删除分组及其中 " + count + " 条命令？",
+  },
+  en: {
+    title: "Quick commands",
+    empty: "No quick commands",
+    newCommand: "New quick command",
+    name: "Name",
+    namePlaceholder: "Enter a name",
+    group: "Group",
+    groupPlaceholder: "Choose or enter a group",
+    payload: "Payload",
+    payloadPlaceholder: "Enter payload",
+    format: "Format",
+    formatText: "Text",
+    formatHex: "Hex",
+    append: "Append",
+    cancel: "Cancel",
+    delete: "Delete",
+    deleteGroup: "Delete group",
+    required: "Name, group, and payload are required.",
+    created: "Created: ",
+    deleted: "Deleted: ",
+    groupDeleted: "Deleted group: ",
+    deleteCommandPrompt: (name: string) => "Delete “" + name + "”?",
+    deleteGroupPrompt: (count: number) => "Delete this group and its " + count + " commands?",
   },
 } as const;
 
@@ -88,6 +147,16 @@ function readInitialSerialDefaults(useSerialDefaults: boolean, serialDefaults: S
   }
 }
 
+/** 从 localStorage 恢复严格校验的快捷命令；存储不可用时安全回退为空列表。 */
+function readInitialSerialQuickCommands(): SerialQuickCommandGroup[] {
+  try {
+    return deserializeSerialQuickCommands(window.localStorage.getItem(SERIAL_QUICK_COMMANDS_STORAGE_KEY));
+  } catch (error) {
+    console.warn("Rivet 无法读取快捷命令，将使用空列表。", error);
+    return [];
+  }
+}
+
 /**
  * 生成日志类别与本地毫秒精度时间前缀；RX 使用首个 serial:data 事件到达前端的时刻。
  * @param kind 日志类别；决定追加到时间前缀后的英文类别标记。
@@ -138,6 +207,20 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   /** 默认勾选；选中后在正文或 CR 后追加 LF。 */
   const [appendLF, setAppendLF] = useState(true);
   const [message, setMessage] = useState("");
+  /** 用户快捷命令独立持久化，页面切换和应用重启后继续保留。 */
+  const [quickGroups, setQuickGroups] = useState<SerialQuickCommandGroup[]>(readInitialSerialQuickCommands);
+  const [quickPanelOpen, setQuickPanelOpen] = useState(false);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [quickName, setQuickName] = useState("");
+  const [quickGroupName, setQuickGroupName] = useState("");
+  const [quickPayload, setQuickPayload] = useState("");
+  const [quickMode, setQuickMode] = useState<SerialQuickCommandMode>("text");
+  const [quickAppendCR, setQuickAppendCR] = useState(false);
+  const [quickAppendLF, setQuickAppendLF] = useState(true);
+  const [quickGroupPickerOpen, setQuickGroupPickerOpen] = useState(false);
+  const [quickCollapsedGroupIds, setQuickCollapsedGroupIds] = useState<Set<string>>(() => new Set());
+  const [quickMenuKey, setQuickMenuKey] = useState<string | null>(null);
+  const [quickDeleteTarget, setQuickDeleteTarget] = useState<QuickDeleteTarget>(null);
   /** 当前 Hex 展示开关；原始行数据保留，切换时只重建显示文本。 */
   const [hexDisplay, setHexDisplay] = useState(false);
   /** 保存命令进行期间禁用保存按钮。 */
@@ -166,6 +249,8 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   const hexDisplayRef = useRef(false);
   /** 在 React 重绘前同步阻止并发重复保存。 */
   const savingRef = useRef(false);
+  /** 页面内可输入分组选择器用于识别外部点击并收起菜单。 */
+  const quickGroupPickerRef = useRef<HTMLDivElement>(null);
   /** 浏览器环境的能力限制只通知一次，避免 StrictMode 重放 effect 时重复显示。 */
   const unavailableNoticeShownRef = useRef(false);
   /** 上次处理的默认值用于识别设置页的真实参数变化。 */
@@ -186,6 +271,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   timestampEnabledRef.current = timestampEnabled;
   const copy = SERIAL_COPY[locale];
   const notificationCopy = SERIAL_NOTIFICATION_COPY[locale];
+  const quickCopy = SERIAL_QUICK_COMMAND_COPY[locale];
   /** 串口页面与后端事件的所有短时反馈均由应用外壳通知区展示。 */
   const { notify } = useNotification();
 
@@ -253,6 +339,30 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
       console.warn("Rivet 无法保存上次有效串口通信参数；本次会话中仍会生效。", error);
     }
   }, [baudRate, dataBits, flowControl, parity, stopBits, useSerialDefaults]);
+
+  /** 快捷命令变化后立即保存；写入失败不影响当前会话继续使用。 */
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SERIAL_QUICK_COMMANDS_STORAGE_KEY, serializeSerialQuickCommands(quickGroups));
+    } catch (error) {
+      console.warn("Rivet 无法保存快捷命令；本次会话中仍会保留。", error);
+    }
+  }, [quickGroups]);
+
+  /** 打开的分组选择器和更多菜单在点击对应控件外部时收起。 */
+  useEffect(() => {
+    if (!quickGroupPickerOpen && quickMenuKey === null) return;
+
+    const closeTransientMenus = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!quickGroupPickerRef.current?.contains(target)) setQuickGroupPickerOpen(false);
+      if (!(target instanceof Element) || !target.closest(".quick-command-more-wrap")) setQuickMenuKey(null);
+    };
+
+    document.addEventListener("pointerdown", closeTransientMenus);
+    return () => document.removeEventListener("pointerdown", closeTransientMenus);
+  }, [quickGroupPickerOpen, quickMenuKey]);
 
   /**
    * 将日志追加到有界原始缓存，并按最近一次选择刷新终端显示行。
@@ -385,24 +495,32 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
     }
   }, [copy.disconnected, log, notificationCopy.disconnectFailed, notify]);
 
+  /** 将字节构造错误映射到当前语言的既有发送提示。 */
+  const notifySerialBytesError = useCallback((error: HexInputError) => {
+    notify({ kind: "warning", message: error === "empty" ? copy.hexEmpty : error === "odd" ? copy.hexOdd : copy.hexInvalid });
+  }, [copy.hexEmpty, copy.hexInvalid, copy.hexOdd, notify]);
+
   /**
-   * 校验后立即记录 TX 并发送字节；成功或失败均保留草稿，仅成功时累计字节数，失败时显示通知。
-   * @param event 表单提交事件；函数会阻止浏览器默认提交行为。
-   * @returns 发送与界面状态处理完成后的 Promise；后端错误以全局通知显示。
+   * 统一执行手动发送与快捷命令发送，确保日志、并发保护、计数和错误处理一致。
+   * @param payload 文本或 Hex 输入。
+   * @param options 本次发送格式及 CR/LF 快照。
+   * @returns 后端确认成功时为 true；校验失败、未连接或发送异常时为 false。
    */
-  const send = useCallback(async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!connected || sendingRef.current) return;
-    if (!hexSend && !message.length) return;
-    const result = buildSerialBytes(message, { hex: hexSend, appendCR, appendLF });
+  const sendPayload = useCallback(async (
+    payload: string,
+    options: { hex: boolean; appendCR: boolean; appendLF: boolean },
+  ): Promise<boolean> => {
+    if (!connected || sendingRef.current) return false;
+
+    const result = buildSerialBytes(payload, options);
     if (!result.ok) {
-      notify({ kind: "warning", message: result.error === "empty" ? copy.hexEmpty : result.error === "odd" ? copy.hexOdd : copy.hexInvalid });
-      return;
+      notifySerialBytesError(result.error);
+      return false;
     }
 
-    const txText = hexSend
+    const txText = options.hex
       ? result.bytes.map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join(" ")
-      : `${message}${appendCR ? "\\r" : ""}${appendLF ? "\\n" : ""}`;
+      : payload + (options.appendCR ? "\\r" : "") + (options.appendLF ? "\\n" : "");
     const cycle = logCycleRef.current;
     const lifecycle = lifecycleRef.current;
     // log 会先提交待处理 RX，再同步追加正式 TX；invoke 因而在 RX/TX 顺序确定后才启动。
@@ -414,13 +532,24 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
       if (mountedRef.current && lifecycleRef.current === lifecycle && logCycleRef.current === cycle) {
         setByteCounts((counts) => ({ ...counts, sent: counts.sent + BigInt(result.bytes.length) }));
       }
+      return true;
     } catch (error) {
-      if (mountedRef.current && lifecycleRef.current === lifecycle) notify({ kind: "error", message: `${notificationCopy.sendFailed}${String(error)}` });
+      if (mountedRef.current && lifecycleRef.current === lifecycle) {
+        notify({ kind: "error", message: notificationCopy.sendFailed + String(error) });
+      }
+      return false;
     } finally {
       sendingRef.current = false;
       if (mountedRef.current && lifecycleRef.current === lifecycle) setSending(false);
     }
-  }, [appendCR, appendLF, connected, copy, hexSend, log, message, notificationCopy.sendFailed, notify]);
+  }, [connected, log, notificationCopy.sendFailed, notify, notifySerialBytesError]);
+
+  /** 手动发送表单复用统一发送路径，并保留当前输入草稿。 */
+  const send = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!hexSend && !message.length) return;
+    await sendPayload(message, { hex: hexSend, appendCR, appendLF });
+  }, [appendCR, appendLF, hexSend, message, sendPayload]);
 
   /**
    * 丢弃待提交 RX 并清空日志、解码残留和收发统计；旧发送结果不会污染新周期。
@@ -496,6 +625,181 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   const handleMessageKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) event.currentTarget.form?.requestSubmit();
   }, []);
+
+  /** 恢复新建快捷命令的初始草稿。 */
+  const resetQuickCommandDraft = useCallback(() => {
+    setQuickName("");
+    setQuickGroupName("");
+    setQuickPayload("");
+    setQuickMode("text");
+    setQuickAppendCR(false);
+    setQuickAppendLF(true);
+  }, []);
+
+  /** 收起新建区并清理未保存草稿。 */
+  const closeQuickCreate = useCallback(() => {
+    setQuickCreateOpen(false);
+    setQuickGroupPickerOpen(false);
+    resetQuickCommandDraft();
+  }, [resetQuickCommandDraft]);
+
+  /** 切换快捷命令悬浮面板；关闭时同步清理临时菜单和删除确认。 */
+  const toggleQuickPanel = useCallback(() => {
+    if (quickPanelOpen) {
+      closeQuickCreate();
+      setQuickMenuKey(null);
+      setQuickDeleteTarget(null);
+    }
+    setQuickPanelOpen((current) => !current);
+  }, [closeQuickCreate, quickPanelOpen]);
+
+  /** 切换顶部新建区域；取消展开时丢弃当前未保存草稿。 */
+  const toggleQuickCreate = useCallback(() => {
+    if (quickCreateOpen) {
+      closeQuickCreate();
+      return;
+    }
+    setQuickCreateOpen(true);
+    setQuickGroupPickerOpen(false);
+    setQuickMenuKey(null);
+    setQuickDeleteTarget(null);
+  }, [closeQuickCreate, quickCreateOpen]);
+
+  /** 保存快捷命令；分组名称不存在时原子追加一个新分组。 */
+  const saveQuickCommand = useCallback((event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = quickName.trim();
+    const groupName = quickGroupName.trim();
+    const payload = quickPayload;
+    if (!name || !groupName || !payload.length) {
+      notify({ kind: "warning", message: quickCopy.required });
+      return;
+    }
+
+    const validation = buildSerialBytes(payload, {
+      hex: quickMode === "hex",
+      appendCR: quickAppendCR,
+      appendLF: quickAppendLF,
+    });
+    if (!validation.ok) {
+      notifySerialBytesError(validation.error);
+      return;
+    }
+
+    const existingGroup = quickGroups.find((group) => group.name === groupName);
+    const groupId = existingGroup?.id ?? createSerialQuickCommandId("group");
+    const command = {
+      id: createSerialQuickCommandId("command"),
+      name,
+      payload,
+      mode: quickMode,
+      appendCR: quickAppendCR,
+      appendLF: quickAppendLF,
+    };
+
+    setQuickGroups((current) => {
+      const groupIndex = current.findIndex((group) => group.name === groupName);
+      if (groupIndex < 0) return [...current, { id: groupId, name: groupName, commands: [command] }];
+      return current.map((group, index) =>
+        index === groupIndex ? { ...group, commands: [...group.commands, command] } : group,
+      );
+    });
+    setQuickCollapsedGroupIds((current) => {
+      const next = new Set(current);
+      next.delete(groupId);
+      return next;
+    });
+    closeQuickCreate();
+    notify({ kind: "success", message: quickCopy.created + name });
+  }, [
+    closeQuickCreate,
+    notify,
+    notifySerialBytesError,
+    quickAppendCR,
+    quickAppendLF,
+    quickCopy.created,
+    quickCopy.required,
+    quickGroupName,
+    quickGroups,
+    quickMode,
+    quickName,
+    quickPayload,
+  ]);
+
+  /** 按分组和命令标识发送持久化快捷命令。 */
+  const sendQuickCommand = useCallback((groupId: string, commandId: string) => {
+    const command = quickGroups.find((group) => group.id === groupId)?.commands.find((item) => item.id === commandId);
+    if (!command) return;
+    void sendPayload(command.payload, {
+      hex: command.mode === "hex",
+      appendCR: command.appendCR,
+      appendLF: command.appendLF,
+    });
+  }, [quickGroups, sendPayload]);
+
+  /** 切换分组折叠状态。 */
+  const toggleQuickGroup = useCallback((groupId: string) => {
+    setQuickCollapsedGroupIds((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  }, []);
+
+  /** 切换分组或命令的更多菜单，同时收起其他临时菜单。 */
+  const toggleQuickMenu = useCallback((key: string) => {
+    setQuickGroupPickerOpen(false);
+    setQuickMenuKey((current) => current === key ? null : key);
+  }, []);
+
+  /** 请求删除整组，确认条固定显示在组标题与第一条命令之间。 */
+  const requestDeleteQuickGroup = useCallback((groupId: string) => {
+    setQuickMenuKey(null);
+    setQuickDeleteTarget({ kind: "group", groupId });
+  }, []);
+
+  /** 请求删除单条快捷命令。 */
+  const requestDeleteQuickCommand = useCallback((groupId: string, commandId: string) => {
+    setQuickMenuKey(null);
+    setQuickDeleteTarget({ kind: "command", groupId, commandId });
+  }, []);
+
+  /** 确认当前删除请求并同步清理折叠状态。 */
+  const confirmQuickDelete = useCallback(() => {
+    if (!quickDeleteTarget) return;
+
+    if (quickDeleteTarget.kind === "group") {
+      const group = quickGroups.find((item) => item.id === quickDeleteTarget.groupId);
+      if (!group) {
+        setQuickDeleteTarget(null);
+        return;
+      }
+      setQuickGroups((current) => current.filter((item) => item.id !== quickDeleteTarget.groupId));
+      setQuickCollapsedGroupIds((current) => {
+        const next = new Set(current);
+        next.delete(quickDeleteTarget.groupId);
+        return next;
+      });
+      setQuickDeleteTarget(null);
+      notify({ kind: "success", message: quickCopy.groupDeleted + group.name });
+      return;
+    }
+
+    const group = quickGroups.find((item) => item.id === quickDeleteTarget.groupId);
+    const command = group?.commands.find((item) => item.id === quickDeleteTarget.commandId);
+    if (!command) {
+      setQuickDeleteTarget(null);
+      return;
+    }
+    setQuickGroups((current) => current.map((item) =>
+      item.id === quickDeleteTarget.groupId
+        ? { ...item, commands: item.commands.filter((entry) => entry.id !== quickDeleteTarget.commandId) }
+        : item,
+    ));
+    setQuickDeleteTarget(null);
+    notify({ kind: "success", message: quickCopy.deleted + command.name });
+  }, [notify, quickCopy.deleted, quickCopy.groupDeleted, quickDeleteTarget, quickGroups]);
 
   /** 两种串口事件均订阅成功后才允许连接；失败通知一次，卸载时忽略迟到的注册结果。 */
   useEffect(() => {
@@ -636,6 +940,230 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
             </section>
           </div>
         </VerticalScrollbar>
+
+        <button
+          type="button"
+          className={"quick-command-handle" + (quickPanelOpen ? " is-open" : "")}
+          aria-label={quickCopy.title}
+          aria-expanded={quickPanelOpen}
+          title={quickCopy.title}
+          onClick={toggleQuickPanel}
+        >
+          <SvgIcon name="chevron" size={14} />
+        </button>
+
+        <section className={"quick-command-panel" + (quickPanelOpen ? " is-open" : "")} aria-label={quickCopy.title} aria-hidden={!quickPanelOpen}>
+          <header className="quick-command-header">
+            <strong>{quickCopy.title}</strong>
+            <button
+              type="button"
+              className={"quick-command-add-button" + (quickCreateOpen ? " is-active" : "")}
+              aria-label={quickCopy.newCommand}
+              aria-expanded={quickCreateOpen}
+              title={quickCopy.newCommand}
+              onClick={toggleQuickCreate}
+            >
+              <SvgIcon name="plus" size={18} />
+            </button>
+          </header>
+
+          <form className={"quick-command-create" + (quickCreateOpen ? " is-open" : "")} onSubmit={saveQuickCommand} aria-hidden={!quickCreateOpen}>
+            <div className="quick-command-create-grid">
+              <label className="quick-command-create-field">
+                <span>{quickCopy.name}</span>
+                <Input value={quickName} onChange={(event) => setQuickName(event.currentTarget.value)} placeholder={quickCopy.namePlaceholder} maxLength={64} />
+              </label>
+
+              <div className="quick-command-create-field">
+                <span>{quickCopy.group}</span>
+                <div className="quick-command-group-picker" ref={quickGroupPickerRef}>
+                  <Input
+                    className="quick-command-group-input"
+                    value={quickGroupName}
+                    onChange={(event) => {
+                      setQuickGroupName(event.currentTarget.value);
+                      setQuickGroupPickerOpen(true);
+                    }}
+                    onFocus={() => setQuickGroupPickerOpen(true)}
+                    placeholder={quickCopy.groupPlaceholder}
+                    maxLength={64}
+                    autoComplete="off"
+                  />
+                  <SvgIcon name="chevron" size={12} className="quick-command-group-chevron" />
+                  {quickGroupPickerOpen && (
+                    <div className="rivet-select-menu quick-command-group-menu" role="listbox">
+                      {quickGroups
+                        .filter((group) => group.name.toLocaleLowerCase().includes(quickGroupName.trim().toLocaleLowerCase()))
+                        .map((group) => (
+                          <button
+                            key={group.id}
+                            type="button"
+                            role="option"
+                            aria-selected={quickGroupName === group.name}
+                            className={"rivet-select-option" + (quickGroupName === group.name ? " is-selected" : "")}
+                            onPointerDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setQuickGroupName(group.name);
+                              setQuickGroupPickerOpen(false);
+                            }}
+                          >
+                            {quickGroupName === group.name && <SvgIcon name="check" size={12} className="rivet-select-check" />}
+                            {group.name}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <label className="quick-command-create-field quick-command-create-field-full">
+                <span>{quickCopy.payload}</span>
+                <Textarea value={quickPayload} onChange={(event) => setQuickPayload(event.currentTarget.value)} placeholder={quickCopy.payloadPlaceholder} maxLength={8192} />
+              </label>
+
+              <div className="quick-command-create-bottom-row">
+                <div className="quick-command-create-field">
+                  <span>{quickCopy.format}</span>
+                  <Select
+                    className="quick-command-format-select"
+                    ariaLabel={quickCopy.format}
+                    value={quickMode}
+                    onChange={(value) => setQuickMode(value === "hex" ? "hex" : "text")}
+                    options={[
+                      { value: "text", label: quickCopy.formatText },
+                      { value: "hex", label: quickCopy.formatHex },
+                    ]}
+                  />
+                </div>
+
+                <div className="quick-command-create-field">
+                  <span>{quickCopy.append}</span>
+                  <div className="quick-command-append-options">
+                    <Checkbox className="quick-command-append-option" label={copy.cr} checked={quickAppendCR} onChange={(event) => setQuickAppendCR(event.currentTarget.checked)} />
+                    <Checkbox className="quick-command-append-option" label={copy.lf} checked={quickAppendLF} onChange={(event) => setQuickAppendLF(event.currentTarget.checked)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="quick-command-create-actions">
+              <Button type="button" variant="secondary" onClick={closeQuickCreate}>{quickCopy.cancel}</Button>
+              <Button type="submit">{copy.save}</Button>
+            </div>
+          </form>
+
+          <VerticalScrollbar className="quick-command-scroll" viewportClassName="quick-command-scroll-viewport" height="100%" viewportLabel={quickCopy.title}>
+            <div className="quick-command-content">
+              {quickGroups.length === 0 ? (
+                <div className="quick-command-empty">{quickCopy.empty}</div>
+              ) : quickGroups.map((group) => {
+                const collapsed = quickCollapsedGroupIds.has(group.id);
+                const groupMenuKey = "group:" + group.id;
+                const deletingGroup = quickDeleteTarget?.kind === "group" && quickDeleteTarget.groupId === group.id;
+                return (
+                  <section key={group.id} className={"quick-command-group" + (collapsed ? " is-collapsed" : "")}>
+                    <div className="quick-command-group-header">
+                      <button type="button" className="quick-command-group-toggle" onClick={() => toggleQuickGroup(group.id)}>
+                        <SvgIcon name="chevron" size={13} className="quick-command-group-chevron-icon" />
+                        <span>{group.name}</span>
+                        <span className="quick-command-group-count">{group.commands.length}</span>
+                      </button>
+
+                      <div className="quick-command-more-wrap">
+                        <button
+                          type="button"
+                          className="quick-command-more-button"
+                          aria-label={quickCopy.deleteGroup}
+                          aria-expanded={quickMenuKey === groupMenuKey}
+                          onClick={() => toggleQuickMenu(groupMenuKey)}
+                        >
+                          <SvgIcon name="more" size={17} />
+                        </button>
+                        {quickMenuKey === groupMenuKey && (
+                          <div className="quick-command-menu">
+                            <button type="button" className="quick-command-menu-item is-danger" onClick={() => requestDeleteQuickGroup(group.id)}>
+                              {quickCopy.deleteGroup}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {deletingGroup && (
+                      <div className="quick-command-delete-confirm quick-command-group-delete-confirm">
+                        <span>{quickCopy.deleteGroupPrompt(group.commands.length)}</span>
+                        <div>
+                          <button type="button" onClick={() => setQuickDeleteTarget(null)}>{quickCopy.cancel}</button>
+                          <button type="button" className="is-danger" onClick={confirmQuickDelete}>{quickCopy.delete}</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {!collapsed && (
+                      <div className="quick-command-list">
+                        {group.commands.map((command) => {
+                          const commandMenuKey = "command:" + group.id + ":" + command.id;
+                          const deletingCommand =
+                            quickDeleteTarget?.kind === "command" &&
+                            quickDeleteTarget.groupId === group.id &&
+                            quickDeleteTarget.commandId === command.id;
+                          return (
+                            <div key={command.id}>
+                              <div className="quick-command-row">
+                                <button type="button" className="quick-command-main" disabled={!connected || sending} onClick={() => sendQuickCommand(group.id, command.id)}>
+                                  <span className="quick-command-name">{command.name}</span>
+                                  <span className="quick-command-value">{command.payload}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="quick-command-send"
+                                  aria-label={copy.send}
+                                  title={copy.send}
+                                  disabled={!connected || sending}
+                                  onClick={() => sendQuickCommand(group.id, command.id)}
+                                >
+                                  <SvgIcon name="send" size={16} />
+                                </button>
+                                <div className="quick-command-more-wrap">
+                                  <button
+                                    type="button"
+                                    className="quick-command-more-button"
+                                    aria-label={quickCopy.delete}
+                                    aria-expanded={quickMenuKey === commandMenuKey}
+                                    onClick={() => toggleQuickMenu(commandMenuKey)}
+                                  >
+                                    <SvgIcon name="more" size={17} />
+                                  </button>
+                                  {quickMenuKey === commandMenuKey && (
+                                    <div className="quick-command-menu">
+                                      <button type="button" className="quick-command-menu-item is-danger" onClick={() => requestDeleteQuickCommand(group.id, command.id)}>
+                                        {quickCopy.delete}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {deletingCommand && (
+                                <div className="quick-command-delete-confirm">
+                                  <span>{quickCopy.deleteCommandPrompt(command.name)}</span>
+                                  <div>
+                                    <button type="button" onClick={() => setQuickDeleteTarget(null)}>{quickCopy.cancel}</button>
+                                    <button type="button" className="is-danger" onClick={confirmQuickDelete}>{quickCopy.delete}</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          </VerticalScrollbar>
+        </section>
       </aside>
     </main>
   );
