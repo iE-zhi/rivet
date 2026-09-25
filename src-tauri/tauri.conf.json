@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [{
-      "title": "Rivet Serial",
+      "title": "Rivet",
       "width": 1024,
       "height": 600,
       "minWidth": 1024,
