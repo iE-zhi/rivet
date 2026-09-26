@@ -4,6 +4,7 @@ import { MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialDe
 import { SERIAL_RX_IDLE_MS_MAX, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_PACKET_BYTES_MAX, SERIAL_RX_PACKET_BYTES_MIN, type SerialRxSettings } from "./serialRxSettings";
 import type { Locale } from "./SerialPage";
 import type { NotificationSettings } from "../preferences/notificationSettings";
+import { isValidX11ServerAddress, MAX_X11_SERVER_ADDRESS_LENGTH } from "../preferences/sshSettings";
 import { DEFAULT_BACKUP_SELECTION, type BackupSelection, type RivetSyncController, type SyncProvider } from "../rivetSync";
 
 /** 支持的主题模式；system 会随操作系统外观变化。 */
@@ -20,6 +21,8 @@ interface SettingsPageCopy {
   display: string;
   /** 串口设置栏目名称。 */
   serial: string;
+  /** SSH 设置栏目名称。 */
+  ssh: string;
   /** 同步设置栏目名称。 */
   sync: string;
   /** 同步设置组标题。 */
@@ -100,6 +103,12 @@ interface SettingsPageCopy {
   serialGroupTitle: string;
   /** 串口接收分包组标题，呈现在设置列表容器之外。 */
   receiveGroupTitle: string;
+  /** SSH 设置组标题。 */
+  sshGroupTitle: string;
+  /** 本机 X Server 连接地址。 */
+  x11ServerAddress: string;
+  /** X11 Server 地址格式错误提示。 */
+  invalidX11ServerAddress: string;
   /** 是否在启动串口页时采用默认通信参数的设置项。 */
   useSerialDefaults: string;
   /** 语言设置行标题。 */
@@ -150,6 +159,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     navigation: "设置分类",
     display: "显示",
     serial: "串口",
+    ssh: "SSH",
     sync: "同步",
     syncGroupTitle: "同步",
     syncProvider: "平台",
@@ -194,6 +204,9 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     errorNotifications: "错误通知",
     serialGroupTitle: "默认通信参数",
     receiveGroupTitle: "接收分包",
+    sshGroupTitle: "X11",
+    x11ServerAddress: "X11 Server 地址",
+    invalidX11ServerAddress: "请输入有效的 IP/主机名:端口，端口范围 1~65535。",
     useSerialDefaults: "启用默认通信参数",
     language: "语言",
     theme: "主题",
@@ -238,6 +251,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     navigation: "Settings sections",
     display: "Display",
     serial: "Serial",
+    ssh: "SSH",
     sync: "Sync",
     syncGroupTitle: "Sync",
     syncProvider: "Provider",
@@ -282,6 +296,9 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     errorNotifications: "Error notifications",
     serialGroupTitle: "Default communication parameters",
     receiveGroupTitle: "Receive grouping",
+    sshGroupTitle: "X11",
+    x11ServerAddress: "X11 Server address",
+    invalidX11ServerAddress: "Enter a valid IP/hostname:port with a port from 1 to 65535.",
     useSerialDefaults: "Use default communication parameters",
     language: "Language",
     theme: "Theme",
@@ -354,12 +371,16 @@ export interface SettingsPageProps {
   serialRxSettings: SerialRxSettings;
   /** 更新经过范围校验的 RX 分包参数；不受默认通信参数开关影响。 */
   onSerialRxSettingsChange: (settings: SerialRxSettings) => void;
+  /** 当前 SSH X11 转发使用的本机 X Server 地址。 */
+  x11ServerAddress: string;
+  /** 更新并持久化 X11 Server 地址。 */
+  onX11ServerAddressChange: (address: string) => void;
   /** Git 托管同步控制器；常驻应用外壳并把交互集中展示在设置页。 */
   sync: RivetSyncController;
 }
 
 /** 设置页右侧当前展示的分组。 */
-type SettingsCategory = "display" | "serial" | "sync";
+type SettingsCategory = "display" | "serial" | "ssh" | "sync";
 
 /** 已保存 Token 的仅展示占位值；密码输入框会将这些字符渲染为圆点。 */
 const SAVED_TOKEN_MASK = "************";
@@ -435,9 +456,11 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
  * @param onUseSerialDefaultsChange 用户切换默认通信参数开关后的回调。
  * @param serialRxSettings 当前的接收显示分包参数。
  * @param onSerialRxSettingsChange 用户修改接收分包参数后的回调。
+ * @param x11ServerAddress 当前 X11 Server 地址。
+ * @param onX11ServerAddressChange 用户修改 X11 Server 地址后的回调。
  * @returns 设置侧栏和显示偏好分组。
  */
-export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, notificationSettings, onNotificationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, sync }: SettingsPageProps) {
+export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, notificationSettings, onNotificationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, x11ServerAddress, onX11ServerAddressChange, sync }: SettingsPageProps) {
   /** 取当前界面语言的文案和选项列表。 */
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 当前页面所有短时反馈均通过应用外壳中的全局通知发送。 */
@@ -465,6 +488,9 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   /** 两个 RX 草稿分别保留无效状态，便于输入时立即显示对应范围反馈。 */
   const [receiveIdleInvalid, setReceiveIdleInvalid] = useState(false);
   const [receiveMaxPacketInvalid, setReceiveMaxPacketInvalid] = useState(false);
+  /** X11 地址仅在校验通过后提交到父级持久化状态。 */
+  const [x11ServerAddressDraft, setX11ServerAddressDraft] = useState(x11ServerAddress);
+  const [x11ServerAddressInvalid, setX11ServerAddressInvalid] = useState(false);
   /** 开关指针激活造成输入框失焦时，阻止草稿提交到默认通信参数。 */
   const suppressBaudBlurCommitRef = useRef(false);
 
@@ -481,6 +507,12 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     setReceiveIdleInvalid(false);
     setReceiveMaxPacketInvalid(false);
   }, [serialRxSettings.idleMs, serialRxSettings.maxPacketBytes]);
+
+  /** 外部有效值变化时同步 SSH 地址草稿，并清除旧错误状态。 */
+  useEffect(() => {
+    setX11ServerAddressDraft(x11ServerAddress);
+    setX11ServerAddressInvalid(false);
+  }, [x11ServerAddress]);
 
   /**
    * 只把受支持的语言值转交给外层状态。
@@ -526,6 +558,33 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
    * @returns 无；更新设置页当前栏目状态。
    */
   const showSerialSettings = () => setActiveCategory("serial");
+
+  /** 显示 SSH 设置。 */
+  const showSshSettings = () => setActiveCategory("ssh");
+
+  /** 编辑 X11 地址时只更新草稿；已标红字段修正为合法值后立即清除错误。 */
+  const handleX11ServerAddressChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.currentTarget.value;
+    setX11ServerAddressDraft(value);
+    if (x11ServerAddressInvalid && isValidX11ServerAddress(value)) {
+      setX11ServerAddressInvalid(false);
+    }
+  };
+
+  /** 失焦时校验并提交 X11 地址；非法草稿保留显示但不会进入持久化状态。 */
+  const handleX11ServerAddressBlur = () => {
+    if (!isValidX11ServerAddress(x11ServerAddressDraft)) {
+      setX11ServerAddressInvalid(true);
+      notify({ kind: "error", message: copy.invalidX11ServerAddress });
+      return;
+    }
+    const normalized = x11ServerAddressDraft.trim();
+    setX11ServerAddressInvalid(false);
+    setX11ServerAddressDraft(normalized);
+    if (normalized !== x11ServerAddress) {
+      onX11ServerAddressChange(normalized);
+    }
+  };
 
   /** 显示远端片段同步设置。 */
   const showSyncSettings = () => setActiveCategory("sync");
@@ -840,17 +899,21 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
           <SvgIcon name="serial" size={18} />
           <span>{copy.serial}</span>
         </button>
+        <button className="settings-nav-item" type="button" aria-current={activeCategory === "ssh" ? "page" : undefined} onClick={showSshSettings}>
+          <SvgIcon name="terminal" size={18} />
+          <span>{copy.ssh}</span>
+        </button>
         <button className="settings-nav-item" type="button" aria-current={activeCategory === "sync" ? "page" : undefined} onClick={showSyncSettings}>
           <SvgIcon name="refresh" size={18} />
           <span>{copy.sync}</span>
         </button>
       </nav>
-      <main className="settings-main" id="settings-display" aria-labelledby={activeCategory === "sync" ? "settings-sync-group-title" : "settings-group-title"}>
+      <main className="settings-main" id="settings-display" aria-labelledby={activeCategory === "sync" ? "settings-sync-group-title" : activeCategory === "ssh" ? "settings-ssh-group-title" : "settings-group-title"}>
         <VerticalScrollbar
           className="settings-main-scroll"
           viewportClassName="settings-main-scroll-viewport"
           height="100%"
-          viewportLabel={activeCategory === "display" ? copy.display : activeCategory === "serial" ? copy.serial : copy.sync}
+          viewportLabel={activeCategory === "display" ? copy.display : activeCategory === "serial" ? copy.serial : activeCategory === "ssh" ? copy.ssh : copy.sync}
         >
           <div className="settings-main-content">
           {activeCategory === "display" ? (
@@ -969,6 +1032,27 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                 </div>
               </section>
             </>
+          ) : activeCategory === "ssh" ? (
+            <section className="settings-section" aria-labelledby="settings-ssh-group-title">
+              <h1 className="settings-section-title" id="settings-ssh-group-title">{copy.sshGroupTitle}</h1>
+              <div className="settings-list">
+                <div className="settings-row">
+                  <span className="settings-row-label">{copy.x11ServerAddress}</span>
+                  <div className="settings-row-control">
+                    <Input
+                      aria-label={copy.x11ServerAddress}
+                      aria-invalid={x11ServerAddressInvalid}
+                      className="settings-input settings-address-input"
+                      maxLength={MAX_X11_SERVER_ADDRESS_LENGTH}
+                      placeholder="127.0.0.1:6000"
+                      value={x11ServerAddressDraft}
+                      onChange={handleX11ServerAddressChange}
+                      onBlur={handleX11ServerAddressBlur}
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
           ) : (
             <section className="settings-section" aria-labelledby="settings-sync-group-title">
               <h1 className="settings-section-title" id="settings-sync-group-title">{copy.syncGroupTitle}</h1>

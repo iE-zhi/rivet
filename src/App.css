@@ -333,6 +333,7 @@ button, input, textarea { font: inherit; }
 .settings-row-control { width: 196px; max-width: 100%; flex: 0 0 196px; }
 .settings-input { width: 100%; height: 36px; border-radius: 6px; font-size: 12px; text-align: right; }
 .settings-input[aria-invalid="true"] { border-color: var(--r-danger); }
+.settings-address-input { text-align: left; }
 .settings-sync-input { text-align: left; }
 .settings-sync-token-wrap { display: flex; width: 320px; max-width: 100%; flex: 0 0 320px; flex-direction: column; gap: 5px; }
 .settings-sync-token-control { display: flex; min-width: 0; align-items: center; gap: 6px; }

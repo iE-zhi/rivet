@@ -8,6 +8,7 @@ import SettingsPage, { type FontMode, type ThemeMode } from "./pages/SettingsPag
 import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
 import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
 import { deserializeNotificationSettings, isNotificationSettings, NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings, type NotificationSettings } from "./preferences/notificationSettings";
+import { deserializeX11ServerAddress, X11_SERVER_ADDRESS_STORAGE_KEY } from "./preferences/sshSettings";
 
 const TerminalPage = lazy(() => import("./pages/TerminalPage"));
 
@@ -136,6 +137,16 @@ function readNotificationSettingsPreference(): NotificationSettings {
   }
 }
 
+/** 从独立存储项恢复 SSH X11 Server 地址；存储不可用时使用本机默认地址。 */
+function readX11ServerAddressPreference(): string {
+  try {
+    return deserializeX11ServerAddress(window.localStorage.getItem(X11_SERVER_ADDRESS_STORAGE_KEY));
+  } catch (error) {
+    console.warn("Rivet 无法读取 X11 Server 地址，将使用默认地址。", error);
+    return deserializeX11ServerAddress(null);
+  }
+}
+
 /**
  * 读取系统当前深色外观状态；缺少 matchMedia 时按浅色安全默认值处理。
  * @returns 系统当前是否偏好深色外观。
@@ -165,6 +176,8 @@ export default function App() {
   const [serialRxSettings, setSerialRxSettings] = useState<SerialRxSettings>(readSerialRxSettingsPreference);
   /** 普通、警告和错误通知是否弹窗显示；普通开关同时控制 success 与 info。 */
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(readNotificationSettingsPreference);
+  /** SSH X11 转发连接本机 X Server 时使用的地址。 */
+  const [x11ServerAddress, setX11ServerAddress] = useState(readX11ServerAddressPreference);
   /** 系统外观状态仅在主题模式为 system 时决定最终颜色方案。 */
   const [systemPrefersDark, setSystemPrefersDark] = useState(readSystemPrefersDark);
   /** 一级页面切换不卸载已挂载的串口/终端页面，以维持活动会话。 */
@@ -229,6 +242,15 @@ export default function App() {
   useEffect(() => {
     persistPreference(NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings(notificationSettings));
   }, [notificationSettings]);
+
+  /** X11 Server 地址只保存在本机；X Server 端点不参与跨设备同步。 */
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(X11_SERVER_ADDRESS_STORAGE_KEY, x11ServerAddress);
+    } catch (error) {
+      console.warn("Rivet 无法保存 X11 Server 地址；本次会话中仍会生效。", error);
+    }
+  }, [x11ServerAddress]);
 
   /**
    * 导航到串口页；阻止浏览器修改 URL hash。
@@ -345,7 +367,7 @@ export default function App() {
             </div>
           )}
           <div className="app-view settings-view" hidden={page !== "settings"}>
-            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} sync={sync} />
+            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} sync={sync} />
           </div>
         </NotificationProvider>
       </div>
