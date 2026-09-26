@@ -423,7 +423,7 @@ fn default_shell_command() -> Result<CommandBuilder, String> {
         if shell.is_empty() {
             return Err("SHELL 环境变量为空".to_string());
         }
-        Ok(CommandBuilder::new(shell))
+        return Ok(CommandBuilder::new(shell));
     }
 
     #[allow(unreachable_code)]
