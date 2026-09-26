@@ -8,25 +8,20 @@ const SERVICE_NAME: &str = "Rivet SSH";
 const MAX_CONNECTION_ID_LENGTH: usize = 128;
 
 /// 返回给前端的 SSH 秘密；字段为空表示系统凭据库中没有对应值。
-#[derive(Default, Serialize)]
+#[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoredSshSecrets {
-    password: String,
-    key_passphrase: String,
+    pub(crate) password: String,
+    pub(crate) key_passphrase: String,
 }
 
 /// 从系统凭据库读取指定连接的密码与私钥口令。
 #[tauri::command]
 pub async fn load_ssh_secrets(connection_id: String) -> Result<StoredSshSecrets, String> {
     validate_connection_id(&connection_id)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        Ok(StoredSshSecrets {
-            password: read_secret(&connection_id, "password")?.unwrap_or_default(),
-            key_passphrase: read_secret(&connection_id, "key-passphrase")?.unwrap_or_default(),
-        })
-    })
-    .await
-    .map_err(|error| format!("读取 SSH 凭据任务失败：{error}"))?
+    tauri::async_runtime::spawn_blocking(move || load_ssh_secrets_for_sync(&connection_id))
+        .await
+        .map_err(|error| format!("读取 SSH 凭据任务失败：{error}"))?
 }
 
 /// 按当前认证方式写入系统凭据库；同时删除另一种认证方式遗留的秘密。
@@ -46,14 +41,7 @@ pub async fn save_ssh_secrets(
     }
 
     tauri::async_runtime::spawn_blocking(move || {
-        if auth_type == "password" {
-            write_or_delete_secret(&connection_id, "password", &password)?;
-            delete_secret(&connection_id, "key-passphrase")?;
-        } else {
-            delete_secret(&connection_id, "password")?;
-            write_or_delete_secret(&connection_id, "key-passphrase", &key_passphrase)?;
-        }
-        Ok(())
+        save_ssh_secrets_for_sync(&connection_id, &auth_type, &password, &key_passphrase)
     })
     .await
     .map_err(|error| format!("保存 SSH 凭据任务失败：{error}"))?
@@ -70,6 +58,39 @@ pub async fn delete_ssh_secrets(connection_id: String) -> Result<(), String> {
     })
     .await
     .map_err(|error| format!("删除 SSH 凭据任务失败：{error}"))?
+}
+
+/// 同步模块内部读取 SSH 凭据；不会把秘密暴露给前端或浏览器存储。
+pub(crate) fn load_ssh_secrets_for_sync(connection_id: &str) -> Result<StoredSshSecrets, String> {
+    validate_connection_id(connection_id)?;
+    Ok(StoredSshSecrets {
+        password: read_secret(connection_id, "password")?.unwrap_or_default(),
+        key_passphrase: read_secret(connection_id, "key-passphrase")?.unwrap_or_default(),
+    })
+}
+
+/// 同步模块内部恢复 SSH 凭据；认证方式切换时同时清理另一类旧秘密。
+pub(crate) fn save_ssh_secrets_for_sync(
+    connection_id: &str,
+    auth_type: &str,
+    password: &str,
+    key_passphrase: &str,
+) -> Result<(), String> {
+    validate_connection_id(connection_id)?;
+    if !matches!(auth_type, "password" | "privateKey") {
+        return Err("SSH 认证方式无效".to_string());
+    }
+    if password.len() > 4096 || key_passphrase.len() > 4096 {
+        return Err("SSH 凭据长度无效".to_string());
+    }
+    if auth_type == "password" {
+        write_or_delete_secret(connection_id, "password", password)?;
+        delete_secret(connection_id, "key-passphrase")?;
+    } else {
+        delete_secret(connection_id, "password")?;
+        write_or_delete_secret(connection_id, "key-passphrase", key_passphrase)?;
+    }
+    Ok(())
 }
 
 /// 验证前端传入的连接标识，避免空键或异常长键进入系统凭据库。

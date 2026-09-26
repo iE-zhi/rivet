@@ -8,6 +8,7 @@ mod serial;
 mod sftp;
 mod ssh;
 mod sync;
+mod sync_secrets;
 mod terminal_serial;
 #[cfg(windows)]
 mod windows_icon;
@@ -56,6 +57,8 @@ pub fn run() -> tauri::Result<()> {
             sync::ensure_sync_remote,
             sync::read_sync_remote,
             sync::write_sync_remote,
+            sync::prepare_sync_local,
+            sync::apply_sync_remote_secrets,
             sftp::sftp_list,
             sftp::sftp_upload_file,
             sftp::sftp_upload_path,

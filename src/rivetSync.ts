@@ -74,6 +74,7 @@ interface RemoteSyncFile {
   exists: boolean;
   content: string | null;
   revision: string | null;
+  secretRevision: string | null;
 }
 
 /** Rust 后端写入成功后返回的新远端版本。 */
@@ -87,6 +88,15 @@ interface EnsureSyncRemoteResult {
   created: boolean;
   content: string;
   revision: string;
+  secretRevision: string | null;
+}
+
+interface ApplySyncSecretsResult {
+  keyPaths: Record<string, string>;
+}
+
+interface PrepareSyncLocalResult {
+  secretRevision: string;
 }
 
 const SYNC_CONFIG_STORAGE_KEY = "rivet.sync.config";
@@ -142,10 +152,21 @@ function syncTarget(config: RivetSyncConfig): string {
   return `${config.provider}:${config.snippetId.trim()}`;
 }
 
-/** 读取与当前同步目标匹配的本机同步基线。 */
+function normalizeSyncMetadata(value: unknown, target: string): RivetSyncMetadata | null {
+  if (!isRecord(value) || value.target !== target) return null;
+  return {
+    target,
+    lastRemoteRevision: typeof value.lastRemoteRevision === "string" ? value.lastRemoteRevision : null,
+    lastSyncedFingerprint: typeof value.lastSyncedFingerprint === "string" ? value.lastSyncedFingerprint : null,
+    lastSyncedAt: typeof value.lastSyncedAt === "number" && Number.isFinite(value.lastSyncedAt) ? value.lastSyncedAt : null,
+  };
+}
+
+/** 读取与当前同步目标匹配的本机同步基线；新版按目标分别保存，旧版单目标记录继续兼容。 */
 function readSyncMetadata(config: RivetSyncConfig): RivetSyncMetadata {
+  const target = syncTarget(config);
   const fallback: RivetSyncMetadata = {
-    target: syncTarget(config),
+    target,
     lastRemoteRevision: null,
     lastSyncedFingerprint: null,
     lastSyncedAt: null,
@@ -154,22 +175,32 @@ function readSyncMetadata(config: RivetSyncConfig): RivetSyncMetadata {
     const raw = window.localStorage.getItem(SYNC_METADATA_STORAGE_KEY);
     if (!raw) return fallback;
     const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed) || parsed.target !== fallback.target) return fallback;
-    return {
-      target: fallback.target,
-      lastRemoteRevision: typeof parsed.lastRemoteRevision === "string" ? parsed.lastRemoteRevision : null,
-      lastSyncedFingerprint: typeof parsed.lastSyncedFingerprint === "string" ? parsed.lastSyncedFingerprint : null,
-      lastSyncedAt: typeof parsed.lastSyncedAt === "number" && Number.isFinite(parsed.lastSyncedAt) ? parsed.lastSyncedAt : null,
-    };
+    if (!isRecord(parsed)) return fallback;
+    if (parsed.version === 2 && isRecord(parsed.targets)) {
+      return normalizeSyncMetadata(parsed.targets[target], target) ?? fallback;
+    }
+    return normalizeSyncMetadata(parsed, target) ?? fallback;
   } catch {
     return fallback;
   }
 }
 
-/** 写入当前目标的同步基线。 */
+/** 按远端目标保存同步基线，切换平台后保留每个平台各自的历史基线。 */
 function writeSyncMetadata(metadata: RivetSyncMetadata): void {
   try {
-    window.localStorage.setItem(SYNC_METADATA_STORAGE_KEY, JSON.stringify(metadata));
+    let targets: Record<string, RivetSyncMetadata> = {};
+    const raw = window.localStorage.getItem(SYNC_METADATA_STORAGE_KEY);
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (isRecord(parsed) && parsed.version === 2 && isRecord(parsed.targets)) {
+        targets = { ...(parsed.targets as Record<string, RivetSyncMetadata>) };
+      } else if (isRecord(parsed) && typeof parsed.target === "string") {
+        const legacy = normalizeSyncMetadata(parsed, parsed.target);
+        if (legacy) targets[legacy.target] = legacy;
+      }
+    }
+    targets[metadata.target] = metadata;
+    window.localStorage.setItem(SYNC_METADATA_STORAGE_KEY, JSON.stringify({ version: 2, targets }));
   } catch (error) {
     console.warn("Rivet 无法保存同步基线。", error);
   }
@@ -200,10 +231,15 @@ function readFont(): "builtin" | "system" {
   return readStorage(APP_PREFERENCE_STORAGE_KEYS.font) === "system" ? "system" : "builtin";
 }
 
-/** 从当前本机持久化数据构造可同步文档；SSH 密码、私钥口令和同步令牌不在这些数据模型中。 */
-function createSyncDocument(): RivetSyncDocument {
+function readTerminalConnectionsForSync(): SavedTerminalConnection[] {
   const currentConnections = readStorage(TERMINAL_CONNECTIONS_STORAGE_KEY);
   const legacyConnections = currentConnections === null ? readStorage(SSH_CONNECTIONS_STORAGE_KEY) : null;
+  return deserializeTerminalConnections(currentConnections ?? legacyConnections);
+}
+
+/** 从当前本机持久化数据构造同步源文档；上传前由 Rust 生成跨设备稳定版本。 */
+function createSyncDocument(): RivetSyncDocument {
+  const terminalConnections = readTerminalConnectionsForSync();
   return {
     version: 1,
     settings: {
@@ -216,8 +252,24 @@ function createSyncDocument(): RivetSyncDocument {
       notificationSettings: deserializeNotificationSettings(readStorage(NOTIFICATION_SETTINGS_STORAGE_KEY)),
     },
     serialQuickCommands: deserializeSerialQuickCommands(readStorage(SERIAL_QUICK_COMMANDS_STORAGE_KEY)),
-    terminalConnections: deserializeTerminalConnections(currentConnections ?? legacyConnections),
+    terminalConnections,
     terminalQuickCommands: deserializeTerminalQuickCommands(readStorage(TERMINAL_QUICK_COMMANDS_STORAGE_KEY)),
+  };
+}
+
+/** 去掉仅本机有效的 SSH 文件路径，得到跨设备稳定的同步文档。 */
+function canonicalizeSyncDocument(document: RivetSyncDocument): RivetSyncDocument {
+  return {
+    ...document,
+    settings: { ...document.settings },
+    serialQuickCommands: document.serialQuickCommands.map((group) => ({
+      ...group,
+      commands: group.commands.map((command) => ({ ...command })),
+    })),
+    terminalConnections: document.terminalConnections.map((connection) =>
+      connection.kind === "ssh" ? { ...connection, keyPath: "" } : { ...connection },
+    ),
+    terminalQuickCommands: document.terminalQuickCommands.map((command) => ({ ...command })),
   };
 }
 
@@ -301,7 +353,12 @@ function parseSyncDocument(content: string): RivetSyncDocument {
 }
 
 /** 将已经校验的云端文档写入本机；失败时尽力回滚所有已写入项。 */
-function applySyncDocument(document: RivetSyncDocument): void {
+function applySyncDocument(document: RivetSyncDocument, keyPaths: Record<string, string> = {}): void {
+  const terminalConnections = document.terminalConnections.map((connection) =>
+    connection.kind === "ssh" && connection.authType === "privateKey" && keyPaths[connection.id]
+      ? { ...connection, keyPath: keyPaths[connection.id] }
+      : { ...connection },
+  );
   const writes: Array<[string, string]> = [
     [APP_PREFERENCE_STORAGE_KEYS.locale, document.settings.locale],
     [APP_PREFERENCE_STORAGE_KEYS.theme, document.settings.theme],
@@ -311,7 +368,7 @@ function applySyncDocument(document: RivetSyncDocument): void {
     [SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings(document.settings.serialRxSettings)],
     [NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings(document.settings.notificationSettings)],
     [SERIAL_QUICK_COMMANDS_STORAGE_KEY, serializeSerialQuickCommands(document.serialQuickCommands)],
-    [TERMINAL_CONNECTIONS_STORAGE_KEY, serializeTerminalConnections(document.terminalConnections)],
+    [TERMINAL_CONNECTIONS_STORAGE_KEY, serializeTerminalConnections(terminalConnections)],
     [TERMINAL_QUICK_COMMANDS_STORAGE_KEY, serializeTerminalQuickCommands(document.terminalQuickCommands)],
   ];
   const previous = writes.map(([key]) => [key, window.localStorage.getItem(key)] as const);
@@ -351,6 +408,24 @@ async function fingerprint(content: string): Promise<string> {
   return `fnv1a-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
+async function syncFingerprint(content: string, secretRevision: string | null): Promise<string> {
+  return fingerprint(`${content}\n#sync=${secretRevision ?? ""}`);
+}
+
+async function prepareLocalSyncState() {
+  const rawDocument = createSyncDocument();
+  const document = canonicalizeSyncDocument(rawDocument);
+  const rawContent = serializeSyncDocument(rawDocument);
+  const canonicalContent = serializeSyncDocument(document);
+  const prepared = await invoke<PrepareSyncLocalResult>("prepare_sync_local", { content: rawContent });
+  const combinedFingerprint = await syncFingerprint(canonicalContent, prepared.secretRevision);
+  return {
+    document,
+    rawContent,
+    fingerprint: combinedFingerprint,
+  };
+}
+
 /**
  * 写入一个参与同步的本机存储项；内容真正变化时发送窗口级变更事件。
  * @param key localStorage 键。
@@ -364,12 +439,24 @@ export function persistSyncedStorage(key: string, value: string): void {
   }
 }
 
+export function notifySyncedSecretsChanged(): void {
+  window.dispatchEvent(new CustomEvent(SYNC_DATA_CHANGED_EVENT, { detail: { key: "rivet.ssh.secrets" } }));
+}
+
 /** 标准化发送给 Rust 的同步目标。 */
 function remoteConfig(config: RivetSyncConfig) {
   return {
     provider: config.provider,
     snippetId: config.snippetId.trim(),
   };
+}
+
+async function applyRemoteSyncDocument(config: RivetSyncConfig, revision: string, document: RivetSyncDocument): Promise<void> {
+  const restored = await invoke<ApplySyncSecretsResult>("apply_sync_remote_secrets", {
+    config: remoteConfig(config),
+    expectedRevision: revision,
+  });
+  applySyncDocument(document, restored.keyPaths);
 }
 
 /** 判断片段 ID 是否满足后端允许的字符和长度约束。 */
@@ -437,10 +524,10 @@ export function useRivetSync(): RivetSyncController {
     setTokenStored(true);
 
     try {
-      const localContent = serializeSyncDocument(createSyncDocument());
+      const localState = await prepareLocalSyncState();
       const ensured = await invoke<EnsureSyncRemoteResult>("ensure_sync_remote", {
         provider: config.provider,
-        content: localContent,
+        content: localState.rawContent,
       });
       const nextConfig: RivetSyncConfig = {
         ...config,
@@ -451,12 +538,11 @@ export function useRivetSync(): RivetSyncController {
       setError("");
 
       if (ensured.created) {
-        const localFingerprint = await fingerprint(localContent);
         const now = Date.now();
         writeSyncMetadata({
           target: syncTarget(nextConfig),
           lastRemoteRevision: ensured.revision,
-          lastSyncedFingerprint: localFingerprint,
+          lastSyncedFingerprint: localState.fingerprint,
           lastSyncedAt: now,
         });
         setLastSyncedAt(now);
@@ -502,10 +588,9 @@ export function useRivetSync(): RivetSyncController {
       setPhase("syncing");
       setError("");
 
-      const localDocument = createSyncDocument();
-      const localPristine = isPristineSyncDocument(localDocument);
-      const localContent = serializeSyncDocument(localDocument);
-      const localFingerprint = await fingerprint(localContent);
+      const localState = await prepareLocalSyncState();
+      const localPristine = isPristineSyncDocument(localState.document);
+      const localFingerprint = localState.fingerprint;
       let activeConfig = config;
       let remote: RemoteSyncFile | null = null;
 
@@ -520,7 +605,7 @@ export function useRivetSync(): RivetSyncController {
       if (!hasRemoteTarget(activeConfig)) {
         const ensured = await invoke<EnsureSyncRemoteResult>("ensure_sync_remote", {
           provider: activeConfig.provider,
-          content: localContent,
+          content: localState.rawContent,
         });
         activeConfig = { ...activeConfig, snippetId: ensured.snippetId };
         writeSyncConfig(activeConfig);
@@ -529,6 +614,7 @@ export function useRivetSync(): RivetSyncController {
           exists: true,
           content: ensured.content,
           revision: ensured.revision,
+          secretRevision: ensured.secretRevision,
         };
 
         if (ensured.created) {
@@ -553,10 +639,10 @@ export function useRivetSync(): RivetSyncController {
       const metadata = readSyncMetadata(activeConfig);
       const remoteDocument = parseSyncDocument(remote.content);
       const remoteCanonicalContent = serializeSyncDocument(remoteDocument);
-      const remoteFingerprint = await fingerprint(remoteCanonicalContent);
+      const remoteFingerprint = await syncFingerprint(remoteCanonicalContent, remote.secretRevision);
 
       if (resolution === "remote") {
-        applySyncDocument(remoteDocument);
+        await applyRemoteSyncDocument(activeConfig, remote.revision, remoteDocument);
         const now = Date.now();
         writeSyncMetadata({
           target,
@@ -573,7 +659,7 @@ export function useRivetSync(): RivetSyncController {
       if (resolution === "local") {
         const written = await invoke<RemoteSyncWriteResult>("write_sync_remote", {
           config: remoteConfig(activeConfig),
-          content: localContent,
+          content: localState.rawContent,
           expectedRevision: remote.revision,
         });
         const now = Date.now();
@@ -607,7 +693,7 @@ export function useRivetSync(): RivetSyncController {
 
       const hasBaseline = metadata.lastRemoteRevision !== null || metadata.lastSyncedFingerprint !== null;
       if (!hasBaseline && localPristine) {
-        applySyncDocument(remoteDocument);
+        await applyRemoteSyncDocument(activeConfig, remote.revision, remoteDocument);
         const now = Date.now();
         writeSyncMetadata({
           target,
@@ -624,7 +710,7 @@ export function useRivetSync(): RivetSyncController {
       if (remoteUnchanged) {
         const written = await invoke<RemoteSyncWriteResult>("write_sync_remote", {
           config: remoteConfig(activeConfig),
-          content: localContent,
+          content: localState.rawContent,
           expectedRevision: remote.revision,
         });
         const now = Date.now();
@@ -640,7 +726,7 @@ export function useRivetSync(): RivetSyncController {
       }
 
       if (localUnchanged) {
-        applySyncDocument(remoteDocument);
+        await applyRemoteSyncDocument(activeConfig, remote.revision, remoteDocument);
         const now = Date.now();
         writeSyncMetadata({
           target,

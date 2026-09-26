@@ -3682,10 +3682,12 @@ dependencies = [
 name = "rivet"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "getrandom 0.4.3",
  "keyring",
  "portable-pty",
  "reqwest 0.12.28",
+ "ring",
  "russh",
  "russh-sftp",
  "serde",

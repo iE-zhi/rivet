@@ -1,13 +1,16 @@
 //! Rivet 配置同步：通过 GitHub Gist、Gitee 代码片段和 GitLab Personal Snippet 读写统一同步文件，并将访问令牌保存在系统凭据库。
 
-use std::time::Duration;
+use std::{error::Error as _, time::Duration};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
 
-use reqwest::{multipart::Form, Client, RequestBuilder, StatusCode};
+use reqwest::{Client, RequestBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tauri::AppHandle;
+
+use crate::sync_secrets::{self, EncryptedSyncSecrets};
 
 /// 同步访问令牌在系统凭据库中的服务名。
 const TOKEN_SERVICE_NAME: &str = "Rivet Sync";
@@ -21,8 +24,12 @@ const SYNC_SNIPPET_DESCRIPTION: &str = "Rivet settings sync";
 const MAX_SYNC_CONTENT_BYTES: usize = 900 * 1024;
 /// 片段 ID 最大长度。
 const MAX_SNIPPET_ID_LENGTH: usize = 256;
-/// 远端 API 单次请求超时。
-const HTTP_TIMEOUT: Duration = Duration::from_secs(20);
+/// 远端 API 单次请求超时；避免网络异常时界面长期停留在“正在同步”。
+const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
+/// TCP/TLS 建连等待上限；保留足够时间给 Windows 网络栈完成地址回退与 TLS 握手。
+const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// 云端封装格式版本。
+const SYNC_ENVELOPE_VERSION: u8 = 1;
 
 /// 前端可选择的远端片段平台。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -77,6 +84,7 @@ pub struct RemoteSyncFile {
     exists: bool,
     content: Option<String>,
     revision: Option<String>,
+    secret_revision: Option<String>,
 }
 
 /// 写入成功后的新远端版本。
@@ -94,6 +102,27 @@ pub struct EnsureSyncRemoteResult {
     created: bool,
     content: String,
     revision: String,
+    secret_revision: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncEnvelope {
+    envelope_version: u8,
+    document: Value,
+    encrypted_secrets: EncryptedSyncSecrets,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplySyncSecretsResult {
+    key_paths: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareSyncLocalResult {
+    secret_revision: String,
 }
 
 /// 已验证的远端片段目标。
@@ -195,7 +224,11 @@ pub async fn ensure_sync_remote(
     let client = http_client()?;
 
     if let Some(remote) = find_sync_remote(&client, provider, &token).await? {
-        let file = read_remote(&client, &remote, &token).await?;
+        let file = decode_remote_file(
+            provider,
+            &token,
+            read_remote(&client, &remote, &token).await?,
+        )?;
         if file.exists {
             let remote_content = file
                 .content
@@ -208,12 +241,18 @@ pub async fn ensure_sync_remote(
                 created: false,
                 content: remote_content,
                 revision,
+                secret_revision: file.secret_revision,
             });
         }
     }
 
-    let remote = create_sync_remote(&client, provider, &token, &content).await?;
-    let file = read_remote(&client, &remote, &token).await?;
+    let encoded = encode_remote_content(provider, &token, &content).await?;
+    let remote = create_sync_remote(&client, provider, &token, &encoded).await?;
+    let file = decode_remote_file(
+        provider,
+        &token,
+        read_remote(&client, &remote, &token).await?,
+    )?;
     let remote_content = file
         .content
         .ok_or_else(|| "创建同步片段后无法读取内容".to_string())?;
@@ -225,6 +264,7 @@ pub async fn ensure_sync_remote(
         created: true,
         content: remote_content,
         revision,
+        secret_revision: file.secret_revision,
     })
 }
 
@@ -234,7 +274,11 @@ pub async fn read_sync_remote(config: SyncRemoteConfig) -> Result<RemoteSyncFile
     let remote = ValidatedRemote::from_config(config)?;
     let token = load_token(remote.provider).await?;
     let client = http_client()?;
-    read_remote(&client, &remote, &token).await
+    decode_remote_file(
+        remote.provider,
+        &token,
+        read_remote(&client, &remote, &token).await?,
+    )
 }
 
 /// 以调用方最近读取到的内容版本作为并发保护更新片段。
@@ -261,12 +305,62 @@ pub async fn write_sync_remote(
         }
     }
 
-    write_remote(&client, &remote, &token, &content).await?;
+    let encoded = encode_remote_content(remote.provider, &token, &content).await?;
+    write_remote(&client, &remote, &token, &encoded).await?;
     let refreshed = read_remote(&client, &remote, &token).await?;
     let revision = refreshed
         .revision
         .ok_or_else(|| "同步写入成功但无法读取新远端版本".to_string())?;
     Ok(RemoteSyncWriteResult { revision })
+}
+
+#[tauri::command]
+pub async fn prepare_sync_local(content: String) -> Result<PrepareSyncLocalResult, String> {
+    validate_sync_content(&content)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let secret_revision = sync_secrets::local_secret_revision(&content)?;
+        Ok(PrepareSyncLocalResult { secret_revision })
+    })
+    .await
+    .map_err(|error| format!("准备本机同步数据任务失败：{error}"))?
+}
+
+#[tauri::command]
+pub async fn apply_sync_remote_secrets(
+    app: AppHandle,
+    config: SyncRemoteConfig,
+    expected_revision: String,
+) -> Result<ApplySyncSecretsResult, String> {
+    if expected_revision.is_empty()
+        || expected_revision.len() > 64
+        || contains_control(&expected_revision)
+    {
+        return Err("远端版本标识无效".to_string());
+    }
+    let remote = ValidatedRemote::from_config(config)?;
+    let token = load_token(remote.provider).await?;
+    let client = http_client()?;
+    let raw = read_remote(&client, &remote, &token).await?;
+    if raw.revision.as_deref() != Some(expected_revision.as_str()) {
+        return Err("云端片段已变化，请重新同步后再试".to_string());
+    }
+    let Some(raw_content) = raw.content else {
+        return Ok(ApplySyncSecretsResult {
+            key_paths: std::collections::HashMap::new(),
+        });
+    };
+    let Some(envelope) = parse_sync_envelope(&raw_content)? else {
+        return Ok(ApplySyncSecretsResult {
+            key_paths: std::collections::HashMap::new(),
+        });
+    };
+    let provider = remote.provider.credential_user().to_string();
+    let key_paths = tauri::async_runtime::spawn_blocking(move || {
+        sync_secrets::apply_encrypted_secrets(&app, &provider, &token, &envelope.encrypted_secrets)
+    })
+    .await
+    .map_err(|error| format!("同步数据恢复任务失败：{error}"))??;
+    Ok(ApplySyncSecretsResult { key_paths })
 }
 
 /// 构造系统凭据库中的 Token 条目。
@@ -289,10 +383,100 @@ async fn load_token(provider: SyncProvider) -> Result<String, String> {
     .map_err(|error| format!("读取同步 Token 任务失败：{error}"))?
 }
 
+async fn encode_remote_content(
+    provider: SyncProvider,
+    token: &str,
+    content: &str,
+) -> Result<String, String> {
+    let provider_name = provider.credential_user().to_string();
+    let token = token.to_string();
+    let content = content.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let canonical = canonicalize_sync_document(&content)?;
+        let document: Value = serde_json::from_str(&canonical)
+            .map_err(|error| format!("解析同步文档失败：{error}"))?;
+        let encrypted_secrets =
+            sync_secrets::encrypt_local_secrets(&provider_name, &token, &content)?;
+        let envelope = SyncEnvelope {
+            envelope_version: SYNC_ENVELOPE_VERSION,
+            document,
+            encrypted_secrets,
+        };
+        let encoded = serde_json::to_string_pretty(&envelope)
+            .map_err(|error| format!("序列化同步封装失败：{error}"))?;
+        validate_sync_content(&encoded)?;
+        Ok(encoded)
+    })
+    .await
+    .map_err(|error| format!("准备同步数据任务失败：{error}"))?
+}
+
+fn canonicalize_sync_document(content: &str) -> Result<String, String> {
+    let mut document: Value =
+        serde_json::from_str(content).map_err(|error| format!("解析同步文档失败：{error}"))?;
+    if let Some(connections) = document
+        .get_mut("terminalConnections")
+        .and_then(Value::as_array_mut)
+    {
+        for connection in connections {
+            let is_ssh_connection = connection.get("kind").and_then(Value::as_str) == Some("ssh");
+            if is_ssh_connection {
+                if let Some(object) = connection.as_object_mut() {
+                    object.insert("keyPath".to_string(), Value::String(String::new()));
+                }
+            }
+        }
+    }
+    serde_json::to_string_pretty(&document).map_err(|error| format!("序列化同步文档失败：{error}"))
+}
+
+fn parse_sync_envelope(content: &str) -> Result<Option<SyncEnvelope>, String> {
+    let value: Value =
+        serde_json::from_str(content).map_err(|error| format!("解析云端同步数据失败：{error}"))?;
+    if value.get("envelopeVersion").is_none() {
+        return Ok(None);
+    }
+    let envelope: SyncEnvelope =
+        serde_json::from_value(value).map_err(|error| format!("解析云端同步封装失败：{error}"))?;
+    if envelope.envelope_version != SYNC_ENVELOPE_VERSION {
+        return Err("云端同步封装格式不受支持".to_string());
+    }
+    Ok(Some(envelope))
+}
+
+fn decode_remote_file(
+    provider: SyncProvider,
+    token: &str,
+    mut file: RemoteSyncFile,
+) -> Result<RemoteSyncFile, String> {
+    if !file.exists {
+        return Ok(file);
+    }
+    let Some(raw_content) = file.content.as_deref() else {
+        return Err("云端同步文件缺少内容".to_string());
+    };
+    let Some(envelope) = parse_sync_envelope(raw_content)? else {
+        file.secret_revision = None;
+        return Ok(file);
+    };
+    let provider_name = provider.credential_user();
+    let secret_revision =
+        sync_secrets::encrypted_secret_revision(provider_name, token, &envelope.encrypted_secrets)?;
+    let document = serde_json::to_string_pretty(&envelope.document)
+        .map_err(|error| format!("恢复同步文档失败：{error}"))?;
+    validate_sync_content(&document)?;
+    file.content = Some(document);
+    file.secret_revision = Some(secret_revision);
+    Ok(file)
+}
+
 /// 构造带硬超时的 HTTP 客户端。
 fn http_client() -> Result<Client, String> {
     Client::builder()
+        .connect_timeout(HTTP_CONNECT_TIMEOUT)
         .timeout(HTTP_TIMEOUT)
+        // 三个平台都是小型 REST 请求；Windows 上固定 HTTP/1.1 可避开 GitLab 偶发的 TLS/HTTP2 建链异常。
+        .http1_only()
         .user_agent("Rivet/0.1")
         .build()
         .map_err(|error| format!("初始化同步网络客户端失败：{error}"))
@@ -486,7 +670,7 @@ async fn find_gitlab_snippet(
         .query(&[("per_page", "100")])
         .send()
         .await
-        .map_err(|error| format!("查找 GitLab Snippet 失败：{error}"))?;
+        .map_err(|error| format_request_error("查找 GitLab Snippet 失败", error))?;
     let response = ensure_success(response, "查找 GitLab Snippet").await?;
     let payload: Vec<Value> = response
         .json()
@@ -609,7 +793,7 @@ async fn read_gitee_gist(
     remote_from_gist_value(&payload)
 }
 
-/// Gitee 代码片段 API 使用 multipart/form-data 更新固定文件。
+/// Gitee 代码片段 API 使用 JSON 对象更新固定文件；files 必须保持对象类型，不能作为 multipart 文本传递。
 async fn write_gitee_gist(
     client: &Client,
     remote: &ValidatedRemote,
@@ -617,17 +801,18 @@ async fn write_gitee_gist(
     content: &str,
 ) -> Result<(), String> {
     let url = format!("https://gitee.com/api/v5/gists/{}", remote.snippet_id);
-    let files = json!({
-        SYNC_FILE_NAME: {
-            "content": content,
+    let body = json!({
+        "files": {
+            SYNC_FILE_NAME: {
+                "content": content,
+            }
         }
     });
-    let form = Form::new()
-        .text("access_token", token.to_string())
-        .text("files", files.to_string());
     let response = client
         .patch(url)
-        .multipart(form)
+        .query(&[("access_token", token)])
+        .header("Accept", "application/json")
+        .json(&body)
         .send()
         .await
         .map_err(|_| "写入 Gitee 代码片段失败：网络请求失败".to_string())?;
@@ -635,31 +820,12 @@ async fn write_gitee_gist(
     Ok(())
 }
 
-/// GitLab Personal Snippet 读取固定文件。
+/// GitLab Personal Snippet 直接读取固定文件，避免先取元数据再取内容造成两次串行网络等待。
 async fn read_gitlab_snippet(
     client: &Client,
     remote: &ValidatedRemote,
     token: &str,
 ) -> Result<RemoteSyncFile, String> {
-    let metadata_url = format!("https://gitlab.com/api/v4/snippets/{}", remote.snippet_id);
-    let response = client
-        .get(metadata_url)
-        .header("PRIVATE-TOKEN", token)
-        .send()
-        .await
-        .map_err(|error| format!("访问 GitLab Snippet 失败：{error}"))?;
-    if response.status() == StatusCode::NOT_FOUND {
-        return Ok(missing_remote());
-    }
-    let response = ensure_success(response, "读取 GitLab Snippet").await?;
-    let payload: Value = response
-        .json()
-        .await
-        .map_err(|error| format!("解析 GitLab Snippet 失败：{error}"))?;
-    if !gitlab_has_sync_file(&payload) {
-        return Ok(missing_remote());
-    }
-
     let raw_url = format!(
         "https://gitlab.com/api/v4/snippets/{}/files/main/{}/raw",
         remote.snippet_id,
@@ -671,6 +837,9 @@ async fn read_gitlab_snippet(
         .send()
         .await
         .map_err(|error| format!("读取 GitLab Snippet 文件失败：{error}"))?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(missing_remote());
+    }
     let response = ensure_success(response, "读取 GitLab Snippet 文件").await?;
     let content = response
         .text()
@@ -680,41 +849,25 @@ async fn read_gitlab_snippet(
     Ok(remote_with_content(content))
 }
 
-/// GitLab Personal Snippet 更新固定文件；文件不存在时在已有 Snippet 中创建该文件。
+/// GitLab Personal Snippet 更新固定文件；调用前已读取并确认目标文件存在，因此无需再次请求元数据。
 async fn write_gitlab_snippet(
     client: &Client,
     remote: &ValidatedRemote,
     token: &str,
     content: &str,
 ) -> Result<(), String> {
-    let metadata_url = format!("https://gitlab.com/api/v4/snippets/{}", remote.snippet_id);
-    let response = client
-        .get(&metadata_url)
-        .header("PRIVATE-TOKEN", token)
-        .send()
-        .await
-        .map_err(|error| format!("访问 GitLab Snippet 失败：{error}"))?;
-    let response = ensure_success(response, "读取 GitLab Snippet").await?;
-    let payload: Value = response
-        .json()
-        .await
-        .map_err(|error| format!("解析 GitLab Snippet 失败：{error}"))?;
-    let action = if gitlab_has_sync_file(&payload) {
-        "update"
-    } else {
-        "create"
-    };
+    let url = format!("https://gitlab.com/api/v4/snippets/{}", remote.snippet_id);
     let body = json!({
         "files": [
             {
-                "action": action,
+                "action": "update",
                 "file_path": SYNC_FILE_NAME,
                 "content": content,
             }
         ]
     });
     let response = client
-        .put(metadata_url)
+        .put(url)
         .header("PRIVATE-TOKEN", token)
         .json(&body)
         .send()
@@ -743,6 +896,7 @@ fn remote_from_gist_value(payload: &Value) -> Result<RemoteSyncFile, String> {
 }
 
 /// 判断 GitLab Snippet 是否已经包含固定同步文件。
+#[cfg(test)]
 fn gitlab_has_sync_file(payload: &Value) -> bool {
     payload
         .get("files")
@@ -772,6 +926,7 @@ fn remote_with_content(content: String) -> RemoteSyncFile {
         exists: true,
         revision: Some(revision_for_content(&content)),
         content: Some(content),
+        secret_revision: None,
     }
 }
 
@@ -781,6 +936,7 @@ fn missing_remote() -> RemoteSyncFile {
         exists: false,
         content: None,
         revision: None,
+        secret_revision: None,
     }
 }
 
@@ -790,6 +946,33 @@ fn github_auth(request: RequestBuilder, token: &str) -> RequestBuilder {
         .bearer_auth(token)
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
+}
+
+/// 格式化不含敏感查询参数的网络错误，并展开底层原因便于区分超时、DNS、TLS 和连接失败。
+fn format_request_error(action: &str, error: reqwest::Error) -> String {
+    let category = if error.is_timeout() {
+        "请求超时"
+    } else if error.is_connect() {
+        "连接失败"
+    } else if error.is_request() {
+        "请求发送失败"
+    } else {
+        "网络错误"
+    };
+    let mut causes = Vec::new();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        let detail = cause.to_string();
+        if !detail.is_empty() && !causes.iter().any(|item| item == &detail) {
+            causes.push(detail);
+        }
+        source = cause.source();
+    }
+    if causes.is_empty() {
+        format!("{action}：{category} · {error}")
+    } else {
+        format!("{action}：{category} · {error} · {}", causes.join(" · "))
+    }
 }
 
 /// 检查 HTTP 状态，并限制读取错误正文的大小。
@@ -947,6 +1130,26 @@ mod tests {
         assert_eq!(
             remote.revision.as_deref(),
             Some(revision_for_content("{\"version\":1}").as_str())
+        );
+    }
+
+    #[test]
+    fn canonicalizes_local_private_key_paths() {
+        let source = r#"{
+  "terminalConnections": [
+    {
+      "kind": "ssh",
+      "id": "ssh-1",
+      "authType": "privateKey",
+      "keyPath": "C:/Users/test/.ssh/id_ed25519"
+    }
+  ]
+}"#;
+        let canonical = canonicalize_sync_document(source).expect("document should canonicalize");
+        let parsed: Value = serde_json::from_str(&canonical).expect("canonical JSON should parse");
+        assert_eq!(
+            parsed["terminalConnections"][0]["keyPath"].as_str(),
+            Some("")
         );
     }
 
