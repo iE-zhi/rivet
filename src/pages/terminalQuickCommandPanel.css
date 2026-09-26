@@ -149,6 +149,10 @@
   cursor: default;
 }
 
+.app-shell[data-theme="light"] .terminal-command-panel {
+  background: var(--r-bg);
+}
+
 @media (max-width: 760px) {
   .terminal-command-panel {
     right: 8px;

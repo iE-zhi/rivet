@@ -403,6 +403,14 @@
   text-align: center;
 }
 
+.app-shell[data-theme="light"] .sftp-header,
+.app-shell[data-theme="light"] .sftp-transfer,
+.app-shell[data-theme="light"] .sftp-row-menu,
+.app-shell[data-theme="light"] .sftp-inline-action,
+.app-shell[data-theme="light"] .sftp-drop-card {
+  background: var(--r-bg);
+}
+
 .terminal-toolbar-right {
   display: flex;
   align-items: center;
