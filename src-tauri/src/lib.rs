@@ -50,6 +50,7 @@ pub fn run() -> tauri::Result<()> {
             ssh::close_ssh_session,
             sftp::sftp_list,
             sftp::sftp_upload_file,
+            sftp::sftp_upload_path,
             sftp::sftp_download_file,
             sftp::sftp_delete,
             sftp::sftp_rename,

@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Input, SvgIcon, VerticalScrollbar, useNotification } from "../components/ui";
 import type { Locale } from "./SerialPage";
 import "./sftpPanel.css";
@@ -17,6 +19,23 @@ interface SftpEntry {
 interface SftpDirectory {
   path: string;
   entries: SftpEntry[];
+}
+
+type SftpTransferDirection = "upload" | "download";
+type SftpTransferStatus = "waiting" | "running" | "done" | "error";
+
+interface SftpTransferProgressEvent {
+  transferId: string;
+  sessionId: string;
+  direction: SftpTransferDirection;
+  name: string;
+  transferred: number;
+  total: number;
+}
+
+interface SftpTransferTask extends SftpTransferProgressEvent {
+  status: SftpTransferStatus;
+  error?: string;
 }
 
 interface SftpPanelProps {
@@ -54,6 +73,9 @@ const COPY = {
     deleteFailed: "删除失败：",
     deleteDone: "删除完成",
     renamePlaceholder: "新名称",
+    dropUpload: "释放文件以上传到当前目录",
+    uploadPreparing: "准备上传",
+    transferError: "传输失败",
   },
   en: {
     sftp: "SFTP",
@@ -81,6 +103,9 @@ const COPY = {
     deleteFailed: "Delete failed: ",
     deleteDone: "Delete complete",
     renamePlaceholder: "New name",
+    dropUpload: "Drop files to upload to this directory",
+    uploadPreparing: "Preparing upload",
+    transferError: "Transfer failed",
   },
 } as const;
 
@@ -98,6 +123,26 @@ function formatFileSize(bytes: number): string {
   return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${units[index]}`;
 }
 
+/** 创建前端传输任务标识。 */
+function createTransferId(): string {
+  if (typeof crypto.randomUUID === "function") return `sftp-${crypto.randomUUID()}`;
+  const bytes = new Uint32Array(4);
+  crypto.getRandomValues(bytes);
+  return `sftp-${Array.from(bytes, (value) => value.toString(16)).join("")}`;
+}
+
+/** 从 Windows/Unix 本地路径提取显示文件名。 */
+function localFileName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
+/** 计算真实传输百分比；0 字节文件完成时显示 100%。 */
+function transferPercent(task: SftpTransferTask): number {
+  if (task.status === "done") return 100;
+  if (task.total <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((task.transferred / task.total) * 100)));
+}
+
 /** SFTP 文件浏览面板；所有操作复用当前 SSH 会话的独立 SFTP subsystem。 */
 export default function SftpPanel({ open, sessionId, sessionName, locale, onClose }: SftpPanelProps) {
   const copy = COPY[locale];
@@ -111,9 +156,136 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
   const [deletePath, setDeletePath] = useState<string | null>(null);
   const [renamePath, setRenamePath] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
+  const [transfers, setTransfers] = useState<SftpTransferTask[]>([]);
+  const [dragUploadActive, setDragUploadActive] = useState(false);
+  const panelRef = useRef<HTMLElement>(null);
+  const transferTimersRef = useRef(new Map<string, number>());
   const requestSequenceRef = useRef(0);
   /** 仅在当前应用进程内按 SSH session 记忆最近访问目录；重连后的新 session 不继承。 */
   const lastPathBySessionRef = useRef(new Map<string, string>());
+
+  /** 新建一个等待中的传输任务。 */
+  const addTransfer = useCallback((
+    id: string,
+    taskSessionId: string,
+    direction: SftpTransferDirection,
+    name: string,
+    total = 0,
+  ) => {
+    setTransfers((current) => [
+      ...current.filter((task) => task.transferId !== id),
+      {
+        transferId: id,
+        sessionId: taskSessionId,
+        direction,
+        name,
+        transferred: 0,
+        total,
+        status: "waiting",
+      },
+    ]);
+  }, []);
+
+  /** 标记传输完成并短暂保留 100% 进度后自动移除。 */
+  const completeTransfer = useCallback((transferId: string) => {
+    setTransfers((current) =>
+      current.map((task) =>
+        task.transferId === transferId
+          ? { ...task, transferred: task.total, status: "done" }
+          : task,
+      ),
+    );
+    const previous = transferTimersRef.current.get(transferId);
+    if (previous !== undefined) window.clearTimeout(previous);
+    const timer = window.setTimeout(() => {
+      transferTimersRef.current.delete(transferId);
+      setTransfers((current) =>
+        current.filter((task) => task.transferId !== transferId),
+      );
+    }, 1400);
+    transferTimersRef.current.set(transferId, timer);
+  }, []);
+
+  /** 标记传输失败并短暂展示错误状态。 */
+  const failTransfer = useCallback((transferId: string, error: unknown) => {
+    setTransfers((current) =>
+      current.map((task) =>
+        task.transferId === transferId
+          ? { ...task, status: "error", error: String(error) }
+          : task,
+      ),
+    );
+    const previous = transferTimersRef.current.get(transferId);
+    if (previous !== undefined) window.clearTimeout(previous);
+    const timer = window.setTimeout(() => {
+      transferTimersRef.current.delete(transferId);
+      setTransfers((current) =>
+        current.filter((task) => task.transferId !== transferId),
+      );
+    }, 3000);
+    transferTimersRef.current.set(transferId, timer);
+  }, []);
+
+  const removeTransfer = useCallback((transferId: string) => {
+    const timer = transferTimersRef.current.get(transferId);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      transferTimersRef.current.delete(transferId);
+    }
+    setTransfers((current) =>
+      current.filter((task) => task.transferId !== transferId),
+    );
+  }, []);
+
+  /** 当前会话只显示正在运行或队首等待的一个传输进度，避免占满文件列表。 */
+  const currentTransfer = useMemo(() => {
+    if (!sessionId) return null;
+    const sessionTransfers = transfers.filter((task) => task.sessionId === sessionId);
+    return (
+      sessionTransfers.find((task) => task.status === "running") ??
+      sessionTransfers.find((task) => task.status === "waiting") ??
+      sessionTransfers.at(-1) ??
+      null
+    );
+  }, [sessionId, transfers]);
+
+  /** 接收后端真实字节进度事件。 */
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void listen<SftpTransferProgressEvent>("sftp:transfer-progress", (event) => {
+      const progress = event.payload;
+      setTransfers((current) => {
+        const index = current.findIndex(
+          (task) => task.transferId === progress.transferId,
+        );
+        if (index < 0) {
+          return [
+            ...current,
+            { ...progress, status: "running" as const },
+          ];
+        }
+        return current.map((task, taskIndex) =>
+          taskIndex === index
+            ? { ...task, ...progress, status: "running" as const, error: undefined }
+            : task,
+        );
+      });
+    }).then((disposeListener) => {
+      if (disposed) disposeListener();
+      else unlisten = disposeListener;
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => () => {
+    transferTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    transferTimersRef.current.clear();
+  }, []);
 
   /** 读取目录并仅应用最后一次导航请求，防止慢响应覆盖新路径。 */
   const loadDirectory = useCallback(async (requestedPath: string) => {
@@ -167,43 +339,166 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
     if (requested) void loadDirectory(requested);
   };
 
-  /** 上传用户选择的本地文件，成功后刷新当前目录。 */
+  /** 上传用户选择的本地文件，成功后刷新当前目录并显示真实进度。 */
   const uploadFile = async () => {
     if (!sessionId || loading || busyPath) return;
+    const transferId = createTransferId();
+    addTransfer(transferId, sessionId, "upload", copy.uploadPreparing);
     setBusyPath("__upload__");
     try {
       const result = await invoke<string | null>("sftp_upload_file", {
         sessionId,
         remoteDirectory: path,
+        transferId,
       });
-      if (result !== null) {
-        notify({ kind: "success", message: copy.uploadDone });
-        await loadDirectory(path);
+      if (result === null) {
+        removeTransfer(transferId);
+        return;
       }
+      completeTransfer(transferId);
+      notify({ kind: "success", message: copy.uploadDone });
+      await loadDirectory(path);
     } catch (error) {
+      failTransfer(transferId, error);
       notify({ kind: "error", message: `${copy.uploadFailed}${String(error)}` });
     } finally {
       setBusyPath(null);
     }
   };
 
+  /** 批量上传系统拖入的本地文件；SFTP worker 顺序执行，进度按文件真实字节更新。 */
+  const uploadDroppedPaths = useCallback(async (localPaths: string[]) => {
+    if (!sessionId || loading || busyPath || localPaths.length === 0) return;
+
+    const tasks = localPaths.map((localPath) => ({
+      transferId: createTransferId(),
+      localPath,
+      name: localFileName(localPath),
+    }));
+    tasks.forEach((task) =>
+      addTransfer(task.transferId, sessionId, "upload", task.name),
+    );
+
+    setBusyPath("__upload__");
+    let uploaded = false;
+    try {
+      for (const task of tasks) {
+        try {
+          await invoke<string>("sftp_upload_path", {
+            sessionId,
+            remoteDirectory: path,
+            localPath: task.localPath,
+            transferId: task.transferId,
+          });
+          completeTransfer(task.transferId);
+          uploaded = true;
+        } catch (error) {
+          failTransfer(task.transferId, error);
+          notify({
+            kind: "error",
+            message: `${copy.uploadFailed}${task.name}: ${String(error)}`,
+          });
+        }
+      }
+      if (uploaded) {
+        notify({ kind: "success", message: copy.uploadDone });
+        await loadDirectory(path);
+      }
+    } finally {
+      setBusyPath(null);
+    }
+  }, [
+    addTransfer,
+    busyPath,
+    completeTransfer,
+    copy.uploadDone,
+    copy.uploadFailed,
+    failTransfer,
+    loadDirectory,
+    loading,
+    notify,
+    path,
+    sessionId,
+  ]);
+
   /** 下载一个普通文件或符号链接目标，由原生保存对话框选择本地位置。 */
   const downloadFile = async (entry: SftpEntry) => {
     if (!sessionId || busyPath) return;
+    const transferId = createTransferId();
+    addTransfer(transferId, sessionId, "download", entry.name, entry.size);
     setBusyPath(entry.path);
     setMenuPath(null);
     try {
       const saved = await invoke<boolean>("sftp_download_file", {
         sessionId,
         remotePath: entry.path,
+        transferId,
       });
-      if (saved) notify({ kind: "success", message: copy.downloadDone });
+      if (!saved) {
+        removeTransfer(transferId);
+        return;
+      }
+      completeTransfer(transferId);
+      notify({ kind: "success", message: copy.downloadDone });
     } catch (error) {
+      failTransfer(transferId, error);
       notify({ kind: "error", message: `${copy.downloadFailed}${String(error)}` });
     } finally {
       setBusyPath(null);
     }
   };
+
+  /** 监听系统文件拖入；仅当释放位置落在 SFTP 面板内时执行上传。 */
+  useEffect(() => {
+    if (!open || !sessionId) {
+      setDragUploadActive(false);
+      return;
+    }
+
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    const webview = getCurrentWebview();
+
+    const insidePanel = (position: { x: number; y: number }) => {
+      const panel = panelRef.current;
+      if (!panel) return false;
+      const rect = panel.getBoundingClientRect();
+      const scale = window.devicePixelRatio || 1;
+      const x = position.x / scale;
+      const y = position.y / scale;
+      return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+    };
+
+    void webview.onDragDropEvent((event) => {
+      const payload = event.payload;
+      if (payload.type === "leave") {
+        setDragUploadActive(false);
+        return;
+      }
+
+      if (payload.type === "enter" || payload.type === "over") {
+        setDragUploadActive(insidePanel(payload.position));
+        return;
+      }
+
+      if (payload.type === "drop") {
+        const accepted = insidePanel(payload.position);
+        setDragUploadActive(false);
+        if (accepted && payload.paths.length > 0) {
+          void uploadDroppedPaths(payload.paths);
+        }
+      }
+    }).then((disposeListener) => {
+      if (disposed) disposeListener();
+      else unlisten = disposeListener;
+    });
+
+    return () => {
+      disposed = true;
+      setDragUploadActive(false);
+      unlisten?.();
+    };
+  }, [open, sessionId, uploadDroppedPaths]);
 
   /** 提交同目录重命名，并在成功后刷新列表。 */
   const submitRename = async (entry: SftpEntry) => {
@@ -249,7 +544,7 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
   const currentParent = path === "/" ? "/" : `${path.replace(/\/$/, "")}/..`;
 
   return (
-    <aside className={`sftp-panel ${open ? "open" : ""}`} aria-hidden={!open}>
+    <aside ref={panelRef} className={`sftp-panel ${open ? "open" : ""}`} aria-hidden={!open}>
       <header className="sftp-header">
         <span className="sftp-title">{copy.sftp}{sessionName ? ` · ${sessionName}` : ""}</span>
         <button type="button" className="terminal-icon-button" aria-label={locale === "zh" ? "关闭 SFTP" : "Close SFTP"} onClick={onClose}>
@@ -272,6 +567,31 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
               <SvgIcon name="upload" size={15} />
             </button>
           </div>
+
+          {currentTransfer && (
+            <div className={`sftp-transfer sftp-transfer-${currentTransfer.status}`}>
+              <div className="sftp-transfer-meta">
+                <span className="sftp-transfer-name">
+                  <SvgIcon
+                    name={currentTransfer.direction === "upload" ? "upload" : "download"}
+                    size={12}
+                  />
+                  {currentTransfer.name}
+                </span>
+                <span className="sftp-transfer-value">
+                  {currentTransfer.status === "error"
+                    ? copy.transferError
+                    : `${transferPercent(currentTransfer)}% · ${formatFileSize(currentTransfer.transferred)} / ${formatFileSize(currentTransfer.total)}`}
+                </span>
+              </div>
+              <div className="sftp-transfer-track" aria-hidden="true">
+                <div
+                  className="sftp-transfer-fill"
+                  style={{ width: `${transferPercent(currentTransfer)}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="sftp-file-header">
             <div>{copy.name}</div>
@@ -372,6 +692,14 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
             )}
           </VerticalScrollbar>
         </>
+      )}
+      {dragUploadActive && (
+        <div className="sftp-drop-overlay" aria-hidden="true">
+          <div className="sftp-drop-card">
+            <SvgIcon name="upload" size={22} />
+            <span>{copy.dropUpload}</span>
+          </div>
+        </div>
       )}
     </aside>
   );

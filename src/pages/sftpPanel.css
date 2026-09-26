@@ -67,6 +67,71 @@
   background: var(--r-bg);
 }
 
+.sftp-transfer {
+  padding: 7px 10px 8px;
+  border-bottom: 1px solid var(--r-border);
+  background: var(--r-surface);
+}
+
+.sftp-transfer-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.sftp-transfer-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--r-subtle);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sftp-transfer-name .rivet-svg-icon {
+  flex: 0 0 auto;
+}
+
+.sftp-transfer-value {
+  flex: 0 0 auto;
+  color: var(--r-muted);
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.sftp-transfer-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--r-scrollbar-track);
+}
+
+.sftp-transfer-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--r-primary);
+  transition: width .1s linear;
+}
+
+.sftp-transfer-done .sftp-transfer-fill {
+  background: var(--r-success);
+}
+
+.sftp-transfer-error .sftp-transfer-fill {
+  width: 100% !important;
+  background: var(--r-danger);
+}
+
+.sftp-transfer-error .sftp-transfer-value {
+  color: var(--r-danger);
+}
+
 .sftp-button {
   display: grid;
   width: 32px;
@@ -307,6 +372,35 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sftp-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  border: 2px dashed var(--r-primary);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--r-primary) 10%, var(--r-bg) 90%);
+  pointer-events: none;
+}
+
+.sftp-drop-card {
+  display: flex;
+  max-width: 260px;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 15px;
+  border: 1px solid color-mix(in srgb, var(--r-primary) 45%, var(--r-border));
+  border-radius: 9px;
+  background: var(--r-surface);
+  color: var(--r-primary-light);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
 }
 
 .terminal-toolbar-right {

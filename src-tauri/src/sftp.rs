@@ -5,16 +5,16 @@
 
 use std::{
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use russh::client;
 use russh_sftp::client::SftpSession;
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::{
-    io::{copy, AsyncWriteExt},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     sync::{mpsc, oneshot},
 };
 
@@ -26,6 +26,12 @@ const SFTP_COMMAND_QUEUE_CAPACITY: usize = 32;
 const MAX_REMOTE_PATH_BYTES: usize = 4096;
 /// 单个远端文件名允许的最大 UTF-8 字节数。
 const MAX_REMOTE_NAME_BYTES: usize = 255;
+/** 前端传输任务标识最大长度。 */
+const MAX_TRANSFER_ID_BYTES: usize = 128;
+/** 分块传输缓冲区，兼顾吞吐和进度刷新频率。 */
+const TRANSFER_BUFFER_BYTES: usize = 64 * 1024;
+/** 进度事件的最大发送频率，避免大文件产生过多前端事件。 */
+const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(80);
 
 /// SFTP 文件类型。
 #[derive(Clone, Serialize)]
@@ -67,6 +73,35 @@ pub struct SftpDirectory {
     pub entries: Vec<SftpEntry>,
 }
 
+/// SFTP 传输方向。
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SftpTransferDirection {
+    Upload,
+    Download,
+}
+
+/// 上传/下载真实字节进度事件。
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SftpTransferProgress {
+    pub transfer_id: String,
+    pub session_id: String,
+    pub direction: SftpTransferDirection,
+    pub name: String,
+    pub transferred: u64,
+    pub total: u64,
+}
+
+/// 一次传输的事件上下文。
+pub(crate) struct TransferContext {
+    app: AppHandle,
+    transfer_id: String,
+    session_id: String,
+    direction: SftpTransferDirection,
+    name: String,
+}
+
 /// 独立 SFTP worker 支持的操作。
 pub(crate) enum SftpCommand {
     /// 读取一个目录。
@@ -76,12 +111,14 @@ pub(crate) enum SftpCommand {
     },
     /// 将本地文件原子上传到远端路径。
     Upload {
+        context: TransferContext,
         local_path: PathBuf,
         remote_path: String,
         result: oneshot::Sender<Result<(), String>>,
     },
     /// 将远端文件原子下载到本地路径。
     Download {
+        context: TransferContext,
         remote_path: String,
         local_path: PathBuf,
         result: oneshot::Sender<Result<(), String>>,
@@ -156,12 +193,16 @@ pub async fn sftp_upload_file(
     service: State<'_, SshService>,
     session_id: String,
     remote_directory: String,
+    transfer_id: String,
 ) -> Result<Option<String>, String> {
     validate_remote_path(&remote_directory)?;
-    let selected =
-        tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_file())
-            .await
-            .map_err(|error| format!("打开上传文件对话框失败：{error}"))?;
+    validate_transfer_id(&transfer_id)?;
+    let dialog_app = app.clone();
+    let selected = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app.dialog().file().blocking_pick_file()
+    })
+    .await
+    .map_err(|error| format!("打开上传文件对话框失败：{error}"))?;
 
     let Some(selected) = selected else {
         return Ok(None);
@@ -180,6 +221,13 @@ pub async fn sftp_upload_file(
     let (result_sender, result_receiver) = oneshot::channel();
     sender
         .send(SftpCommand::Upload {
+            context: TransferContext {
+                app,
+                transfer_id,
+                session_id: session_id.clone(),
+                direction: SftpTransferDirection::Upload,
+                name: file_name.to_string(),
+            },
             local_path,
             remote_path: remote_path.clone(),
             result: result_sender,
@@ -192,6 +240,58 @@ pub async fn sftp_upload_file(
     Ok(Some(remote_path))
 }
 
+/// 上传前端拖入的本地文件路径，不打开文件选择器。
+#[tauri::command]
+pub async fn sftp_upload_path(
+    app: AppHandle,
+    service: State<'_, SshService>,
+    session_id: String,
+    remote_directory: String,
+    local_path: String,
+    transfer_id: String,
+) -> Result<String, String> {
+    validate_remote_path(&remote_directory)?;
+    validate_transfer_id(&transfer_id)?;
+
+    let local_path = PathBuf::from(local_path);
+    let metadata = tokio::fs::metadata(&local_path)
+        .await
+        .map_err(|error| format!("读取本地上传文件失败：{error}"))?;
+    if !metadata.is_file() {
+        return Err("当前仅支持拖入普通文件上传".to_string());
+    }
+
+    let file_name = local_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "本地文件名不是有效 UTF-8".to_string())?
+        .to_string();
+    validate_remote_name(&file_name)?;
+    let remote_path = join_remote_path(&remote_directory, &file_name)?;
+
+    let sender = request_sftp_sender(&service, &session_id).await?;
+    let (result_sender, result_receiver) = oneshot::channel();
+    sender
+        .send(SftpCommand::Upload {
+            context: TransferContext {
+                app,
+                transfer_id,
+                session_id,
+                direction: SftpTransferDirection::Upload,
+                name: file_name,
+            },
+            local_path,
+            remote_path: remote_path.clone(),
+            result: result_sender,
+        })
+        .await
+        .map_err(|_| "SFTP worker 已停止".to_string())?;
+    result_receiver
+        .await
+        .map_err(|_| "SFTP worker 未返回上传结果".to_string())??;
+    Ok(remote_path)
+}
+
 /// 打开系统保存对话框，把远端文件下载到用户选择的位置。
 ///
 /// 返回 false 表示用户取消。
@@ -201,11 +301,15 @@ pub async fn sftp_download_file(
     service: State<'_, SshService>,
     session_id: String,
     remote_path: String,
+    transfer_id: String,
 ) -> Result<bool, String> {
     validate_remote_path(&remote_path)?;
+    validate_transfer_id(&transfer_id)?;
     let suggested_name = remote_file_name(&remote_path)?.to_string();
+    let dialog_app = app.clone();
     let selected = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog()
+        dialog_app
+            .dialog()
             .file()
             .set_file_name(suggested_name)
             .blocking_save_file()
@@ -224,6 +328,13 @@ pub async fn sftp_download_file(
     let (result_sender, result_receiver) = oneshot::channel();
     sender
         .send(SftpCommand::Download {
+            context: TransferContext {
+                app,
+                transfer_id,
+                session_id: session_id.clone(),
+                direction: SftpTransferDirection::Download,
+                name: remote_file_name(&remote_path)?.to_string(),
+            },
             remote_path,
             local_path,
             result: result_sender,
@@ -297,18 +408,21 @@ async fn run_sftp_worker(sftp: SftpSession, mut commands: mpsc::Receiver<SftpCom
                 let _ = result.send(list_directory(&sftp, path).await);
             }
             SftpCommand::Upload {
+                context,
                 local_path,
                 remote_path,
                 result,
             } => {
-                let _ = result.send(upload_file(&sftp, &local_path, &remote_path).await);
+                let _ = result.send(upload_file(&sftp, &local_path, &remote_path, &context).await);
             }
             SftpCommand::Download {
+                context,
                 remote_path,
                 local_path,
                 result,
             } => {
-                let _ = result.send(download_file(&sftp, &remote_path, &local_path).await);
+                let _ =
+                    result.send(download_file(&sftp, &remote_path, &local_path, &context).await);
             }
             SftpCommand::Delete { path, result } => {
                 let _ = result.send(delete_entry(&sftp, &path).await);
@@ -381,6 +495,7 @@ async fn upload_file(
     sftp: &SftpSession,
     local_path: &Path,
     remote_path: &str,
+    context: &TransferContext,
 ) -> Result<(), String> {
     validate_remote_path(remote_path)?;
     if sftp
@@ -394,6 +509,12 @@ async fn upload_file(
     let mut local = tokio::fs::File::open(local_path)
         .await
         .map_err(|error| format!("打开本地上传文件失败：{error}"))?;
+    let total = local
+        .metadata()
+        .await
+        .map_err(|error| format!("读取本地上传文件大小失败：{error}"))?
+        .len();
+    emit_transfer_progress(context, 0, total);
     let temporary_path = remote_temporary_path(remote_path)?;
     let mut remote = sftp
         .create(temporary_path.clone())
@@ -401,7 +522,7 @@ async fn upload_file(
         .map_err(|error| format!("创建远端临时文件失败：{error}"))?;
 
     let transfer_result = async {
-        copy(&mut local, &mut remote)
+        copy_with_progress(&mut local, &mut remote, total, context)
             .await
             .map_err(|error| format!("上传文件失败：{error}"))?;
         remote
@@ -430,8 +551,15 @@ async fn download_file(
     sftp: &SftpSession,
     remote_path: &str,
     local_path: &Path,
+    context: &TransferContext,
 ) -> Result<(), String> {
     validate_remote_path(remote_path)?;
+    let total = sftp
+        .metadata(remote_path.to_string())
+        .await
+        .map_err(|error| format!("读取远端下载文件大小失败：{error}"))?
+        .len();
+    emit_transfer_progress(context, 0, total);
     let parent = local_path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -448,7 +576,7 @@ async fn download_file(
         .await
         .map_err(|error| format!("打开远端下载文件失败：{error}"))?;
 
-    copy(&mut remote, &mut local)
+    copy_with_progress(&mut remote, &mut local, total, context)
         .await
         .map_err(|error| format!("下载文件失败：{error}"))?;
     remote
@@ -469,6 +597,65 @@ async fn download_file(
         .persist(local_path)
         .map_err(|error| format!("提交本地下载文件失败：{}", error.error))?;
     Ok(())
+}
+
+/// 校验前端生成的传输任务标识，防止异常大键进入事件通道。
+fn validate_transfer_id(transfer_id: &str) -> Result<(), String> {
+    if transfer_id.trim().is_empty()
+        || transfer_id.len() > MAX_TRANSFER_ID_BYTES
+        || transfer_id.contains('\0')
+    {
+        return Err("SFTP 传输任务标识无效".to_string());
+    }
+    Ok(())
+}
+
+/// 分块复制并按真实字节数限频发布进度。
+async fn copy_with_progress<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    total: u64,
+    context: &TransferContext,
+) -> Result<u64, std::io::Error>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let mut buffer = vec![0_u8; TRANSFER_BUFFER_BYTES];
+    let mut transferred = 0_u64;
+    let mut last_emit = Instant::now();
+
+    loop {
+        let read = reader.read(&mut buffer).await?;
+        if read == 0 {
+            break;
+        }
+        writer.write_all(&buffer[..read]).await?;
+        transferred = transferred.saturating_add(read as u64);
+
+        if transferred >= total || last_emit.elapsed() >= PROGRESS_EMIT_INTERVAL {
+            emit_transfer_progress(context, transferred, total);
+            last_emit = Instant::now();
+        }
+    }
+
+    emit_transfer_progress(context, transferred, total);
+    Ok(transferred)
+}
+
+/// 发布一条 SFTP 真实字节进度事件；前端按 transferId 聚合显示。
+fn emit_transfer_progress(context: &TransferContext, transferred: u64, total: u64) {
+    let _ = context.app.emit(
+        "sftp:transfer-progress",
+        SftpTransferProgress {
+            transfer_id: context.transfer_id.clone(),
+            session_id: context.session_id.clone(),
+            direction: context.direction.clone(),
+            name: context.name.clone(),
+            transferred,
+            total,
+        },
+    );
 }
 
 /// 重命名前拒绝覆盖已有目标，避免服务端 rename 语义造成数据丢失。
