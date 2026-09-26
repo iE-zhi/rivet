@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { MouseEvent } from "react";
 import appIcon from "../assets/svg/app-icon.svg";
+import { APP_VERSION } from "../appVersion";
 import type { Locale } from "./SerialPage";
 
 const PROJECT_URL = "https://gitee.com/boo0ood/rivet";
@@ -103,7 +104,7 @@ export default function AboutPanel({ locale }: AboutPanelProps) {
       <section className="settings-about-product" aria-labelledby="settings-about-title">
         <img className="settings-about-logo" src={appIcon} alt="" aria-hidden="true" />
         <h1 className="settings-about-name" id="settings-about-title">Rivet</h1>
-        <div className="settings-about-version">Version 0.1.0</div>
+        <div className="settings-about-version">Version {APP_VERSION}</div>
         <p className="settings-about-description">{copy.description}</p>
         <div className="settings-about-meta">
           <div className="settings-about-meta-row">

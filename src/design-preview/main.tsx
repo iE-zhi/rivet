@@ -17,12 +17,13 @@ import {
   useNotification,
 } from "../components/ui";
 import "./preview.css";
+import { APP_VERSION } from "../appVersion";
 
 const terminalLines = [
   { kind: "info" as const, prefix: "[12:00:01] INFO", text: "串口已打开 COM3 115200 8N1" },
   { kind: "rx" as const, prefix: "[12:00:02] RX", text: "48 65 6C 6C 6F 20 52 69 76 65 74" },
   { kind: "tx" as const, prefix: "[12:00:03] TX", text: "AT+VERSION\\r\\n" },
-  { kind: "ok" as const, prefix: "[12:00:03] OK", text: "Rivet v0.1.0" },
+  { kind: "ok" as const, prefix: "[12:00:03] OK", text: `Rivet v${APP_VERSION}` },
 ];
 
 function Row({ label, children, open = false }: { label: string; children: ReactNode; open?: boolean }) {
