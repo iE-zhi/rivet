@@ -28,6 +28,8 @@ const MAX_SNIPPET_ID_LENGTH: usize = 256;
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 /// TCP/TLS 建连等待上限；保留足够时间给 Windows 网络栈完成地址回退与 TLS 握手。
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// GitLab Snippet 创建/更新涉及服务端仓库提交，写请求单独给更长超时。
+const GITLAB_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
 /// 云端封装格式版本。
 const SYNC_ENVELOPE_VERSION: u8 = 1;
 
@@ -708,11 +710,12 @@ async fn create_gitlab_snippet(
     });
     let response = client
         .post("https://gitlab.com/api/v4/snippets")
+        .timeout(GITLAB_WRITE_TIMEOUT)
         .header("PRIVATE-TOKEN", token)
         .json(&body)
         .send()
         .await
-        .map_err(|error| format!("创建 GitLab Snippet 失败：{error}"))?;
+        .map_err(|error| format_request_error("创建 GitLab Snippet 失败", error))?;
     let response = ensure_success(response, "创建 GitLab Snippet").await?;
     let payload: Value = response
         .json()
@@ -836,7 +839,7 @@ async fn read_gitlab_snippet(
         .header("PRIVATE-TOKEN", token)
         .send()
         .await
-        .map_err(|error| format!("读取 GitLab Snippet 文件失败：{error}"))?;
+        .map_err(|error| format_request_error("读取 GitLab Snippet 文件失败", error))?;
     if response.status() == StatusCode::NOT_FOUND {
         return Ok(missing_remote());
     }
@@ -868,11 +871,28 @@ async fn write_gitlab_snippet(
     });
     let response = client
         .put(url)
+        .timeout(GITLAB_WRITE_TIMEOUT)
         .header("PRIVATE-TOKEN", token)
         .json(&body)
         .send()
-        .await
-        .map_err(|error| format!("写入 GitLab Snippet 失败：{error}"))?;
+        .await;
+    let response = match response {
+        Ok(response) => response,
+        Err(error) if error.is_timeout() => {
+            // GitLab 可能已经完成更新，只是响应在链路上超时；先回读确认，避免把成功误报成失败。
+            match read_gitlab_snippet(client, remote, token).await {
+                Ok(current) if current.content.as_deref() == Some(content) => return Ok(()),
+                Ok(_) => return Err(format_request_error("写入 GitLab Snippet 失败", error)),
+                Err(check_error) => {
+                    return Err(format!(
+                        "{}；超时后回读确认失败：{check_error}",
+                        format_request_error("写入 GitLab Snippet 失败", error)
+                    ))
+                }
+            }
+        }
+        Err(error) => return Err(format_request_error("写入 GitLab Snippet 失败", error)),
+    };
     ensure_success(response, "写入 GitLab Snippet").await?;
     Ok(())
 }

@@ -344,7 +344,7 @@ button, input, textarea { font: inherit; }
 .settings-sync-status { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; }
 .settings-sync-error { color: var(--r-danger); font-size: 10px; overflow-wrap: anywhere; }
 .settings-sync-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; }
-.settings-sync-actions .rivet-button { display: inline-flex; align-items: center; gap: 6px; }
+.settings-sync-actions .rivet-button { display: inline-flex; height: 24px; padding: 0 10px; align-items: center; gap: 6px; border-radius: 6px; }
 .settings-sync-action-row { align-items: center; }
 
 @media (max-width: 1000px) { .serial-page { grid-template-columns: minmax(260px, 1fr) 310px; } .console-area { padding: 0 20px; } .control-panel { --quick-command-x: 17px; --quick-command-bottom: 17px; } .control-panel-content { padding: 22px 17px 20px; } }
