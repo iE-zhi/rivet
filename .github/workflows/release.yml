@@ -17,7 +17,7 @@ permissions:
 
 concurrency:
   group: rivet-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publish:
@@ -85,7 +85,6 @@ jobs:
 
   arch:
     name: publish (archlinux / omarchy)
-    needs: publish
     runs-on: ubuntu-22.04
     container:
       image: archlinux:latest
@@ -120,4 +119,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
+          for i in {1..60}; do
+            if gh release view "v${VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 10
+          done
           gh release upload "v${VERSION}" packaging/arch/*.pkg.tar.zst --clobber --repo "$GITHUB_REPOSITORY"
