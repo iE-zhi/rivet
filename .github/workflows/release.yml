@@ -105,6 +105,7 @@ jobs:
       - name: Build Arch package
         shell: bash
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           VERSION=$(node -p "require('./package.json').version")
           sed -i "s/^pkgver=.*/pkgver=${VERSION}/" packaging/arch/PKGBUILD
           git archive --format=tar.gz --prefix="rivet-${VERSION}/" -o "packaging/arch/rivet-${VERSION}.tar.gz" HEAD
