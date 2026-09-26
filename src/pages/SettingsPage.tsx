@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent } from "react";
-import { Input, Select, SvgIcon, Switch, VerticalScrollbar, useNotification, type SelectOption } from "../components/ui";
+import { Button, Input, Select, SvgIcon, Switch, VerticalScrollbar, useNotification, type SelectOption } from "../components/ui";
 import { MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialDefaults, type SerialFlowControl, type SerialParity } from "./serialDefaults";
 import { SERIAL_RX_IDLE_MS_MAX, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_PACKET_BYTES_MAX, SERIAL_RX_PACKET_BYTES_MIN, type SerialRxSettings } from "./serialRxSettings";
 import type { Locale } from "./SerialPage";
 import type { NotificationSettings } from "../preferences/notificationSettings";
+import type { RivetSyncController, SyncProvider } from "../rivetSync";
 
 /** 支持的主题模式；system 会随操作系统外观变化。 */
 export type ThemeMode = "system" | "light" | "dark";
@@ -19,6 +20,42 @@ interface SettingsPageCopy {
   display: string;
   /** 串口设置栏目名称。 */
   serial: string;
+  /** 同步设置栏目名称。 */
+  sync: string;
+  /** 同步设置组标题。 */
+  syncGroupTitle: string;
+  /** Git 托管平台设置行。 */
+  syncProvider: string;
+  /** 访问令牌设置行。 */
+  syncToken: string;
+  /** 自动同步开关。 */
+  autoSync: string;
+  /** 手动同步按钮。 */
+  syncNow: string;
+  /** 打开平台 Token 创建页的按钮。 */
+  createToken: string;
+  /** 桌面端能力提示。 */
+  syncDesktopOnly: string;
+  /** 同步进行中状态。 */
+  syncing: string;
+  /** 同步成功状态。 */
+  synced: string;
+  /** 同步冲突状态。 */
+  syncConflict: string;
+  /** 从未完成过同步。 */
+  neverSynced: string;
+  /** 最近同步时间标签。 */
+  lastSynced: string;
+  /** 冲突时采用本地数据。 */
+  useLocal: string;
+  /** 冲突时采用云端数据。 */
+  useRemote: string;
+  /** 保存 Token 成功通知。 */
+  tokenSavedNotice: string;
+  /** 同步成功通知。 */
+  syncSucceededNotice: string;
+  /** Git 平台下拉选项。 */
+  syncProviderOptions: SelectOption[];
   /** 显示设置组标题，呈现在设置列表容器之外。 */
   groupTitle: string;
   /** 通知设置组标题。 */
@@ -83,6 +120,28 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     navigation: "设置分类",
     display: "显示",
     serial: "串口",
+    sync: "同步",
+    syncGroupTitle: "同步",
+    syncProvider: "平台",
+    syncToken: "访问 Token",
+    autoSync: "检测到改动时自动同步",
+    syncNow: "立即同步",
+    createToken: "创建 Token",
+    syncDesktopOnly: "同步仅在 Rivet 桌面应用中可用。",
+    syncing: "正在同步…",
+    synced: "已同步",
+    syncConflict: "本地和云端都已修改，请选择保留哪一侧。",
+    neverSynced: "尚未同步",
+    lastSynced: "最近同步",
+    useLocal: "使用本地",
+    useRemote: "使用云端",
+    tokenSavedNotice: "同步 Token 已保存。",
+    syncSucceededNotice: "同步完成。",
+    syncProviderOptions: [
+      { value: "github", label: "GitHub" },
+      { value: "gitee", label: "Gitee" },
+      { value: "gitlab", label: "GitLab" },
+    ],
     groupTitle: "界面偏好",
     notificationGroupTitle: "通知设置",
     generalNotifications: "普通通知",
@@ -134,6 +193,28 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     navigation: "Settings sections",
     display: "Display",
     serial: "Serial",
+    sync: "Sync",
+    syncGroupTitle: "Sync",
+    syncProvider: "Provider",
+    syncToken: "Access token",
+    autoSync: "Sync automatically when changes are detected",
+    syncNow: "Sync now",
+    createToken: "Create token",
+    syncDesktopOnly: "Sync is available in the Rivet desktop app only.",
+    syncing: "Syncing…",
+    synced: "Synced",
+    syncConflict: "Both local and remote data changed. Choose which side to keep.",
+    neverSynced: "Not synced yet",
+    lastSynced: "Last synced",
+    useLocal: "Use local",
+    useRemote: "Use remote",
+    tokenSavedNotice: "Sync token saved.",
+    syncSucceededNotice: "Sync completed.",
+    syncProviderOptions: [
+      { value: "github", label: "GitHub" },
+      { value: "gitee", label: "Gitee" },
+      { value: "gitlab", label: "GitLab" },
+    ],
     groupTitle: "Appearance",
     notificationGroupTitle: "Notifications",
     generalNotifications: "General notifications",
@@ -213,10 +294,15 @@ export interface SettingsPageProps {
   serialRxSettings: SerialRxSettings;
   /** 更新经过范围校验的 RX 分包参数；不受默认通信参数开关影响。 */
   onSerialRxSettingsChange: (settings: SerialRxSettings) => void;
+  /** Git 托管同步控制器；常驻应用外壳并把交互集中展示在设置页。 */
+  sync: RivetSyncController;
 }
 
 /** 设置页右侧当前展示的分组。 */
-type SettingsCategory = "display" | "serial";
+type SettingsCategory = "display" | "serial" | "sync";
+
+/** 已保存 Token 的仅展示占位值；密码输入框会将这些字符渲染为圆点。 */
+const SAVED_TOKEN_MASK = "************";
 
 /**
  * 判断下拉组件提供的值是否是可用的语言。
@@ -291,13 +377,17 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
  * @param onSerialRxSettingsChange 用户修改接收分包参数后的回调。
  * @returns 设置侧栏和显示偏好分组。
  */
-export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, notificationSettings, onNotificationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange }: SettingsPageProps) {
+export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, notificationSettings, onNotificationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, sync }: SettingsPageProps) {
   /** 取当前界面语言的文案和选项列表。 */
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 当前页面所有短时反馈均通过应用外壳中的全局通知发送。 */
   const { notify } = useNotification();
   /** 设置页默认展示显示偏好；栏目切换只影响右侧当前分组。 */
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>("display");
+  /** Token 输入仅保留在设置页内存；保存成功后回到只显示圆点的状态。 */
+  const [syncTokenDraft, setSyncTokenDraft] = useState("");
+  /** 区分真实 Token 草稿与已保存 Token 的圆点占位值。 */
+  const [syncTokenEditing, setSyncTokenEditing] = useState(false);
   /** 文本草稿允许编辑期间显示无效内容，持久化状态始终只保存有效整数。 */
   const [baudDraft, setBaudDraft] = useState(String(serialDefaults.baudRate));
   /** 波特率无效时保留草稿并给出即时反馈，失焦后恢复最后一个有效值。 */
@@ -369,6 +459,91 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
    * @returns 无；更新设置页当前栏目状态。
    */
   const showSerialSettings = () => setActiveCategory("serial");
+
+  /** 显示远端片段同步设置。 */
+  const showSyncSettings = () => setActiveCategory("sync");
+
+  /** 只接受支持的平台值并切换同步目标。 */
+  const handleSyncProviderChange = (value: string) => {
+    if (value === "github" || value === "gitee" || value === "gitlab") {
+      sync.updateConfig({ ...sync.config, provider: value as SyncProvider, snippetId: "" });
+      setSyncTokenDraft("");
+      setSyncTokenEditing(false);
+    }
+  };
+
+  /** 编辑 Token；已保存 Token 的圆点全部删空时立即删除系统凭据。 */
+  const handleSyncTokenChange = async (value: string) => {
+    setSyncTokenDraft(value);
+    setSyncTokenEditing(true);
+    if (!sync.tokenStored || value !== "") return;
+    try {
+      await sync.deleteToken();
+      setSyncTokenDraft("");
+      setSyncTokenEditing(false);
+    } catch (error) {
+      setSyncTokenDraft("");
+      setSyncTokenEditing(false);
+      notify({ kind: "error", message: String(error) });
+    }
+  };
+
+  /** Token 输入框失焦时自动保存真实新值；部分修改圆点占位不会覆盖系统凭据。 */
+  const handleSyncTokenBlur = async () => {
+    if (!syncTokenEditing) return;
+    const token = syncTokenDraft.trim();
+    if (!token) return;
+    if (sync.tokenStored && token.includes("*")) {
+      setSyncTokenDraft("");
+      setSyncTokenEditing(false);
+      return;
+    }
+    try {
+      await sync.saveToken(token);
+      setSyncTokenDraft("");
+      setSyncTokenEditing(false);
+      notify({ kind: "success", message: copy.tokenSavedNotice });
+    } catch (error) {
+      notify({ kind: "error", message: String(error) });
+    }
+  };
+
+  /** 使用系统默认浏览器打开当前平台的 Token 创建页面。 */
+  const handleOpenTokenPage = async () => {
+    try {
+      await sync.openTokenPage();
+    } catch (error) {
+      notify({ kind: "error", message: String(error) });
+    }
+  };
+
+  /** 执行一次手动双向同步；最终结果由设置页状态行展示。 */
+  const handleManualSync = async () => {
+    try {
+      await sync.syncNow();
+    } catch (error) {
+      notify({ kind: "error", message: String(error) });
+    }
+  };
+
+  /** 冲突时显式选择本地版本覆盖远端。 */
+  const handleResolveWithLocal = async () => {
+    try {
+      await sync.resolveWithLocal();
+      notify({ kind: "success", message: copy.syncSucceededNotice });
+    } catch (error) {
+      notify({ kind: "error", message: String(error) });
+    }
+  };
+
+  /** 冲突时采用云端版本；成功后同步控制器会重新加载界面。 */
+  const handleResolveWithRemote = async () => {
+    try {
+      await sync.resolveWithRemote();
+    } catch (error) {
+      notify({ kind: "error", message: String(error) });
+    }
+  };
 
   /**
    * 校验十进制波特率草稿并标记无效状态；持久化在失焦时提交。
@@ -537,13 +712,17 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
           <SvgIcon name="serial" size={18} />
           <span>{copy.serial}</span>
         </button>
+        <button className="settings-nav-item" type="button" aria-current={activeCategory === "sync" ? "page" : undefined} onClick={showSyncSettings}>
+          <SvgIcon name="refresh" size={18} />
+          <span>{copy.sync}</span>
+        </button>
       </nav>
-      <main className="settings-main" id="settings-display" aria-labelledby="settings-group-title">
+      <main className="settings-main" id="settings-display" aria-labelledby={activeCategory === "sync" ? "settings-sync-group-title" : "settings-group-title"}>
         <VerticalScrollbar
           className="settings-main-scroll"
           viewportClassName="settings-main-scroll-viewport"
           height="100%"
-          viewportLabel={activeCategory === "display" ? copy.display : copy.serial}
+          viewportLabel={activeCategory === "display" ? copy.display : activeCategory === "serial" ? copy.serial : copy.sync}
         >
           <div className="settings-main-content">
           {activeCategory === "display" ? (
@@ -583,7 +762,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                 </div>
               </section>
             </>
-          ) : (
+          ) : activeCategory === "serial" ? (
             <>
               <section className="settings-section" aria-labelledby="settings-group-title">
                 <h1 className="settings-section-title" id="settings-group-title">{copy.serialGroupTitle}</h1>
@@ -662,6 +841,63 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                 </div>
               </section>
             </>
+          ) : (
+            <section className="settings-section" aria-labelledby="settings-sync-group-title">
+              <h1 className="settings-section-title" id="settings-sync-group-title">{copy.syncGroupTitle}</h1>
+              <div className="settings-list">
+                <div className="settings-row">
+                  <span className="settings-row-label">{copy.syncProvider}</span>
+                  <Select className="settings-select" ariaLabel={copy.syncProvider} options={copy.syncProviderOptions} value={sync.config.provider} onChange={handleSyncProviderChange} />
+                </div>
+                <div className="settings-row settings-sync-token-row">
+                  <span className="settings-row-label">{copy.syncToken}</span>
+                  <div className="settings-sync-token-wrap">
+                    <div className="settings-sync-token-control">
+                      <Input
+                        type="password"
+                        className="settings-input settings-sync-input"
+                        aria-label={copy.syncToken}
+                        autoComplete="off"
+                        value={syncTokenEditing ? syncTokenDraft : sync.tokenStored ? SAVED_TOKEN_MASK : ""}
+                        onChange={(event) => void handleSyncTokenChange(event.currentTarget.value)}
+                        onBlur={handleSyncTokenBlur}
+                        disabled={!sync.desktop}
+                      />
+                    </div>
+                    {sync.desktop ? (
+                      <button type="button" className="settings-sync-token-link" onClick={handleOpenTokenPage}>{copy.createToken}</button>
+                    ) : (
+                      <span className="settings-sync-hint">{copy.syncDesktopOnly}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="settings-row">
+                  <span className="settings-row-label">{copy.autoSync}</span>
+                  <Switch checked={sync.config.autoSync} onCheckedChange={(autoSync) => sync.updateConfig({ ...sync.config, autoSync })} ariaLabel={copy.autoSync} disabled={!sync.desktop} />
+                </div>
+                <div className="settings-row settings-sync-action-row">
+                  <div className="settings-sync-status">
+                    <span className="settings-row-label">
+                      {sync.phase === "syncing" ? copy.syncing : sync.phase === "conflict" ? copy.syncConflict : sync.phase === "synced" && sync.lastSyncedAt ? `${copy.synced} · ${new Date(sync.lastSyncedAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}` : sync.phase === "synced" ? copy.synced : sync.lastSyncedAt ? new Date(sync.lastSyncedAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US") : copy.neverSynced}
+                    </span>
+                    {sync.error && <span className="settings-sync-error">{sync.error}</span>}
+                  </div>
+                  <div className="settings-sync-actions">
+                    {sync.phase === "conflict" ? (
+                      <>
+                        <Button type="button" variant="secondary" onClick={handleResolveWithRemote}>{copy.useRemote}</Button>
+                        <Button type="button" variant="primary" onClick={handleResolveWithLocal}>{copy.useLocal}</Button>
+                      </>
+                    ) : (
+                      <Button type="button" variant="primary" onClick={handleManualSync} disabled={!sync.desktop || sync.phase === "syncing" || !sync.tokenStored}>
+                        <SvgIcon name="refresh" size={15} />
+                        {copy.syncNow}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
           )}
           </div>
         </VerticalScrollbar>

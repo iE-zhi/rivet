@@ -18,9 +18,11 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 getrandom = "=0.4.3"
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native-sync-persistent"] }
 portable-pty = "=0.9.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "native-tls"] }
 russh = { version = "=0.63.3", default-features = false, features = ["ring", "rsa"] }
 russh-sftp = "=3.0.0"
 serial2 = "=0.2.38"
@@ -29,3 +31,6 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync", "time", "fs"] }
 tempfile = "3"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

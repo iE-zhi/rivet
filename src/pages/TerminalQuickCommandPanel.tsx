@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Button, Input, SvgIcon, Textarea, VerticalScrollbar, useNotification } from "../components/ui";
+import { persistSyncedStorage } from "../rivetSync";
 import type { Locale } from "./SerialPage";
 import {
   createTerminalQuickCommandId,
@@ -144,7 +145,7 @@ export default function TerminalQuickCommandPanel({
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(
+      persistSyncedStorage(
         TERMINAL_QUICK_COMMANDS_STORAGE_KEY,
         serializeTerminalQuickCommands(commands),
       );

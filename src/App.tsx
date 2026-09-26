@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState, type MouseEvent } from "react";
 import appIcon from "../src-tauri/icons/128x128.png";
 import { NotificationProvider, SvgIcon } from "./components/ui";
+import { APP_PREFERENCE_STORAGE_KEYS, persistSyncedStorage, useRivetSync } from "./rivetSync";
 import SerialPage, { type Locale } from "./pages/SerialPage";
 import SettingsPage, { type FontMode, type ThemeMode } from "./pages/SettingsPage";
 
@@ -14,13 +15,6 @@ const TerminalPage = lazy(() => import("./pages/TerminalPage"));
 const SHELL_COPY = {
   zh: { brand: "Rivet", navigation: "主导航", serial: "串口", terminal: "终端", settings: "设置" },
   en: { brand: "Rivet", navigation: "Main navigation", serial: "Serial", terminal: "Terminal", settings: "Settings" },
-} as const;
-
-/** 用户偏好的持久化键；无法读写浏览器存储时应用仍以当前会话状态运行。 */
-const PREFERENCE_STORAGE_KEYS = {
-  locale: "rivet.locale",
-  theme: "rivet.theme",
-  font: "rivet.font",
 } as const;
 
 /** 支持的语言值，用于校验浏览器存储中的输入。 */
@@ -87,7 +81,7 @@ function readStoredPreference<T extends string>(key: string, validate: (value: s
  */
 function persistPreference(key: string, value: string): void {
   try {
-    window.localStorage.setItem(key, value);
+    persistSyncedStorage(key, value);
   } catch (error) {
     console.warn(`Rivet 无法保存偏好设置 ${key}；本次会话中仍会生效。`, error);
   }
@@ -158,11 +152,11 @@ function readSystemPrefersDark(): boolean {
  */
 export default function App() {
   /** 串口会话、日志草稿与设置页面切换期间均保留此偏好状态。 */
-  const [locale, setLocale] = useState<Locale>(() => readStoredPreference(PREFERENCE_STORAGE_KEYS.locale, isLocale, "zh"));
+  const [locale, setLocale] = useState<Locale>(() => readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.locale, isLocale, "zh"));
   /** 用户所选主题模式；初始值为跟随系统。 */
-  const [theme, setTheme] = useState<ThemeMode>(() => readStoredPreference(PREFERENCE_STORAGE_KEYS.theme, isThemeMode, "system"));
+  const [theme, setTheme] = useState<ThemeMode>(() => readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.theme, isThemeMode, "system"));
   /** 用户所选字体模式；默认使用随应用打包的 JetBrains Mono 与 LXGW WenKai。 */
-  const [font, setFont] = useState<FontMode>(() => readStoredPreference(PREFERENCE_STORAGE_KEYS.font, isFontMode, "builtin"));
+  const [font, setFont] = useState<FontMode>(() => readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.font, isFontMode, "builtin"));
   /** 应用级串口默认通信参数；只有设置页能修改，串口会话持有自己的临时配置。 */
   const [serialDefaults, setSerialDefaults] = useState<SerialDefaults>(readSerialDefaultsPreference);
   /** 控制每次启动串口页时是否采用设置页中的默认通信参数。 */
@@ -177,6 +171,8 @@ export default function App() {
   const [page, setPage] = useState<AppPage>("serial");
   /** SSH 终端页首次访问后保持挂载，避免初始加载 xterm 且切页不丢会话。 */
   const [terminalMounted, setTerminalMounted] = useState(false);
+  /** Git 托管同步控制器常驻应用外壳，设置页只负责展示和人工操作。 */
+  const sync = useRivetSync();
   /** 当前 locale 对应的一级导航文案。 */
   const copy = SHELL_COPY[locale];
   /** 应用窗口实际使用的颜色方案，system 模式随系统偏好实时更新。 */
@@ -201,17 +197,17 @@ export default function App() {
 
   useEffect(() => {
     /** 将当前语言保存到浏览器存储，失败时由 helper 保持会话继续可用。 */
-    persistPreference(PREFERENCE_STORAGE_KEYS.locale, locale);
+    persistPreference(APP_PREFERENCE_STORAGE_KEYS.locale, locale);
   }, [locale]);
 
   useEffect(() => {
     /** 将当前主题模式保存到浏览器存储，系统跟随状态以 system 值恢复。 */
-    persistPreference(PREFERENCE_STORAGE_KEYS.theme, theme);
+    persistPreference(APP_PREFERENCE_STORAGE_KEYS.theme, theme);
   }, [theme]);
 
   useEffect(() => {
     /** 将当前字体模式保存到浏览器存储，缺省模式以 builtin 值恢复。 */
-    persistPreference(PREFERENCE_STORAGE_KEYS.font, font);
+    persistPreference(APP_PREFERENCE_STORAGE_KEYS.font, font);
   }, [font]);
 
   useEffect(() => {
@@ -349,7 +345,7 @@ export default function App() {
             </div>
           )}
           <div className="app-view settings-view" hidden={page !== "settings"}>
-            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} />
+            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} sync={sync} />
           </div>
         </NotificationProvider>
       </div>

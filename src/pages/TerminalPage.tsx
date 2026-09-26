@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { persistSyncedStorage } from "../rivetSync";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FitAddon } from "@xterm/addon-fit";
@@ -924,7 +925,7 @@ export default function TerminalPage({ locale, themeKey, onRequestActivate }: Te
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(
+      persistSyncedStorage(
         TERMINAL_CONNECTIONS_STORAGE_KEY,
         serializeTerminalConnections(connections),
       );
