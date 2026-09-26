@@ -101,6 +101,12 @@ interface EnsureSyncRemoteResult {
   secretRevision: string | null;
 }
 
+/** Token 更新后后端返回的远端目标及新内容版本。 */
+interface ReplaceSyncTokenResult {
+  snippetId: string;
+  revision: string;
+}
+
 interface ApplySyncSecretsResult {
   keyPaths: Record<string, string>;
 }
@@ -566,41 +572,45 @@ export function useRivetSync(): RivetSyncController {
     };
   }, [config.provider, desktop]);
 
-  /** 保存当前平台令牌，并自动发现或创建该账号唯一的 Rivet 私有同步片段。 */
+  /** 保存或更新 Token；始终使用新 Token 重新加密本机 SSH 凭据并覆盖或创建云端同步数据。 */
   const saveToken = useCallback(async (token: string) => {
     if (!desktop) throw new Error("同步仅在 Rivet 桌面应用中可用");
     if (!token.trim()) throw new Error("Token 不能为空");
-    await invoke("save_sync_token", { provider: config.provider, token: token.trim() });
-    setTokenStored(true);
 
     try {
+      while (runningRef.current) {
+        try {
+          await runningRef.current;
+        } catch {
+          // 旧同步失败不阻止用户用新 Token 修复云端数据。
+        }
+      }
+
+      setPhase("syncing");
+      setError("");
       const localState = await prepareLocalSyncState();
-      const ensured = await invoke<EnsureSyncRemoteResult>("ensure_sync_remote", {
+      const replaced = await invoke<ReplaceSyncTokenResult>("replace_sync_token", {
         provider: config.provider,
+        token: token.trim(),
         content: localState.rawContent,
       });
       const nextConfig: RivetSyncConfig = {
         ...config,
-        snippetId: ensured.snippetId,
+        snippetId: replaced.snippetId,
       };
+      const now = Date.now();
       writeSyncConfig(nextConfig);
+      writeSyncMetadata({
+        target: syncTarget(nextConfig),
+        lastRemoteRevision: replaced.revision,
+        lastSyncedFingerprint: localState.fingerprint,
+        lastSyncedAt: now,
+      });
       setConfig(nextConfig);
+      setTokenStored(true);
+      setLastSyncedAt(now);
+      setPhase("synced");
       setError("");
-
-      if (ensured.created) {
-        const now = Date.now();
-        writeSyncMetadata({
-          target: syncTarget(nextConfig),
-          lastRemoteRevision: ensured.revision,
-          lastSyncedFingerprint: localState.fingerprint,
-          lastSyncedAt: now,
-        });
-        setLastSyncedAt(now);
-        setPhase("synced");
-      } else {
-        setLastSyncedAt(readSyncMetadata(nextConfig).lastSyncedAt);
-        setPhase("idle");
-      }
     } catch (reason) {
       setPhase("error");
       setError(String(reason));

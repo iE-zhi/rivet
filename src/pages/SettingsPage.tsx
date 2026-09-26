@@ -502,6 +502,8 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 当前页面所有短时反馈均通过应用外壳中的全局通知发送。 */
   const { notify } = useNotification();
+  /** 去重同步状态通知，避免同一状态因页面重渲染重复弹出。 */
+  const lastSyncNoticeRef = useRef("");
   /** 设置页默认展示显示偏好；栏目切换只影响右侧当前分组。 */
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>("display");
   /** 当前拖动的主导航项。 */
@@ -758,9 +760,8 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
       await sync.saveToken(token);
       setSyncTokenDraft("");
       setSyncTokenEditing(false);
-      notify({ kind: "success", message: copy.tokenSavedNotice });
-    } catch (error) {
-      notify({ kind: "error", message: String(error) });
+    } catch {
+      // 保存失败已写入同步状态，由统一全局通知展示。
     }
   };
 
@@ -773,31 +774,30 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     }
   };
 
-  /** 执行一次手动双向同步；最终结果由设置页状态行展示。 */
+  /** 执行一次手动双向同步；结果统一由同步状态转成全局通知。 */
   const handleManualSync = async () => {
     try {
       await sync.syncNow();
-    } catch (error) {
-      notify({ kind: "error", message: String(error) });
+    } catch {
+      // 同步控制器已保存错误状态，由统一通知 effect 展示。
     }
   };
 
-  /** 冲突时显式选择本地版本覆盖远端。 */
+  /** 冲突时显式选择本地版本覆盖远端；结果统一由同步状态通知。 */
   const handleResolveWithLocal = async () => {
     try {
       await sync.resolveWithLocal();
-      notify({ kind: "success", message: copy.syncSucceededNotice });
-    } catch (error) {
-      notify({ kind: "error", message: String(error) });
+    } catch {
+      // 同步控制器已保存错误状态，由统一通知 effect 展示。
     }
   };
 
-  /** 冲突时采用云端版本；成功后同步控制器会重新加载界面。 */
+  /** 冲突时采用云端版本；结果统一由同步状态通知。 */
   const handleResolveWithRemote = async () => {
     try {
       await sync.resolveWithRemote();
-    } catch (error) {
-      notify({ kind: "error", message: String(error) });
+    } catch {
+      // 同步控制器已保存错误状态，由统一通知 effect 展示。
     }
   };
 
@@ -827,6 +827,37 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [backupAction]);
+
+  /** 将同步成功、冲突和后台错误统一转成全局通知，不再在同步卡片内显示提示文本。 */
+  useEffect(() => {
+    let noticeKey = "";
+    let kind: "success" | "warning" | "error" | null = null;
+    let message = "";
+
+    if (sync.error) {
+      noticeKey = `error:${sync.error}`;
+      kind = "error";
+      message = sync.error;
+    } else if (sync.phase === "conflict") {
+      noticeKey = "conflict";
+      kind = "warning";
+      message = copy.syncConflict;
+    } else if (sync.phase === "synced") {
+      noticeKey = `synced:${sync.lastSyncedAt ?? 0}`;
+      kind = "success";
+      message = copy.syncSucceededNotice;
+    } else {
+      lastSyncNoticeRef.current = "";
+      return;
+    }
+
+    if (lastSyncNoticeRef.current === noticeKey || kind === null) {
+      return;
+    }
+
+    lastSyncNoticeRef.current = noticeKey;
+    notify({ kind, message });
+  }, [copy.syncConflict, copy.syncSucceededNotice, notify, sync.error, sync.lastSyncedAt, sync.phase]);
 
   /** 更新单个导出内容分组。 */
   const updateBackupSelection = (key: keyof BackupSelection, checked: boolean) => {
@@ -1268,7 +1299,6 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                     <span className="settings-row-label">
                       {sync.phase === "syncing" ? copy.syncing : sync.phase === "conflict" ? copy.syncConflict : sync.phase === "synced" && sync.lastSyncedAt ? `${copy.synced} · ${new Date(sync.lastSyncedAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}` : sync.phase === "synced" ? copy.synced : sync.lastSyncedAt ? new Date(sync.lastSyncedAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US") : copy.neverSynced}
                     </span>
-                    {sync.error && <span className="settings-sync-error">{sync.error}</span>}
                   </div>
                   <div className="settings-sync-actions">
                     {sync.phase === "conflict" ? (

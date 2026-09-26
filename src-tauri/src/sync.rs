@@ -120,11 +120,21 @@ pub struct EnsureSyncRemoteResult {
     secret_revision: Option<String>,
 }
 
+/// Token 更新成功后返回新的远端目标和内容版本。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceSyncTokenResult {
+    snippet_id: String,
+    revision: String,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncEnvelope {
     envelope_version: u8,
     document: Value,
+    #[serde(default)]
+    secret_revision: Option<String>,
     encrypted_secrets: EncryptedSyncSecrets,
 }
 
@@ -227,14 +237,17 @@ pub async fn sync_token_exists(provider: String) -> Result<bool, String> {
     .map_err(|error| format!("读取同步 Token 任务失败：{error}"))?
 }
 
-/// 将当前平台访问令牌保存到操作系统凭据库。
-#[tauri::command]
-pub async fn save_sync_token(provider: String, token: String) -> Result<(), String> {
-    let provider = SyncProvider::parse(provider.trim())?;
+/// 校验同步 Token 的本地格式并返回去除首尾空白后的值。
+fn validate_sync_token(token: String) -> Result<String, String> {
     let token = token.trim().to_string();
     if token.is_empty() || token.len() > 8192 || contains_control(&token) {
         return Err("同步 Token 格式无效".to_string());
     }
+    Ok(token)
+}
+
+/// 将已校验的 Token 写入当前平台的系统凭据库。
+async fn store_sync_token(provider: SyncProvider, token: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         token_entry(provider)?
             .set_password(&token)
@@ -242,6 +255,46 @@ pub async fn save_sync_token(provider: String, token: String) -> Result<(), Stri
     })
     .await
     .map_err(|error| format!("保存同步 Token 任务失败：{error}"))?
+}
+
+/// 将当前平台访问令牌保存到操作系统凭据库。
+#[tauri::command]
+pub async fn save_sync_token(provider: String, token: String) -> Result<(), String> {
+    let provider = SyncProvider::parse(provider.trim())?;
+    let token = validate_sync_token(token)?;
+    store_sync_token(provider, token).await
+}
+
+/// 使用新 Token 重新加密本机 SSH 凭据并覆盖当前账号的远端同步数据。
+///
+/// 远端写入成功后才替换系统凭据库中的 Token；不会读取或解密旧的云端 SSH 密文。
+#[tauri::command]
+pub async fn replace_sync_token(
+    provider: String,
+    token: String,
+    content: String,
+) -> Result<ReplaceSyncTokenResult, String> {
+    let provider = SyncProvider::parse(provider.trim())?;
+    let token = validate_sync_token(token)?;
+    validate_sync_content(&content)?;
+
+    let client = http_client()?;
+    let encoded = encode_remote_content(provider, &token, &content).await?;
+    let remote = match find_sync_remote(&client, provider, &token).await? {
+        Some(remote) => {
+            write_remote(&client, &remote, &token, &encoded).await?;
+            remote
+        }
+        None => create_sync_remote(&client, provider, &token, &encoded).await?,
+    };
+    let revision = revision_for_content(&encoded);
+
+    store_sync_token(provider, token).await?;
+
+    Ok(ReplaceSyncTokenResult {
+        snippet_id: remote.snippet_id,
+        revision,
+    })
 }
 
 /// 删除当前平台访问令牌。
@@ -628,11 +681,13 @@ async fn encode_remote_content(
         let canonical = canonicalize_sync_document(&content)?;
         let document: Value = serde_json::from_str(&canonical)
             .map_err(|error| format!("解析同步文档失败：{error}"))?;
+        let secret_revision = sync_secrets::local_secret_revision(&content)?;
         let encrypted_secrets =
             sync_secrets::encrypt_local_secrets(&provider_name, &token, &content)?;
         let envelope = SyncEnvelope {
             envelope_version: SYNC_ENVELOPE_VERSION,
             document,
+            secret_revision: Some(secret_revision),
             encrypted_secrets,
         };
         let encoded = serde_json::to_string_pretty(&envelope)
@@ -678,8 +733,8 @@ fn parse_sync_envelope(content: &str) -> Result<Option<SyncEnvelope>, String> {
 }
 
 fn decode_remote_file(
-    provider: SyncProvider,
-    token: &str,
+    _provider: SyncProvider,
+    _token: &str,
     mut file: RemoteSyncFile,
 ) -> Result<RemoteSyncFile, String> {
     if !file.exists {
@@ -692,14 +747,11 @@ fn decode_remote_file(
         file.secret_revision = None;
         return Ok(file);
     };
-    let provider_name = provider.credential_user();
-    let secret_revision =
-        sync_secrets::encrypted_secret_revision(provider_name, token, &envelope.encrypted_secrets)?;
     let document = serde_json::to_string_pretty(&envelope.document)
         .map_err(|error| format!("恢复同步文档失败：{error}"))?;
     validate_sync_content(&document)?;
     file.content = Some(document);
-    file.secret_revision = Some(secret_revision);
+    file.secret_revision = envelope.secret_revision;
     Ok(file)
 }
 
@@ -1346,6 +1398,18 @@ fn open_external_url(url: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Token 格式校验：去除首尾空白，拒绝空值、控制字符和超长内容。
+    #[test]
+    fn validates_sync_token_format() {
+        assert_eq!(
+            validate_sync_token("  token-value  ".to_string()).as_deref(),
+            Ok("token-value")
+        );
+        assert!(validate_sync_token("   ".to_string()).is_err());
+        assert!(validate_sync_token("token\nvalue".to_string()).is_err());
+        assert!(validate_sync_token("x".repeat(8193)).is_err());
+    }
 
     #[test]
     fn validates_snippet_ids() {

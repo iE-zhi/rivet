@@ -52,6 +52,7 @@ pub fn run() -> tauri::Result<()> {
             ssh::close_ssh_session,
             sync::sync_token_exists,
             sync::save_sync_token,
+            sync::replace_sync_token,
             sync::delete_sync_token,
             sync::open_sync_token_page,
             sync::open_project_page,
