@@ -75,7 +75,13 @@ jobs:
           tagName: v__VERSION__
           releaseName: Rivet v__VERSION__
           releaseBody: |
-            Rivet v__VERSION__
+            ## v0.1.1 更新内容
+
+            - 修复跨设备首次同步逻辑：新设备首次配置 Token 时优先读取已有云端数据，本地为空时自动应用云端配置；本地与云端均有改动时进入冲突处理。
+            - 导航栏顺序与可见性加入跨设备同步。
+            - 同步 Token 状态加载完成前禁用相关操作，减少初始化阶段的状态竞态。
+            - 统一应用版本来源，关于页等界面自动显示当前版本。
+            - 整理同步与凭据加密相关单元测试，便于后续回归验证。
 
             请在下方 Assets 下载对应平台的安装包。
           releaseDraft: false
