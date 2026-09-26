@@ -1,0 +1,44 @@
+pkgname=rivet
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Cross-platform toolbox for development, debugging, serial, SSH and device connectivity"
+arch=('x86_64')
+url="https://github.com/iE-zhi/rivet"
+license=('custom')
+depends=(
+  'webkit2gtk-4.1'
+  'gtk3'
+  'libappindicator'
+  'xdg-utils'
+)
+makedepends=(
+  'base-devel'
+  'nodejs'
+  'pnpm'
+  'rust'
+  'openssl'
+  'appmenu-gtk-module'
+  'librsvg'
+  'xdotool'
+)
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  pnpm install --frozen-lockfile
+  pnpm tauri build --no-bundle
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+
+  install -Dm755 src-tauri/target/release/rivet "$pkgdir/usr/bin/rivet"
+  install -Dm644 design/app-icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/rivet.svg"
+  install -Dm644 packaging/arch/rivet.desktop "$pkgdir/usr/share/applications/rivet.desktop"
+
+  install -Dm644 THIRD_PARTY_NOTICES.md "$pkgdir/usr/share/licenses/rivet/THIRD_PARTY_NOTICES.md"
+  for license_file in licenses/*; do
+    install -Dm644 "$license_file" "$pkgdir/usr/share/licenses/rivet/$(basename "$license_file")"
+  done
+}
