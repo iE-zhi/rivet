@@ -66,6 +66,27 @@ body {
 .preview-scroll-line:last-child {
   border-bottom: 0;
 }
+.preview-horizontal-scroll {
+  width: 420px;
+  border: 1px solid var(--r-border);
+  background: var(--r-surface);
+}
+.preview-horizontal-scroll-content {
+  display: flex;
+  width: max-content;
+  height: 64px;
+  align-items: center;
+}
+.preview-horizontal-scroll-item {
+  display: flex;
+  width: 96px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--r-border);
+  color: var(--r-text);
+  font-size: 12px;
+}
 .preview-notification-note { max-width: 260px; padding-top: 260px; color: var(--r-subtle); font-size: 12px; line-height: 1.5; }
 
 @media (max-width: 900px) {

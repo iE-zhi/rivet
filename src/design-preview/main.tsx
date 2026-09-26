@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   Button,
   Checkbox,
+  HorizontalScrollbar,
   Input,
   NotificationProvider,
   Radio,
@@ -149,6 +150,22 @@ function ComponentPreview({ id, dark }: { id: string; dark: boolean }) {
                 ))}
               </div>
             </VerticalScrollbar>
+          </div>
+        </Row>
+      );
+    case "horizontal-scrollbar":
+      return (
+        <Row label="Default">
+          <div className="preview-horizontal-scroll">
+            <HorizontalScrollbar height={64} viewportLabel="水平滚动条预览">
+              <div className="preview-horizontal-scroll-content">
+                {Array.from({ length: 10 }, (_, index) => (
+                  <span className="preview-horizontal-scroll-item" key={index}>
+                    Tab {String(index + 1).padStart(2, "0")}
+                  </span>
+                ))}
+              </div>
+            </HorizontalScrollbar>
           </div>
         </Row>
       );

@@ -3,6 +3,9 @@ import checkIcon from "../../assets/svg/check.svg?url";
 import chevronIcon from "../../assets/svg/chevron.svg?url";
 import closeIcon from "../../assets/svg/close.svg?url";
 import displayIcon from "../../assets/svg/display.svg?url";
+import downloadIcon from "../../assets/svg/download.svg?url";
+import fileIcon from "../../assets/svg/file.svg?url";
+import folderIcon from "../../assets/svg/folder.svg?url";
 import globeIcon from "../../assets/svg/globe.svg?url";
 import infoIcon from "../../assets/svg/info.svg?url";
 import moreIcon from "../../assets/svg/more.svg?url";
@@ -13,11 +16,15 @@ import searchIcon from "../../assets/svg/search.svg?url";
 import settingIcon from "../../assets/svg/setting.svg?url";
 import sendIcon from "../../assets/svg/send.svg?url";
 import serialIcon from "../../assets/svg/serial.svg?url";
+import splitHorizontalIcon from "../../assets/svg/split-horizontal.svg?url";
+import splitVerticalIcon from "../../assets/svg/split-vertical.svg?url";
+import terminalIcon from "../../assets/svg/terminal.svg?url";
+import uploadIcon from "../../assets/svg/upload.svg?url";
 import unplugIcon from "../../assets/svg/unplug.svg?url";
 import waveIcon from "../../assets/svg/wave.svg?url";
 
 /** 可共用的单色图标标识；SVG 通过 CSS mask 继承所在位置的文字颜色。 */
-export type SvgIconName = "check" | "chevron" | "close" | "display" | "globe" | "info" | "more" | "plus" | "plug" | "refresh" | "search" | "send" | "serial" | "setting" | "unplug" | "wave";
+export type SvgIconName = "check" | "chevron" | "close" | "display" | "download" | "file" | "folder" | "globe" | "info" | "more" | "plus" | "plug" | "refresh" | "search" | "send" | "serial" | "setting" | "split-horizontal" | "split-vertical" | "terminal" | "unplug" | "upload" | "wave";
 
 /** SVG 图标组件参数；尺寸以 CSS 像素计，默认 17px。 */
 export interface SvgIconProps {
@@ -35,6 +42,9 @@ const SVG_ICON_SOURCES: Record<SvgIconName, string> = {
   chevron: chevronIcon,
   close: closeIcon,
   display: displayIcon,
+  download: downloadIcon,
+  file: fileIcon,
+  folder: folderIcon,
   globe: globeIcon,
   info: infoIcon,
   more: moreIcon,
@@ -45,6 +55,10 @@ const SVG_ICON_SOURCES: Record<SvgIconName, string> = {
   send: sendIcon,
   serial: serialIcon,
   setting: settingIcon,
+  "split-horizontal": splitHorizontalIcon,
+  "split-vertical": splitVerticalIcon,
+  terminal: terminalIcon,
+  upload: uploadIcon,
   unplug: unplugIcon,
   wave: waveIcon,
 };

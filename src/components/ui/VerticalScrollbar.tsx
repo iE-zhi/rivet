@@ -41,6 +41,21 @@ export interface VerticalScrollbarProps
   autoScrollToBottom?: boolean;
 }
 
+/** 绑定外部滚动模型的共用纵向滚动条轨道属性。 */
+export interface VerticalScrollbarTrackProps
+  extends Omit<HTMLAttributes<HTMLDivElement>, "onChange"> {
+  /** 当前滚动位置，可使用像素或逻辑行，只要三个数值保持同一单位。 */
+  scrollTop: number;
+  /** 可滚动内容总高度。 */
+  scrollHeight: number;
+  /** 当前可见区域高度。 */
+  clientHeight: number;
+  /** 滑块最小高度，单位为 CSS 像素。 */
+  minThumbSize?: number;
+  /** 点击或拖动共用滑块后回传新的滚动位置。 */
+  onScrollTopChange: (scrollTop: number) => void;
+}
+
 /**
  * 渲染保留原生滚轮、触控与键盘滚动的纵向视口，并按内容尺寸更新自绘滑块。
  * @param props 内容、视口高度、可访问名称、可选底部跟随与外层 HTML 属性；高度必须形成有限的滚动区域。
@@ -309,6 +324,132 @@ export function VerticalScrollbar({
           onPointerDown={onThumbPointerDown}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * 复用 Rivet 共用滚动条视觉和交互，但由外部组件维护真实滚动视口。
+ * 适用于 xterm 这类内部自带滚动模型、不能直接包进普通滚动容器的组件。
+ */
+export function VerticalScrollbarTrack({
+  scrollTop,
+  scrollHeight,
+  clientHeight,
+  minThumbSize = 28,
+  className = "",
+  onScrollTopChange,
+  ...props
+}: VerticalScrollbarTrackProps) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  const [metrics, setMetrics] = useState<Metrics>({
+    top: 0,
+    height: minThumbSize,
+    visible: false,
+  });
+
+  const update = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const trackHeight = track.clientHeight;
+    if (scrollHeight <= clientHeight || clientHeight <= 0 || trackHeight <= 0) {
+      setMetrics({ top: 0, height: minThumbSize, visible: false });
+      return;
+    }
+
+    const thumbHeight = Math.min(
+      trackHeight,
+      Math.max(minThumbSize, (clientHeight / scrollHeight) * trackHeight),
+    );
+    const scrollRange = Math.max(0, scrollHeight - clientHeight);
+    const thumbRange = Math.max(0, trackHeight - thumbHeight);
+    const top = scrollRange > 0
+      ? (Math.min(scrollRange, Math.max(0, scrollTop)) / scrollRange) * thumbRange
+      : 0;
+    setMetrics({ top, height: thumbHeight, visible: true });
+  }, [clientHeight, minThumbSize, scrollHeight, scrollTop]);
+
+  useLayoutEffect(() => {
+    update();
+    const track = trackRef.current;
+    if (!track) return;
+    const resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(track);
+    return () => {
+      resizeObserver.disconnect();
+      dragCleanupRef.current?.();
+    };
+  }, [update]);
+
+  const onTrackPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || !metrics.visible) return;
+    const track = trackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    const thumbRange = Math.max(0, track.clientHeight - metrics.height);
+    const scrollRange = Math.max(0, scrollHeight - clientHeight);
+    const nextTop = Math.min(
+      thumbRange,
+      Math.max(0, event.clientY - rect.top - metrics.height / 2),
+    );
+    onScrollTopChange(thumbRange > 0 ? (nextTop / thumbRange) * scrollRange : 0);
+  };
+
+  const onThumbPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const track = trackRef.current;
+    if (!track || dragCleanupRef.current) return;
+
+    const thumb = event.currentTarget;
+    const pointerId = event.pointerId;
+    const startY = event.clientY;
+    const startScrollTop = scrollTop;
+    const scrollRange = Math.max(0, scrollHeight - clientHeight);
+    const thumbRange = Math.max(1, track.clientHeight - metrics.height);
+    const ratio = scrollRange / thumbRange;
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      onScrollTopChange(startScrollTop + (moveEvent.clientY - startY) * ratio);
+    };
+    let cleanup: () => void;
+    const onPointerEnd = (endEvent: PointerEvent) => {
+      if (endEvent.pointerId !== pointerId) return;
+      cleanup();
+    };
+    cleanup = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerEnd);
+      window.removeEventListener("pointercancel", onPointerEnd);
+      if (dragCleanupRef.current === cleanup) dragCleanupRef.current = null;
+      if (thumb.hasPointerCapture(pointerId)) thumb.releasePointerCapture(pointerId);
+    };
+
+    dragCleanupRef.current = cleanup;
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerEnd);
+    window.addEventListener("pointercancel", onPointerEnd);
+    thumb.setPointerCapture(pointerId);
+  };
+
+  return (
+    <div
+      ref={trackRef}
+      className={`rivet-vertical-scrollbar-track ${className} ${metrics.visible ? "" : "is-hidden"}`.trim()}
+      onPointerDown={onTrackPointerDown}
+      aria-hidden="true"
+      {...props}
+    >
+      <div
+        className="rivet-vertical-scrollbar-thumb"
+        style={{
+          height: metrics.height,
+          transform: `translateY(${metrics.top}px)`,
+        }}
+        onPointerDown={onThumbPointerDown}
+      />
     </div>
   );
 }

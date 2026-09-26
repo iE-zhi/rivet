@@ -15,7 +15,7 @@ export interface TerminalProps {
 
 export function Terminal({ lines, className = "" }: TerminalProps) {
   return (
-    <div className={`rivet-terminal ${className}`.trim()}>
+    <div className={`rivet-terminal rivet-native-vertical-scrollbar ${className}`.trim()}>
       {lines.map((line, index) => {
         const kind = line.kind ?? "plain";
         return (

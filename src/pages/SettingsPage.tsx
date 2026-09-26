@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent } from "react";
-import { Input, Select, SvgIcon, Switch, useNotification, type SelectOption } from "../components/ui";
+import { Input, Select, SvgIcon, Switch, VerticalScrollbar, useNotification, type SelectOption } from "../components/ui";
 import { MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialDefaults, type SerialFlowControl, type SerialParity } from "./serialDefaults";
 import { SERIAL_RX_IDLE_MS_MAX, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_PACKET_BYTES_MAX, SERIAL_RX_PACKET_BYTES_MIN, type SerialRxSettings } from "./serialRxSettings";
 import type { Locale } from "./SerialPage";
@@ -539,7 +539,13 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
         </button>
       </nav>
       <main className="settings-main" id="settings-display" aria-labelledby="settings-group-title">
-        <div className="settings-main-content">
+        <VerticalScrollbar
+          className="settings-main-scroll"
+          viewportClassName="settings-main-scroll-viewport"
+          height="100%"
+          viewportLabel={activeCategory === "display" ? copy.display : copy.serial}
+        >
+          <div className="settings-main-content">
           {activeCategory === "display" ? (
             <>
               <section className="settings-section" aria-labelledby="settings-group-title">
@@ -657,7 +663,8 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
               </section>
             </>
           )}
-        </div>
+          </div>
+        </VerticalScrollbar>
       </main>
     </div>
   );

@@ -1,0 +1,358 @@
+.sftp-panel {
+  position: absolute;
+  z-index: 70;
+  right: 14px;
+  bottom: 12px;
+  display: flex;
+  width: 360px;
+  max-width: calc(100% - 28px);
+  height: min(560px, calc(100% - 24px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--r-border);
+  border-radius: 10px;
+  background: var(--r-bg);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .18), 0 3px 12px rgba(0, 0, 0, .08);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px) scale(.985);
+  transition: opacity .16s ease, transform .16s ease, visibility .16s ease;
+}
+
+.sftp-panel.open {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+
+.sftp-header {
+  display: flex;
+  height: 42px;
+  flex: 0 0 42px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--r-border);
+  background: var(--r-surface);
+}
+
+.sftp-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sftp-unavailable,
+.sftp-empty {
+  display: grid;
+  min-height: 96px;
+  place-items: center;
+  color: var(--r-muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.sftp-unavailable {
+  flex: 1;
+}
+
+.sftp-toolbar {
+  display: flex;
+  gap: 7px;
+  padding: 10px;
+  border-bottom: 1px solid var(--r-border);
+  background: var(--r-bg);
+}
+
+.sftp-button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--r-border);
+  border-radius: 6px;
+  background: var(--r-surface);
+  color: var(--r-subtle);
+  cursor: pointer;
+  font: inherit;
+}
+
+.sftp-button:hover:not(:disabled),
+.sftp-button:focus-visible {
+  background: var(--r-surface-2);
+  color: var(--r-text);
+}
+
+.sftp-button:focus-visible {
+  outline: 2px solid var(--r-primary-light);
+  outline-offset: 1px;
+}
+
+.sftp-button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.sftp-parent-button .rivet-svg-icon {
+  transform: rotate(180deg);
+}
+
+.sftp-path-form {
+  min-width: 0;
+  flex: 1;
+}
+
+.sftp-path-input {
+  width: 100% !important;
+  height: 32px !important;
+  border-radius: 6px !important;
+  font-size: 10px !important;
+}
+
+.sftp-file-header,
+.sftp-file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 34px;
+  align-items: center;
+}
+
+.sftp-file-header {
+  height: 32px;
+  flex: 0 0 32px;
+  color: var(--r-muted);
+  font-size: 9px;
+}
+
+.sftp-file-header > div {
+  padding: 0 10px;
+}
+
+.sftp-file-header > div:last-child {
+  padding: 0;
+}
+
+.sftp-file-list {
+  min-height: 0;
+  flex: 1;
+}
+
+.sftp-entry {
+  position: relative;
+  border-top: 1px solid var(--r-border);
+}
+
+.sftp-file-row {
+  min-height: 38px;
+}
+
+.sftp-file-row:hover {
+  background: var(--r-surface);
+}
+
+.sftp-file-main {
+  display: flex;
+  min-width: 0;
+  height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--r-text);
+  cursor: default;
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+}
+
+.sftp-file-main.is-directory:not(:disabled) {
+  cursor: pointer;
+}
+
+.sftp-file-main:disabled {
+  opacity: .55;
+}
+
+.sftp-file-main .rivet-svg-icon {
+  flex: 0 0 auto;
+  color: var(--r-subtle);
+}
+
+.sftp-file-main span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sftp-file-size {
+  padding: 0 10px;
+  color: var(--r-muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.sftp-row-actions {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.sftp-row-actions .terminal-icon-button {
+  width: 26px;
+  height: 26px;
+}
+
+.sftp-row-menu {
+  position: absolute;
+  z-index: 110;
+  top: 28px;
+  right: 5px;
+  min-width: 104px;
+  padding: 4px;
+  border: 1px solid var(--r-border);
+  border-radius: 7px;
+  background: var(--r-surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .15);
+}
+
+.sftp-row-menu button {
+  display: flex;
+  width: 100%;
+  height: 30px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--r-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+}
+
+.sftp-row-menu button:hover {
+  background: var(--r-surface-2);
+}
+
+.sftp-row-menu button.danger {
+  color: var(--r-danger);
+}
+
+.sftp-inline-action {
+  display: grid;
+  min-height: 42px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 10px;
+  border-top: 1px solid var(--r-border);
+  background: var(--r-surface);
+}
+
+.sftp-inline-action .rivet-input {
+  height: 29px;
+  border-radius: 5px;
+  font-size: 10px;
+}
+
+.sftp-inline-action button {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--r-border);
+  border-radius: 5px;
+  background: var(--r-bg);
+  color: var(--r-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+}
+
+.sftp-inline-action button:hover:not(:disabled) {
+  background: var(--r-surface-2);
+}
+
+.sftp-inline-action button.primary {
+  border-color: var(--r-primary);
+  background: var(--r-primary);
+  color: #fff;
+}
+
+.sftp-inline-action button.danger {
+  border-color: var(--r-danger);
+  background: var(--r-danger);
+  color: #fff;
+}
+
+.sftp-inline-action button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.sftp-delete-action {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  color: var(--r-danger);
+  font-size: 9px;
+}
+
+.sftp-delete-action > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.terminal-toolbar-button {
+  display: grid;
+  width: 30px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--r-subtle);
+  cursor: pointer;
+  font: inherit;
+}
+
+.terminal-toolbar-button:hover:not(:disabled),
+.terminal-toolbar-button.active {
+  background: var(--r-surface-2);
+  color: var(--r-text);
+}
+
+.terminal-toolbar-button.active {
+  color: var(--r-primary-light);
+}
+
+.terminal-toolbar-button:focus-visible {
+  outline: 2px solid var(--r-primary-light);
+  outline-offset: 1px;
+}
+
+.terminal-toolbar-button:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+@media (max-width: 760px) {
+  .sftp-panel {
+    right: 8px;
+    width: min(360px, calc(100% - 16px));
+    max-width: none;
+  }
+}

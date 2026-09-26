@@ -1,16 +1,19 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type MouseEvent } from "react";
 import appIcon from "../src-tauri/icons/128x128.png";
 import { NotificationProvider, SvgIcon } from "./components/ui";
 import SerialPage, { type Locale } from "./pages/SerialPage";
 import SettingsPage, { type FontMode, type ThemeMode } from "./pages/SettingsPage";
+
 import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
 import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
 import { deserializeNotificationSettings, isNotificationSettings, NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings, type NotificationSettings } from "./preferences/notificationSettings";
 
-/** 串口工作台外壳所需的导航与品牌文案。 */
+const TerminalPage = lazy(() => import("./pages/TerminalPage"));
+
+/** 应用外壳所需的导航与品牌文案。 */
 const SHELL_COPY = {
-  zh: { brand: "Rivet 串口工作台", navigation: "主导航", serial: "串口", settings: "设置" },
-  en: { brand: "Rivet serial console", navigation: "Main navigation", serial: "Serial", settings: "Settings" },
+  zh: { brand: "Rivet", navigation: "主导航", serial: "串口", terminal: "终端", settings: "设置" },
+  en: { brand: "Rivet", navigation: "Main navigation", serial: "Serial", terminal: "Terminal", settings: "Settings" },
 } as const;
 
 /** 用户偏好的持久化键；无法读写浏览器存储时应用仍以当前会话状态运行。 */
@@ -30,7 +33,7 @@ const THEME_MODE_VALUES = ["system", "light", "dark"] as const;
 const FONT_MODE_VALUES = ["builtin", "system"] as const;
 
 /** 应用外壳当前展示的一级页面。 */
-type AppPage = "serial" | "settings";
+type AppPage = "serial" | "terminal" | "settings";
 
 /**
  * 校验浏览器存储中读取的语言值。
@@ -150,8 +153,8 @@ function readSystemPrefersDark(): boolean {
 }
 
 /**
- * 提供应用导航、持久化偏好和始终挂载的串口会话页面。
- * @returns 应用外壳、一级导航、串口页面及语言、主题和字体设置。
+ * 提供应用导航、持久化偏好，以及切页后保持活动状态的串口与 SSH 终端页面。
+ * @returns 应用外壳、一级导航、串口/终端页面及语言、主题和字体设置。
  */
 export default function App() {
   /** 串口会话、日志草稿与设置页面切换期间均保留此偏好状态。 */
@@ -170,8 +173,10 @@ export default function App() {
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(readNotificationSettingsPreference);
   /** 系统外观状态仅在主题模式为 system 时决定最终颜色方案。 */
   const [systemPrefersDark, setSystemPrefersDark] = useState(readSystemPrefersDark);
-  /** 一级页面切换不卸载 SerialPage，以维持串口会话、事件订阅和日志状态。 */
+  /** 一级页面切换不卸载已挂载的串口/终端页面，以维持活动会话。 */
   const [page, setPage] = useState<AppPage>("serial");
+  /** SSH 终端页首次访问后保持挂载，避免初始加载 xterm 且切页不丢会话。 */
+  const [terminalMounted, setTerminalMounted] = useState(false);
   /** 当前 locale 对应的一级导航文案。 */
   const copy = SHELL_COPY[locale];
   /** 应用窗口实际使用的颜色方案，system 模式随系统偏好实时更新。 */
@@ -239,11 +244,25 @@ export default function App() {
     setPage("serial");
   };
 
+  /** 系统窗口关闭被终端拦截时切回终端页显示确认弹窗。 */
+  const activateTerminalPage = useCallback(() => {
+    setTerminalMounted(true);
+    setPage("terminal");
+  }, []);
+
   /**
-   * 导航到设置页；阻止浏览器修改 URL hash。
-   * @param event 设置导航链接的点击事件。
+   * 导航到 SSH 终端页；阻止浏览器修改 URL hash。
+   * @param event 终端导航链接的点击事件。
    * @returns 无；切换显示页状态。
    */
+
+  const navigateToTerminal = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    setTerminalMounted(true);
+    setPage("terminal");
+  };
+
+  /** 导航到设置页并阻止浏览器修改 URL hash。 */
   const navigateToSettings = (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     setPage("settings");
@@ -295,6 +314,16 @@ export default function App() {
         >
           <SvgIcon name="serial" size={24} className="serial-icon" />
         </a>
+        <a
+          className={`rail-link${page === "terminal" ? " active" : ""}`}
+          href="#terminal-page"
+          onClick={navigateToTerminal}
+          aria-current={page === "terminal" ? "page" : undefined}
+          aria-label={copy.terminal}
+          title={copy.terminal}
+        >
+          <SvgIcon name="terminal" size={23} />
+        </a>
         <span className="rail-spacer" />
         <a
           className={`rail-link settings-rail-link${page === "settings" ? " active" : ""}`}
@@ -312,6 +341,13 @@ export default function App() {
           <div className="app-view serial-view" hidden={page !== "serial"}>
             <SerialPage locale={locale} serialDefaults={serialDefaults} useSerialDefaults={useSerialDefaults} serialRxSettings={serialRxSettings} />
           </div>
+          {terminalMounted && (
+            <div className="app-view terminal-view" hidden={page !== "terminal"}>
+              <Suspense fallback={null}>
+                <TerminalPage locale={locale} themeKey={resolvedTheme} onRequestActivate={activateTerminalPage} />
+              </Suspense>
+            </div>
+          )}
           <div className="app-view settings-view" hidden={page !== "settings"}>
             <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} />
           </div>

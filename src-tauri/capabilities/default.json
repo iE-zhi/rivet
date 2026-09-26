@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "串口工作台主窗口权限",
   "windows": ["main"],
-  "permissions": ["core:default", "core:event:default"]
+  "permissions": ["core:default", "core:event:default", "core:window:allow-destroy"]
 }
