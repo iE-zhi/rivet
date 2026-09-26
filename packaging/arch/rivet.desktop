@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Rivet
+Comment=Cross-platform development and device connectivity toolbox
+Exec=rivet
+Icon=rivet
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true
