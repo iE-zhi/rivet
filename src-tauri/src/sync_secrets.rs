@@ -6,6 +6,7 @@ use std::{
     collections::HashMap,
     fs::{self, OpenOptions},
     io::Write,
+    num::NonZeroU32,
     path::Path,
 };
 
@@ -13,6 +14,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ring::{
     aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM},
     digest::{digest, SHA256},
+    pbkdf2::{self, PBKDF2_HMAC_SHA256},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -32,12 +34,29 @@ const MAX_PRIVATE_KEY_BYTES: usize = 256 * 1024;
 const MAX_SECRET_BUNDLE_BYTES: usize = 768 * 1024;
 /// AEAD 附加认证数据，绑定 Rivet 的秘密同步用途。
 const SECRET_AAD: &[u8] = b"Rivet Sync SSH Secrets v1";
+/// 本地跨设备备份使用独立 AAD，避免与云端同步密文互换使用。
+const BACKUP_SECRET_AAD: &[u8] = b"Rivet Portable Backup SSH Secrets v1";
+/// PBKDF2 盐长度。
+const BACKUP_SALT_BYTES: usize = 16;
+/// 本地备份密码派生迭代次数。
+const BACKUP_PBKDF2_ITERATIONS: u32 = 200_000;
 
 /// 云端同步文档内保存的认证加密数据。
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptedSyncSecrets {
     version: u8,
+    nonce: String,
+    ciphertext: String,
+}
+
+/// 可离线跨设备恢复的本地备份密文；密钥只由用户提供的备份密码派生。
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedBackupSecrets {
+    version: u8,
+    iterations: u32,
+    salt: String,
     nonce: String,
     ciphertext: String,
 }
@@ -95,6 +114,46 @@ pub fn encrypt_local_secrets(
     })
 }
 
+/// 使用用户设置的备份密码加密 SSH 敏感数据；文件可复制到任意离线设备恢复。
+pub fn encrypt_local_backup_secrets(
+    password: &str,
+    document: &str,
+) -> Result<EncryptedBackupSecrets, String> {
+    validate_backup_password(password)?;
+    let bundle = build_local_bundle(document)?;
+    let mut plaintext = serialize_bundle(&bundle)?;
+    let mut salt = [0_u8; BACKUP_SALT_BYTES];
+    let mut nonce_bytes = [0_u8; NONCE_BYTES];
+    getrandom::fill(&mut salt).map_err(|error| format!("生成备份加密盐失败：{error}"))?;
+    getrandom::fill(&mut nonce_bytes)
+        .map_err(|error| format!("生成备份加密随机数失败：{error}"))?;
+    let key = backup_encryption_key(password, &salt, BACKUP_PBKDF2_ITERATIONS)?;
+    key.seal_in_place_append_tag(
+        Nonce::assume_unique_for_key(nonce_bytes),
+        Aad::from(BACKUP_SECRET_AAD),
+        &mut plaintext,
+    )
+    .map_err(|_| "加密本地备份 SSH 凭据失败".to_string())?;
+
+    Ok(EncryptedBackupSecrets {
+        version: ENCRYPTED_SECRET_VERSION,
+        iterations: BACKUP_PBKDF2_ITERATIONS,
+        salt: BASE64.encode(salt),
+        nonce: BASE64.encode(nonce_bytes),
+        ciphertext: BASE64.encode(plaintext),
+    })
+}
+
+/// 使用备份密码解密并恢复 SSH 密码、私钥口令和私钥文件。
+pub fn apply_encrypted_backup_secrets(
+    app: &AppHandle,
+    password: &str,
+    encrypted: &EncryptedBackupSecrets,
+) -> Result<HashMap<String, String>, String> {
+    let bundle = decrypt_backup_bundle(password, encrypted)?;
+    apply_secret_bundle(app, bundle)
+}
+
 /// 解密云端秘密并计算稳定指纹，不把明文返回给前端。
 pub fn encrypted_secret_revision(
     provider: &str,
@@ -114,6 +173,14 @@ pub fn apply_encrypted_secrets(
     encrypted: &EncryptedSyncSecrets,
 ) -> Result<HashMap<String, String>, String> {
     let bundle = decrypt_bundle(provider, token, encrypted)?;
+    apply_secret_bundle(app, bundle)
+}
+
+/// 将已经解密并校验的秘密集合恢复到系统凭据库和 Rivet 管理的私钥目录。
+fn apply_secret_bundle(
+    app: &AppHandle,
+    bundle: SecretBundle,
+) -> Result<HashMap<String, String>, String> {
     let mut managed_key_paths = HashMap::new();
     let key_dir = app
         .path()
@@ -141,15 +208,15 @@ pub fn apply_encrypted_secrets(
                     .ok_or_else(|| format!("SSH 连接 {} 的同步私钥缺失", connection.id))?;
                 let key_bytes = BASE64
                     .decode(encoded)
-                    .map_err(|error| format!("解码 SSH 同步私钥失败：{error}"))?;
+                    .map_err(|error| format!("解码 SSH 私钥失败：{error}"))?;
                 if key_bytes.is_empty() || key_bytes.len() > MAX_PRIVATE_KEY_BYTES {
-                    return Err(format!("SSH 连接 {} 的同步私钥大小无效", connection.id));
+                    return Err(format!("SSH 连接 {} 的私钥大小无效", connection.id));
                 }
                 let path = managed_key_path(&key_dir, &connection.id);
                 write_private_key(&path, &key_bytes)?;
                 managed_key_paths.insert(connection.id, path.to_string_lossy().into_owned());
             }
-            _ => return Err("SSH 同步凭据认证方式无效".to_string()),
+            _ => return Err("SSH 凭据认证方式无效".to_string()),
         }
     }
 
@@ -272,6 +339,86 @@ fn decrypt_bundle(
     Ok(bundle)
 }
 
+/// 使用备份密码解密离线备份中的 SSH 秘密集合。
+fn decrypt_backup_bundle(
+    password: &str,
+    encrypted: &EncryptedBackupSecrets,
+) -> Result<SecretBundle, String> {
+    validate_backup_password(password)?;
+    if encrypted.version != ENCRYPTED_SECRET_VERSION {
+        return Err("本地备份 SSH 凭据加密格式不受支持".to_string());
+    }
+    if encrypted.iterations < 100_000 || encrypted.iterations > 1_000_000 {
+        return Err("本地备份密码派生参数无效".to_string());
+    }
+    let salt = BASE64
+        .decode(&encrypted.salt)
+        .map_err(|error| format!("解码备份加密盐失败：{error}"))?;
+    if salt.len() != BACKUP_SALT_BYTES {
+        return Err("备份加密盐长度无效".to_string());
+    }
+    let nonce = BASE64
+        .decode(&encrypted.nonce)
+        .map_err(|error| format!("解码备份 Nonce 失败：{error}"))?;
+    let nonce: [u8; NONCE_BYTES] = nonce
+        .try_into()
+        .map_err(|_| "备份 Nonce 长度无效".to_string())?;
+    let mut ciphertext = BASE64
+        .decode(&encrypted.ciphertext)
+        .map_err(|error| format!("解码备份密文失败：{error}"))?;
+    if ciphertext.len() > MAX_SECRET_BUNDLE_BYTES + 32 {
+        return Err("备份 SSH 密文过大".to_string());
+    }
+    let key = backup_encryption_key(password, &salt, encrypted.iterations)?;
+    let plaintext = key
+        .open_in_place(
+            Nonce::assume_unique_for_key(nonce),
+            Aad::from(BACKUP_SECRET_AAD),
+            &mut ciphertext,
+        )
+        .map_err(|_| "备份密码错误或备份文件已损坏".to_string())?;
+    let bundle: SecretBundle = serde_json::from_slice(plaintext)
+        .map_err(|error| format!("解析备份 SSH 凭据失败：{error}"))?;
+    if bundle.version != SECRET_BUNDLE_VERSION {
+        return Err("备份 SSH 凭据格式不受支持".to_string());
+    }
+    Ok(bundle)
+}
+
+/// 使用 PBKDF2-HMAC-SHA256 从用户备份密码派生 AES-256-GCM 密钥。
+fn backup_encryption_key(
+    password: &str,
+    salt: &[u8],
+    iterations: u32,
+) -> Result<LessSafeKey, String> {
+    validate_backup_password(password)?;
+    let iterations =
+        NonZeroU32::new(iterations).ok_or_else(|| "备份密码派生参数无效".to_string())?;
+    let mut key_bytes = [0_u8; 32];
+    pbkdf2::derive(
+        PBKDF2_HMAC_SHA256,
+        iterations,
+        salt,
+        password.as_bytes(),
+        &mut key_bytes,
+    );
+    let unbound = UnboundKey::new(&AES_256_GCM, &key_bytes)
+        .map_err(|_| "初始化备份加密密钥失败".to_string())?;
+    Ok(LessSafeKey::new(unbound))
+}
+
+/// 备份密码只存在于当前导入/导出操作内存中，不写入凭据库或备份文件。
+fn validate_backup_password(password: &str) -> Result<(), String> {
+    let length = password.chars().count();
+    if length < 8 {
+        return Err("备份密码至少需要 8 个字符".to_string());
+    }
+    if length > 256 || password.chars().any(char::is_control) {
+        return Err("备份密码格式无效".to_string());
+    }
+    Ok(())
+}
+
 /// 从平台和高熵访问 Token 派生 AES-256-GCM 密钥。
 fn encryption_key(provider: &str, token: &str) -> Result<LessSafeKey, String> {
     if token.is_empty() {
@@ -367,6 +514,17 @@ mod tests {
         let remote_revision = encrypted_secret_revision("github", "test-token", &encrypted)
             .expect("remote revision should succeed");
         assert_eq!(local_revision, remote_revision);
+    }
+
+    #[test]
+    fn portable_backup_uses_password_and_rejects_wrong_password() {
+        let document = r#"{"terminalConnections":[]}"#;
+        let encrypted = encrypt_local_backup_secrets("portable-password", document)
+            .expect("backup encryption should succeed");
+        let bundle = decrypt_backup_bundle("portable-password", &encrypted)
+            .expect("correct password should decrypt");
+        assert_eq!(bundle.version, SECRET_BUNDLE_VERSION);
+        assert!(decrypt_backup_bundle("wrong-password", &encrypted).is_err());
     }
 
     #[test]

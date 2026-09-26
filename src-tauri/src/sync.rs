@@ -1,6 +1,12 @@
 //! Rivet 配置同步：通过 GitHub Gist、Gitee 代码片段和 GitLab Personal Snippet 读写统一同步文件，并将访问令牌保存在系统凭据库。
 
-use std::{error::Error as _, time::Duration};
+use std::{
+    error::Error as _,
+    fs,
+    io::Write,
+    path::Path,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
@@ -9,8 +15,9 @@ use reqwest::{Client, RequestBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::AppHandle;
+use tauri_plugin_dialog::DialogExt;
 
-use crate::sync_secrets::{self, EncryptedSyncSecrets};
+use crate::sync_secrets::{self, EncryptedBackupSecrets, EncryptedSyncSecrets};
 
 /// 同步访问令牌在系统凭据库中的服务名。
 const TOKEN_SERVICE_NAME: &str = "Rivet Sync";
@@ -32,6 +39,10 @@ const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const GITLAB_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
 /// 云端封装格式版本。
 const SYNC_ENVELOPE_VERSION: u8 = 1;
+/// 本地恢复文件格式版本。
+const LOCAL_BACKUP_VERSION: u8 = 1;
+/// 本地恢复文件最大 2 MiB，覆盖当前 900 KiB 同步数据及加密开销。
+const MAX_LOCAL_BACKUP_BYTES: usize = 2 * 1024 * 1024;
 
 /// 前端可选择的远端片段平台。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -125,6 +136,45 @@ pub struct ApplySyncSecretsResult {
 #[serde(rename_all = "camelCase")]
 pub struct PrepareSyncLocalResult {
     secret_revision: String,
+}
+
+/// 本地备份包含的可选数据分组。
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupSelection {
+    settings: bool,
+    serial_quick_commands: bool,
+    terminal_connections: bool,
+    terminal_quick_commands: bool,
+}
+
+impl BackupSelection {
+    fn any(self) -> bool {
+        self.settings
+            || self.serial_quick_commands
+            || self.terminal_connections
+            || self.terminal_quick_commands
+    }
+}
+
+/// 本地导出文件：记录用户选择的数据分组，SSH 密码、私钥口令和私钥内容使用独立备份密码加密。
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalBackupFile {
+    backup_version: u8,
+    exported_at: u64,
+    included: BackupSelection,
+    document: Value,
+    encrypted_secrets: EncryptedBackupSecrets,
+}
+
+/// 读取本地恢复文件后返回前端先做严格业务字段校验；backup 仍只包含密文秘密。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadSyncBackupResult {
+    backup: String,
+    content: String,
+    included: BackupSelection,
 }
 
 /// 已验证的远端片段目标。
@@ -363,6 +413,177 @@ pub async fn apply_sync_remote_secrets(
     .await
     .map_err(|error| format!("同步数据恢复任务失败：{error}"))??;
     Ok(ApplySyncSecretsResult { key_paths })
+}
+
+/// 将当前可同步数据导出为可离线跨设备恢复的本地文件；SSH 敏感数据只使用用户备份密码加密。
+#[tauri::command]
+pub async fn export_sync_backup(
+    app: AppHandle,
+    content: String,
+    password: String,
+    included: BackupSelection,
+) -> Result<bool, String> {
+    if !included.any() {
+        return Err("请至少选择一项要导出的内容".to_string());
+    }
+    validate_sync_content(&content)?;
+    let canonical = canonicalize_sync_document(&content)?;
+    let document: Value = serde_json::from_str(&canonical)
+        .map_err(|error| format!("生成本地备份配置失败：{error}"))?;
+    let encrypted_secrets = tauri::async_runtime::spawn_blocking({
+        let content = content.clone();
+        let password = password.clone();
+        move || sync_secrets::encrypt_local_backup_secrets(&password, &content)
+    })
+    .await
+    .map_err(|error| format!("加密本地备份任务失败：{error}"))??;
+    let exported_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("获取导出时间失败：{error}"))?
+        .as_secs();
+    let backup = LocalBackupFile {
+        backup_version: LOCAL_BACKUP_VERSION,
+        exported_at,
+        included,
+        document,
+        encrypted_secrets,
+    };
+    let backup = serde_json::to_string_pretty(&backup)
+        .map_err(|error| format!("序列化本地备份失败：{error}"))?;
+    validate_local_backup_size(&backup)?;
+    tauri::async_runtime::spawn_blocking(move || save_sync_backup_blocking(&app, &backup))
+        .await
+        .map_err(|error| format!("导出本地备份任务失败：{error}"))?
+}
+
+/// 打开本地恢复文件并返回普通配置与原始密文备份；前端先完成业务字段校验后再恢复 SSH 秘密。
+#[tauri::command]
+pub async fn read_sync_backup(app: AppHandle) -> Result<Option<ReadSyncBackupResult>, String> {
+    let backup = tauri::async_runtime::spawn_blocking(move || read_sync_backup_blocking(&app))
+        .await
+        .map_err(|error| format!("读取本地备份任务失败：{error}"))??;
+    let Some(backup) = backup else {
+        return Ok(None);
+    };
+    let parsed = parse_local_backup(&backup)?;
+    let content = serde_json::to_string_pretty(&parsed.document)
+        .map_err(|error| format!("解析本地备份配置失败：{error}"))?;
+    validate_sync_content(&content)?;
+    Ok(Some(ReadSyncBackupResult {
+        backup,
+        content,
+        included: parsed.included,
+    }))
+}
+
+/// 前端确认备份业务字段合法后，恢复其中的 SSH 密码、私钥口令和私钥文件。
+#[tauri::command]
+pub async fn apply_sync_backup_secrets(
+    app: AppHandle,
+    backup: String,
+    password: String,
+) -> Result<ApplySyncSecretsResult, String> {
+    validate_local_backup_size(&backup)?;
+    let parsed = parse_local_backup(&backup)?;
+    let encrypted = parsed.encrypted_secrets;
+    let key_paths = tauri::async_runtime::spawn_blocking(move || {
+        sync_secrets::apply_encrypted_backup_secrets(&app, &password, &encrypted)
+    })
+    .await
+    .map_err(|error| format!("恢复本地备份 SSH 数据任务失败：{error}"))??;
+    Ok(ApplySyncSecretsResult { key_paths })
+}
+
+/// 校验本地恢复文件大小，避免异常文件占用过多内存。
+fn validate_local_backup_size(content: &str) -> Result<(), String> {
+    if content.is_empty() {
+        return Err("备份文件为空".to_string());
+    }
+    if content.len() > MAX_LOCAL_BACKUP_BYTES {
+        return Err(format!(
+            "备份文件超过 {} MiB 上限",
+            MAX_LOCAL_BACKUP_BYTES / 1024 / 1024
+        ));
+    }
+    Ok(())
+}
+
+/// 解析并验证本地恢复文件的外层格式。
+fn parse_local_backup(content: &str) -> Result<LocalBackupFile, String> {
+    validate_local_backup_size(content)?;
+    let backup: LocalBackupFile =
+        serde_json::from_str(content).map_err(|error| format!("备份文件格式无效：{error}"))?;
+    if backup.backup_version != LOCAL_BACKUP_VERSION {
+        return Err("备份文件版本不受支持".to_string());
+    }
+    if !backup.document.is_object() {
+        return Err("备份中的配置格式无效".to_string());
+    }
+    Ok(backup)
+}
+
+/// 在阻塞线程显示保存对话框并原子写入本地恢复文件。
+fn save_sync_backup_blocking(app: &AppHandle, content: &str) -> Result<bool, String> {
+    let Some(selected_path) = app
+        .dialog()
+        .file()
+        .set_file_name("Rivet备份.rivet.json")
+        .add_filter("Rivet 备份", &["json"])
+        .blocking_save_file()
+    else {
+        return Ok(false);
+    };
+    let path = selected_path
+        .into_path()
+        .map_err(|error| format!("备份保存路径无效：{error}"))?;
+    write_sync_backup_file(&path, content)?;
+    Ok(true)
+}
+
+/// 在阻塞线程选择并读取一个本地恢复文件。
+fn read_sync_backup_blocking(app: &AppHandle) -> Result<Option<String>, String> {
+    let Some(selected_path) = app
+        .dialog()
+        .file()
+        .add_filter("Rivet 备份", &["json"])
+        .blocking_pick_file()
+    else {
+        return Ok(None);
+    };
+    let path = selected_path
+        .into_path()
+        .map_err(|error| format!("备份文件路径无效：{error}"))?;
+    let bytes = fs::read(&path).map_err(|error| format!("读取备份文件失败：{error}"))?;
+    if bytes.len() > MAX_LOCAL_BACKUP_BYTES {
+        return Err(format!(
+            "备份文件超过 {} MiB 上限",
+            MAX_LOCAL_BACKUP_BYTES / 1024 / 1024
+        ));
+    }
+    let content = String::from_utf8(bytes).map_err(|_| "备份文件不是 UTF-8 JSON".to_string())?;
+    validate_local_backup_size(&content)?;
+    Ok(Some(content))
+}
+
+/// 使用临时文件完整写入后再替换目标，避免导出过程中留下半个备份文件。
+fn write_sync_backup_file(path: &Path, content: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|error| format!("创建备份临时文件失败：{error}"))?;
+    temporary
+        .write_all(content.as_bytes())
+        .map_err(|error| format!("写入备份文件失败：{error}"))?;
+    temporary
+        .as_file()
+        .sync_all()
+        .map_err(|error| format!("同步备份文件失败：{error}"))?;
+    temporary
+        .persist(path)
+        .map_err(|error| format!("替换备份文件失败：{}", error.error))?;
+    Ok(())
 }
 
 /// 构造系统凭据库中的 Token 条目。
@@ -1171,6 +1392,31 @@ mod tests {
             parsed["terminalConnections"][0]["keyPath"].as_str(),
             Some("")
         );
+    }
+
+    #[test]
+    fn parses_portable_local_backup() {
+        let encrypted = sync_secrets::encrypt_local_backup_secrets(
+            "portable-test-password",
+            r#"{"terminalConnections":[]}"#,
+        )
+        .expect("backup secrets should encrypt");
+        let backup = LocalBackupFile {
+            backup_version: LOCAL_BACKUP_VERSION,
+            exported_at: 1,
+            included: BackupSelection {
+                settings: true,
+                serial_quick_commands: true,
+                terminal_connections: true,
+                terminal_quick_commands: true,
+            },
+            document: json!({"version": 1, "terminalConnections": []}),
+            encrypted_secrets: encrypted,
+        };
+        let encoded = serde_json::to_string(&backup).expect("backup should serialize");
+        let parsed = parse_local_backup(&encoded).expect("backup should parse");
+        assert_eq!(parsed.backup_version, LOCAL_BACKUP_VERSION);
+        assert_eq!(parsed.document["version"].as_u64(), Some(1));
     }
 
     #[test]

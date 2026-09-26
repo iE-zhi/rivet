@@ -344,8 +344,16 @@ button, input, textarea { font: inherit; }
 .settings-sync-status { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; }
 .settings-sync-error { color: var(--r-danger); font-size: 10px; overflow-wrap: anywhere; }
 .settings-sync-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; }
-.settings-sync-actions .rivet-button { display: inline-flex; height: 24px; padding: 0 10px; align-items: center; gap: 6px; border-radius: 6px; }
+.settings-sync-actions .rivet-button, .settings-sync-backup-actions .rivet-button, .settings-sync-backup-editor-actions .rivet-button { display: inline-flex; height: 24px; padding: 0 10px; align-items: center; gap: 6px; border-radius: 6px; }
 .settings-sync-action-row { align-items: center; }
+.settings-sync-backup-area { display: flex; align-items: flex-end; flex-direction: column; gap: 8px; margin-top: 8px; padding-right: 16px; }
+.settings-sync-backup-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.settings-sync-backup-editor { display: flex; width: 320px; max-width: 100%; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--r-border); border-radius: 8px; background: var(--r-bg); }
+.settings-sync-backup-options { display: flex; flex-direction: column; gap: 7px; padding-bottom: 2px; }
+.settings-sync-backup-options-title { color: var(--r-subtle); font-size: 10px; font-weight: 600; }
+.settings-sync-backup-options .rivet-choice { font-size: 11px; }
+.settings-sync-backup-password { width: 100%; height: 32px; border-radius: 6px; font-size: 12px; }
+.settings-sync-backup-editor-actions { display: flex; justify-content: flex-end; gap: 7px; }
 
 @media (max-width: 1000px) { .serial-page { grid-template-columns: minmax(260px, 1fr) 310px; } .console-area { padding: 0 20px; } .control-panel { --quick-command-x: 17px; --quick-command-bottom: 17px; } .control-panel-content { padding: 22px 17px 20px; } }
 @media (max-width: 760px) { html, body, #root { height: auto; min-height: 100%; } .app-shell { min-height: 100vh; height: auto; grid-template-columns: 48px minmax(0, 1fr); } .serial-page { height: auto; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; } .rail { grid-row: 1; padding-bottom: 5px; } .brand-mark { width: 30px; height: 30px; } .brand-mark img { width: 37.5px; height: 37.5px; } .rail-divider { width: 30px; } .console-area { min-height: 55vh; padding: 0 14px; } .control-panel { --quick-command-x: 16px; --quick-command-bottom: 16px; grid-column: 1; overflow: visible; border-top: 1px solid var(--r-border); border-left: 0; } .control-panel-scroll { height: auto !important; flex: none; } .control-panel-scroll .rivet-vertical-scrollbar-viewport { height: auto !important; overflow: visible !important; padding-right: 0; } .control-panel-scroll .rivet-vertical-scrollbar-viewport > div { min-height: 0; } .control-panel-scroll .rivet-vertical-scrollbar-track { display: none; } .control-panel-content { flex: none; padding: 22px 16px 16px; } .log-panel { min-height: 340px; } }

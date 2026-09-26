@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent } from "react";
-import { Button, Input, Select, SvgIcon, Switch, VerticalScrollbar, useNotification, type SelectOption } from "../components/ui";
+import { Button, Checkbox, Input, Select, SvgIcon, Switch, VerticalScrollbar, useNotification, type SelectOption } from "../components/ui";
 import { MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialDefaults, type SerialFlowControl, type SerialParity } from "./serialDefaults";
 import { SERIAL_RX_IDLE_MS_MAX, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_PACKET_BYTES_MAX, SERIAL_RX_PACKET_BYTES_MIN, type SerialRxSettings } from "./serialRxSettings";
 import type { Locale } from "./SerialPage";
 import type { NotificationSettings } from "../preferences/notificationSettings";
-import type { RivetSyncController, SyncProvider } from "../rivetSync";
+import { DEFAULT_BACKUP_SELECTION, type BackupSelection, type RivetSyncController, type SyncProvider } from "../rivetSync";
 
 /** 支持的主题模式；system 会随操作系统外观变化。 */
 export type ThemeMode = "system" | "light" | "dark";
@@ -32,6 +32,32 @@ interface SettingsPageCopy {
   autoSync: string;
   /** 手动同步按钮。 */
   syncNow: string;
+  /** 从本地恢复文件导入。 */
+  importBackup: string;
+  /** 将当前配置导出到本地恢复文件。 */
+  exportBackup: string;
+  /** 本地恢复文件的加密密码。 */
+  backupPassword: string;
+  /** 导出时再次输入备份密码。 */
+  confirmBackupPassword: string;
+  /** 关闭本地备份密码编辑。 */
+  cancelBackup: string;
+  /** 备份密码长度提示。 */
+  backupPasswordHint: string;
+  /** 两次备份密码不一致。 */
+  backupPasswordMismatch: string;
+  /** 导出内容分组选项标题。 */
+  backupContents: string;
+  /** 导出应用设置。 */
+  backupSettings: string;
+  /** 导出串口快捷命令。 */
+  backupSerialQuickCommands: string;
+  /** 导出终端连接以及关联 SSH 凭据。 */
+  backupTerminalConnections: string;
+  /** 导出终端快捷命令。 */
+  backupTerminalQuickCommands: string;
+  /** 未选择任何导出内容时的提示。 */
+  backupSelectAtLeastOne: string;
   /** 打开平台 Token 创建页的按钮。 */
   createToken: string;
   /** 桌面端能力提示。 */
@@ -54,6 +80,10 @@ interface SettingsPageCopy {
   tokenSavedNotice: string;
   /** 同步成功通知。 */
   syncSucceededNotice: string;
+  /** 本地备份导出成功通知。 */
+  backupExportedNotice: string;
+  /** 本地备份导入成功通知。 */
+  backupImportedNotice: string;
   /** Git 平台下拉选项。 */
   syncProviderOptions: SelectOption[];
   /** 显示设置组标题，呈现在设置列表容器之外。 */
@@ -126,6 +156,19 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     syncToken: "访问 Token",
     autoSync: "检测到改动时自动同步",
     syncNow: "立即同步",
+    importBackup: "导入",
+    exportBackup: "导出",
+    backupPassword: "备份密码",
+    confirmBackupPassword: "确认备份密码",
+    cancelBackup: "取消",
+    backupPasswordHint: "备份密码至少需要 8 个字符。",
+    backupPasswordMismatch: "两次输入的备份密码不一致。",
+    backupContents: "导出内容",
+    backupSettings: "设置",
+    backupSerialQuickCommands: "串口快捷命令",
+    backupTerminalConnections: "终端连接（含 SSH 密码和私钥）",
+    backupTerminalQuickCommands: "终端快捷命令",
+    backupSelectAtLeastOne: "请至少选择一项要导出的内容。",
     createToken: "创建 Token",
     syncDesktopOnly: "同步仅在 Rivet 桌面应用中可用。",
     syncing: "正在同步…",
@@ -137,6 +180,8 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     useRemote: "使用云端",
     tokenSavedNotice: "同步 Token 已保存。",
     syncSucceededNotice: "同步完成。",
+    backupExportedNotice: "本地备份已导出。",
+    backupImportedNotice: "本地备份已恢复。",
     syncProviderOptions: [
       { value: "github", label: "GitHub" },
       { value: "gitee", label: "Gitee" },
@@ -199,6 +244,19 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     syncToken: "Access token",
     autoSync: "Sync automatically when changes are detected",
     syncNow: "Sync now",
+    importBackup: "Import",
+    exportBackup: "Export",
+    backupPassword: "Backup password",
+    confirmBackupPassword: "Confirm backup password",
+    cancelBackup: "Cancel",
+    backupPasswordHint: "Use at least 8 characters for the backup password.",
+    backupPasswordMismatch: "The backup passwords do not match.",
+    backupContents: "Export contents",
+    backupSettings: "Settings",
+    backupSerialQuickCommands: "Serial quick commands",
+    backupTerminalConnections: "Terminal connections (including SSH passwords and keys)",
+    backupTerminalQuickCommands: "Terminal quick commands",
+    backupSelectAtLeastOne: "Select at least one item to export.",
     createToken: "Create token",
     syncDesktopOnly: "Sync is available in the Rivet desktop app only.",
     syncing: "Syncing…",
@@ -210,6 +268,8 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     useRemote: "Use remote",
     tokenSavedNotice: "Sync token saved.",
     syncSucceededNotice: "Sync completed.",
+    backupExportedNotice: "Local backup exported.",
+    backupImportedNotice: "Local backup restored.",
     syncProviderOptions: [
       { value: "github", label: "GitHub" },
       { value: "gitee", label: "Gitee" },
@@ -388,6 +448,13 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   const [syncTokenDraft, setSyncTokenDraft] = useState("");
   /** 区分真实 Token 草稿与已保存 Token 的圆点占位值。 */
   const [syncTokenEditing, setSyncTokenEditing] = useState(false);
+  /** 本地恢复文件操作；密码只保存在当前设置页内存中。 */
+  const [backupAction, setBackupAction] = useState<"import" | "export" | null>(null);
+  const [backupPassword, setBackupPassword] = useState("");
+  const [backupPasswordConfirm, setBackupPasswordConfirm] = useState("");
+  const [backupSelection, setBackupSelection] = useState<BackupSelection>({ ...DEFAULT_BACKUP_SELECTION });
+  /** 导入/导出展开面板，用于点击外部区域时自动关闭。 */
+  const backupEditorRef = useRef<HTMLDivElement>(null);
   /** 文本草稿允许编辑期间显示无效内容，持久化状态始终只保存有效整数。 */
   const [baudDraft, setBaudDraft] = useState(String(serialDefaults.baudRate));
   /** 波特率无效时保留草稿并给出即时反馈，失焦后恢复最后一个有效值。 */
@@ -540,6 +607,67 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   const handleResolveWithRemote = async () => {
     try {
       await sync.resolveWithRemote();
+    } catch (error) {
+      notify({ kind: "error", message: String(error) });
+    }
+  };
+
+  /** 打开导入/导出的备份密码输入；密码只保留在内存，不写入任何持久化存储。 */
+  const openBackupAction = (action: "import" | "export") => {
+    setBackupAction(action);
+    setBackupPassword("");
+    setBackupPasswordConfirm("");
+    if (action === "export") setBackupSelection({ ...DEFAULT_BACKUP_SELECTION });
+  };
+
+  /** 关闭本地备份密码输入并清空内存中的密码。 */
+  const closeBackupAction = () => {
+    setBackupAction(null);
+    setBackupPassword("");
+    setBackupPasswordConfirm("");
+  };
+
+  /** 展开导入/导出面板后，点击面板外任意区域立即关闭并清空密码。 */
+  useEffect(() => {
+    if (!backupAction) return;
+    const handlePointerDown = (event: globalThis.PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || backupEditorRef.current?.contains(target)) return;
+      closeBackupAction();
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [backupAction]);
+
+  /** 更新单个导出内容分组。 */
+  const updateBackupSelection = (key: keyof BackupSelection, checked: boolean) => {
+    setBackupSelection((current) => ({ ...current, [key]: checked }));
+  };
+
+  /** 使用用户输入的备份密码执行完全离线、可跨设备的导入或导出。 */
+  const handleConfirmBackup = async () => {
+    if (!backupAction) return;
+    if (backupAction === "export" && !Object.values(backupSelection).some(Boolean)) {
+      notify({ kind: "warning", message: copy.backupSelectAtLeastOne });
+      return;
+    }
+    if (backupPassword.length < 8) {
+      notify({ kind: "warning", message: copy.backupPasswordHint });
+      return;
+    }
+    if (backupAction === "export" && backupPassword !== backupPasswordConfirm) {
+      notify({ kind: "warning", message: copy.backupPasswordMismatch });
+      return;
+    }
+    try {
+      const completed = backupAction === "export"
+        ? await sync.exportBackup(backupPassword, backupSelection)
+        : await sync.importBackup(backupPassword);
+      if (!completed) return;
+      notify({ kind: "success", message: backupAction === "export" ? copy.backupExportedNotice : copy.backupImportedNotice });
+      const imported = backupAction === "import";
+      closeBackupAction();
+      if (imported) window.setTimeout(() => window.location.reload(), 120);
     } catch (error) {
       notify({ kind: "error", message: String(error) });
     }
@@ -889,16 +1017,68 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                         <Button type="button" variant="primary" onClick={handleResolveWithLocal}>{copy.useLocal}</Button>
                       </>
                     ) : (
-                      <Button type="button" variant="primary" onClick={handleManualSync} disabled={!sync.desktop || sync.phase === "syncing" || !sync.tokenStored}>
-                        <SvgIcon name="refresh" size={15} />
-                        {copy.syncNow}
-                      </Button>
+                      <>
+                        <Button type="button" variant="primary" onClick={handleManualSync} disabled={!sync.desktop || sync.phase === "syncing" || !sync.tokenStored}>
+                          <SvgIcon name="refresh" size={15} />
+                          {copy.syncNow}
+                        </Button>
+                        <Button type="button" variant="primary" onClick={() => openBackupAction("import")} disabled={!sync.desktop || sync.phase === "syncing"}>
+                          <SvgIcon name="upload" size={15} />
+                          {copy.importBackup}
+                        </Button>
+                        <Button type="button" variant="primary" onClick={() => openBackupAction("export")} disabled={!sync.desktop || sync.phase === "syncing"}>
+                          <SvgIcon name="download" size={15} />
+                          {copy.exportBackup}
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
               </div>
+              <div className="settings-sync-backup-area">
+                {backupAction && (
+                  <div className="settings-sync-backup-editor" ref={backupEditorRef}>
+                    {backupAction === "export" && (
+                      <div className="settings-sync-backup-options">
+                        <span className="settings-sync-backup-options-title">{copy.backupContents}</span>
+                        <Checkbox checked={backupSelection.settings} onChange={(event) => updateBackupSelection("settings", event.currentTarget.checked)} label={copy.backupSettings} />
+                        <Checkbox checked={backupSelection.serialQuickCommands} onChange={(event) => updateBackupSelection("serialQuickCommands", event.currentTarget.checked)} label={copy.backupSerialQuickCommands} />
+                        <Checkbox checked={backupSelection.terminalConnections} onChange={(event) => updateBackupSelection("terminalConnections", event.currentTarget.checked)} label={copy.backupTerminalConnections} />
+                        <Checkbox checked={backupSelection.terminalQuickCommands} onChange={(event) => updateBackupSelection("terminalQuickCommands", event.currentTarget.checked)} label={copy.backupTerminalQuickCommands} />
+                      </div>
+                    )}
+                    <Input
+                      type="password"
+                      className="settings-sync-backup-password"
+                      aria-label={copy.backupPassword}
+                      autoComplete="new-password"
+                      placeholder={copy.backupPassword}
+                      value={backupPassword}
+                      onChange={(event) => setBackupPassword(event.currentTarget.value)}
+                    />
+                    {backupAction === "export" && (
+                      <Input
+                        type="password"
+                        className="settings-sync-backup-password"
+                        aria-label={copy.confirmBackupPassword}
+                        autoComplete="new-password"
+                        placeholder={copy.confirmBackupPassword}
+                        value={backupPasswordConfirm}
+                        onChange={(event) => setBackupPasswordConfirm(event.currentTarget.value)}
+                      />
+                    )}
+                    <div className="settings-sync-backup-editor-actions">
+                      <Button type="button" variant="secondary" onClick={closeBackupAction}>{copy.cancelBackup}</Button>
+                      <Button type="button" variant="primary" onClick={() => void handleConfirmBackup()}>
+                        {backupAction === "export" ? copy.exportBackup : copy.importBackup}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </section>
           )}
+
           </div>
         </VerticalScrollbar>
       </main>

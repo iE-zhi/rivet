@@ -17,6 +17,14 @@ export const APP_PREFERENCE_STORAGE_KEYS = {
 /** 受支持的远端片段服务。 */
 export type SyncProvider = "github" | "gitee" | "gitlab";
 
+/** 本地备份可单独选择导出的数据分组。 */
+export interface BackupSelection {
+  settings: boolean;
+  serialQuickCommands: boolean;
+  terminalConnections: boolean;
+  terminalQuickCommands: boolean;
+}
+
 /** 同步目标配置；访问令牌单独保存在系统凭据库。 */
 export interface RivetSyncConfig {
   provider: SyncProvider;
@@ -42,6 +50,8 @@ export interface RivetSyncController {
   syncNow: () => Promise<void>;
   resolveWithLocal: () => Promise<void>;
   resolveWithRemote: () => Promise<void>;
+  exportBackup: (password: string, included: BackupSelection) => Promise<boolean>;
+  importBackup: (password: string) => Promise<boolean>;
 }
 
 /** 云端同步文件的稳定格式；所有字段在应用前都会再次严格校验。 */
@@ -99,11 +109,23 @@ interface PrepareSyncLocalResult {
   secretRevision: string;
 }
 
+interface ReadSyncBackupResult {
+  backup: string;
+  content: string;
+  included: BackupSelection;
+}
+
 const SYNC_CONFIG_STORAGE_KEY = "rivet.sync.config";
 const SYNC_METADATA_STORAGE_KEY = "rivet.sync.metadata";
 const SYNC_DATA_CHANGED_EVENT = "rivet:sync-data-changed";
 const AUTO_SYNC_DEBOUNCE_MS = 1200;
 const MAX_SNIPPET_ID_LENGTH = 256;
+export const DEFAULT_BACKUP_SELECTION: BackupSelection = {
+  settings: true,
+  serialQuickCommands: true,
+  terminalConnections: true,
+  terminalQuickCommands: true,
+};
 const DEFAULT_SYNC_CONFIG: RivetSyncConfig = {
   provider: "github",
   snippetId: "",
@@ -273,9 +295,8 @@ function canonicalizeSyncDocument(document: RivetSyncDocument): RivetSyncDocumen
   };
 }
 
-/** 判断当前本机是否仍是 Rivet 首次启动的默认可同步状态。 */
-function isPristineSyncDocument(document: RivetSyncDocument): boolean {
-  const pristine: RivetSyncDocument = {
+function createPristineSyncDocument(): RivetSyncDocument {
+  return {
     version: 1,
     settings: {
       locale: "zh",
@@ -290,7 +311,36 @@ function isPristineSyncDocument(document: RivetSyncDocument): boolean {
     terminalConnections: [],
     terminalQuickCommands: [],
   };
-  return serializeSyncDocument(document) === serializeSyncDocument(pristine);
+}
+
+/** 根据用户选择生成本地备份内容；未选择的分组只写入默认占位，不包含本机真实数据。 */
+function createBackupDocument(included: BackupSelection): RivetSyncDocument {
+  const current = createSyncDocument();
+  const pristine = createPristineSyncDocument();
+  return {
+    version: 1,
+    settings: included.settings ? current.settings : pristine.settings,
+    serialQuickCommands: included.serialQuickCommands ? current.serialQuickCommands : [],
+    terminalConnections: included.terminalConnections ? current.terminalConnections : [],
+    terminalQuickCommands: included.terminalQuickCommands ? current.terminalQuickCommands : [],
+  };
+}
+
+/** 把备份中选择的分组覆盖到当前本机，未选择的分组保持不变。 */
+function mergeBackupDocument(document: RivetSyncDocument, included: BackupSelection): RivetSyncDocument {
+  const current = createSyncDocument();
+  return {
+    version: 1,
+    settings: included.settings ? document.settings : current.settings,
+    serialQuickCommands: included.serialQuickCommands ? document.serialQuickCommands : current.serialQuickCommands,
+    terminalConnections: included.terminalConnections ? document.terminalConnections : current.terminalConnections,
+    terminalQuickCommands: included.terminalQuickCommands ? document.terminalQuickCommands : current.terminalQuickCommands,
+  };
+}
+
+/** 判断当前本机是否仍是 Rivet 首次启动的默认可同步状态。 */
+function isPristineSyncDocument(document: RivetSyncDocument): boolean {
+  return serializeSyncDocument(document) === serializeSyncDocument(createPristineSyncDocument());
 }
 
 /** 校验远端连接列表时要求所有输入项都能完整恢复，禁止静默丢弃损坏项。 */
@@ -757,6 +807,33 @@ export function useRivetSync(): RivetSyncController {
   const resolveWithLocal = useCallback(() => performSync("local"), [performSync]);
   const resolveWithRemote = useCallback(() => performSync("remote"), [performSync]);
 
+  /** 导出可复制到任意离线设备恢复的本地文件；SSH 敏感数据只由用户备份密码加密。 */
+  const exportBackup = useCallback(async (password: string, included: BackupSelection) => {
+    if (!desktop) throw new Error("本地备份仅在 Rivet 桌面应用中可用");
+    const content = serializeSyncDocument(createBackupDocument(included));
+    return invoke<boolean>("export_sync_backup", {
+      content,
+      password,
+      included,
+    });
+  }, [desktop]);
+
+  /** 从本地恢复文件离线恢复配置、密码、私钥口令和私钥文件，不依赖任何 Git 平台。 */
+  const importBackup = useCallback(async (password: string) => {
+    if (!desktop) throw new Error("本地恢复仅在 Rivet 桌面应用中可用");
+    const selected = await invoke<ReadSyncBackupResult | null>("read_sync_backup");
+    if (!selected) return false;
+    const document = parseSyncDocument(selected.content);
+    const restored = await invoke<ApplySyncSecretsResult>("apply_sync_backup_secrets", {
+      backup: selected.backup,
+      password,
+    });
+    applySyncDocument(mergeBackupDocument(document, selected.included), restored.keyPaths);
+    setPhase("idle");
+    setError("");
+    return true;
+  }, [desktop]);
+
   /** 自动同步本机改动，并把连续编辑合并为一次远端写入。 */
   useEffect(() => {
     const handleDataChanged = () => {
@@ -809,5 +886,7 @@ export function useRivetSync(): RivetSyncController {
     syncNow,
     resolveWithLocal,
     resolveWithRemote,
+    exportBackup,
+    importBackup,
   };
 }
