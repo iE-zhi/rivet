@@ -502,8 +502,6 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 当前页面所有短时反馈均通过应用外壳中的全局通知发送。 */
   const { notify } = useNotification();
-  /** 去重同步状态通知，避免同一状态因页面重渲染重复弹出。 */
-  const lastSyncNoticeRef = useRef("");
   /** 设置页默认展示显示偏好；栏目切换只影响右侧当前分组。 */
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>("display");
   /** 当前拖动的主导航项。 */
@@ -828,35 +826,19 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [backupAction]);
 
-  /** 将同步成功、冲突和后台错误统一转成全局通知，不再在同步卡片内显示提示文本。 */
+  /** 将每次同步结果统一转成全局通知。 */
   useEffect(() => {
-    let noticeKey = "";
-    let kind: "success" | "warning" | "error" | null = null;
-    let message = "";
-
     if (sync.error) {
-      noticeKey = `error:${sync.error}`;
-      kind = "error";
-      message = sync.error;
-    } else if (sync.phase === "conflict") {
-      noticeKey = "conflict";
-      kind = "warning";
-      message = copy.syncConflict;
-    } else if (sync.phase === "synced") {
-      noticeKey = `synced:${sync.lastSyncedAt ?? 0}`;
-      kind = "success";
-      message = copy.syncSucceededNotice;
-    } else {
-      lastSyncNoticeRef.current = "";
+      notify({ kind: "error", message: sync.error });
       return;
     }
-
-    if (lastSyncNoticeRef.current === noticeKey || kind === null) {
+    if (sync.phase === "conflict") {
+      notify({ kind: "warning", message: copy.syncConflict });
       return;
     }
-
-    lastSyncNoticeRef.current = noticeKey;
-    notify({ kind, message });
+    if (sync.phase === "synced") {
+      notify({ kind: "success", message: copy.syncSucceededNotice });
+    }
   }, [copy.syncConflict, copy.syncSucceededNotice, notify, sync.error, sync.lastSyncedAt, sync.phase]);
 
   /** 更新单个导出内容分组。 */
@@ -1280,7 +1262,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                         value={syncTokenEditing ? syncTokenDraft : sync.tokenStored ? SAVED_TOKEN_MASK : ""}
                         onChange={(event) => void handleSyncTokenChange(event.currentTarget.value)}
                         onBlur={handleSyncTokenBlur}
-                        disabled={!sync.desktop}
+                        disabled={!sync.desktop || !sync.tokenReady}
                       />
                     </div>
                     {sync.desktop ? (
@@ -1292,7 +1274,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                 </div>
                 <div className="settings-row">
                   <span className="settings-row-label">{copy.autoSync}</span>
-                  <Switch checked={sync.config.autoSync} onCheckedChange={(autoSync) => sync.updateConfig({ ...sync.config, autoSync })} ariaLabel={copy.autoSync} disabled={!sync.desktop} />
+                  <Switch checked={sync.config.autoSync} onCheckedChange={(autoSync) => sync.updateConfig({ ...sync.config, autoSync })} ariaLabel={copy.autoSync} disabled={!sync.desktop || !sync.tokenReady} />
                 </div>
                 <div className="settings-row settings-sync-action-row">
                   <div className="settings-sync-status">

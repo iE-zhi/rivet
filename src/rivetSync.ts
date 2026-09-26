@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { deserializeNotificationSettings, isNotificationSettings, NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings, type NotificationSettings } from "./preferences/notificationSettings";
+import { deserializeNavigationSettings, isNavigationSettings, NAVIGATION_SETTINGS_STORAGE_KEY, serializeNavigationSettings, type NavigationSettings } from "./preferences/navigationSettings";
 import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
 import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
 import { deserializeSerialQuickCommands, isSerialQuickCommandGroups, SERIAL_QUICK_COMMANDS_STORAGE_KEY, serializeSerialQuickCommands, type SerialQuickCommandGroup } from "./pages/serialQuickCommands";
@@ -40,6 +41,7 @@ export interface RivetSyncController {
   desktop: boolean;
   config: RivetSyncConfig;
   tokenStored: boolean;
+  tokenReady: boolean;
   phase: RivetSyncPhase;
   error: string;
   lastSyncedAt: number | null;
@@ -65,6 +67,7 @@ interface RivetSyncDocument {
     useSerialDefaults: boolean;
     serialRxSettings: SerialRxSettings;
     notificationSettings: NotificationSettings;
+    navigationSettings: NavigationSettings;
   };
   serialQuickCommands: SerialQuickCommandGroup[];
   terminalConnections: SavedTerminalConnection[];
@@ -278,6 +281,7 @@ function createSyncDocument(): RivetSyncDocument {
       useSerialDefaults: deserializeSerialDefaultsEnabled(readStorage(SERIAL_DEFAULTS_ENABLED_STORAGE_KEY)),
       serialRxSettings: deserializeSerialRxSettings(readStorage(SERIAL_RX_SETTINGS_STORAGE_KEY)),
       notificationSettings: deserializeNotificationSettings(readStorage(NOTIFICATION_SETTINGS_STORAGE_KEY)),
+      navigationSettings: deserializeNavigationSettings(readStorage(NAVIGATION_SETTINGS_STORAGE_KEY)),
     },
     serialQuickCommands: deserializeSerialQuickCommands(readStorage(SERIAL_QUICK_COMMANDS_STORAGE_KEY)),
     terminalConnections,
@@ -312,6 +316,7 @@ function createPristineSyncDocument(): RivetSyncDocument {
       useSerialDefaults: deserializeSerialDefaultsEnabled(null),
       serialRxSettings: deserializeSerialRxSettings(null),
       notificationSettings: deserializeNotificationSettings(null),
+      navigationSettings: deserializeNavigationSettings(null),
     },
     serialQuickCommands: [],
     terminalConnections: [],
@@ -372,6 +377,9 @@ function parseSyncDocument(content: string): RivetSyncDocument {
   const serialDefaults = settings.serialDefaults;
   const serialRxSettings = settings.serialRxSettings;
   const notificationSettings = settings.notificationSettings;
+  const navigationSettings = settings.navigationSettings === undefined
+    ? deserializeNavigationSettings(null)
+    : settings.navigationSettings;
   const terminalConnections = validateTerminalConnections(parsed.terminalConnections);
   if (
     (settings.locale !== "zh" && settings.locale !== "en") ||
@@ -381,6 +389,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
     !isSerialDefaults(serialDefaults) ||
     !isSerialRxSettings(serialRxSettings) ||
     !isNotificationSettings(notificationSettings) ||
+    !isNavigationSettings(navigationSettings) ||
     !isSerialQuickCommandGroups(parsed.serialQuickCommands) ||
     terminalConnections === null ||
     !isTerminalQuickCommands(parsed.terminalQuickCommands)
@@ -398,6 +407,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
       useSerialDefaults: settings.useSerialDefaults,
       serialRxSettings: { ...serialRxSettings },
       notificationSettings: { ...notificationSettings },
+      navigationSettings: navigationSettings.map((item) => ({ ...item })),
     },
     serialQuickCommands: parsed.serialQuickCommands.map((group) => ({
       ...group,
@@ -423,6 +433,7 @@ function applySyncDocument(document: RivetSyncDocument, keyPaths: Record<string,
     [SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, document.settings.useSerialDefaults ? "true" : "false"],
     [SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings(document.settings.serialRxSettings)],
     [NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings(document.settings.notificationSettings)],
+    [NAVIGATION_SETTINGS_STORAGE_KEY, serializeNavigationSettings(document.settings.navigationSettings)],
     [SERIAL_QUICK_COMMANDS_STORAGE_KEY, serializeSerialQuickCommands(document.serialQuickCommands)],
     [TERMINAL_CONNECTIONS_STORAGE_KEY, serializeTerminalConnections(terminalConnections)],
     [TERMINAL_QUICK_COMMANDS_STORAGE_KEY, serializeTerminalQuickCommands(document.terminalQuickCommands)],
@@ -528,6 +539,7 @@ export function useRivetSync(): RivetSyncController {
   const desktop = isTauri();
   const [config, setConfig] = useState<RivetSyncConfig>(readSyncConfig);
   const [tokenStored, setTokenStored] = useState(false);
+  const [tokenReady, setTokenReady] = useState(!desktop);
   const [phase, setPhase] = useState<RivetSyncPhase>("idle");
   const [error, setError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(() => readSyncMetadata(readSyncConfig()).lastSyncedAt);
@@ -552,17 +564,23 @@ export function useRivetSync(): RivetSyncController {
   useEffect(() => {
     if (!desktop) {
       setTokenStored(false);
+      setTokenReady(true);
       return;
     }
     let cancelled = false;
     setTokenStored(false);
+    setTokenReady(false);
     void invoke<boolean>("sync_token_exists", { provider: config.provider })
       .then((exists) => {
-        if (!cancelled) setTokenStored(exists);
+        if (!cancelled) {
+          setTokenStored(exists);
+          setTokenReady(true);
+        }
       })
       .catch((reason) => {
         if (!cancelled) {
           setTokenStored(false);
+          setTokenReady(true);
           setPhase("error");
           setError(String(reason));
         }
@@ -572,9 +590,10 @@ export function useRivetSync(): RivetSyncController {
     };
   }, [config.provider, desktop]);
 
-  /** 保存或更新 Token；始终使用新 Token 重新加密本机 SSH 凭据并覆盖或创建云端同步数据。 */
+  /** 保存或更新 Token；首次接入优先拉取已有云端数据，已有 Token 更新才以本机数据重加密覆盖云端。 */
   const saveToken = useCallback(async (token: string) => {
     if (!desktop) throw new Error("同步仅在 Rivet 桌面应用中可用");
+    if (!tokenReady) throw new Error("正在读取同步 Token 状态，请稍后重试");
     if (!token.trim()) throw new Error("Token 不能为空");
 
     try {
@@ -582,41 +601,109 @@ export function useRivetSync(): RivetSyncController {
         try {
           await runningRef.current;
         } catch {
-          // 旧同步失败不阻止用户用新 Token 修复云端数据。
+          // 旧同步失败不阻止新的 Token 操作。
         }
       }
 
       setPhase("syncing");
       setError("");
       const localState = await prepareLocalSyncState();
-      const replaced = await invoke<ReplaceSyncTokenResult>("replace_sync_token", {
+
+      if (tokenStored) {
+        const replaced = await invoke<ReplaceSyncTokenResult>("replace_sync_token", {
+          provider: config.provider,
+          token: token.trim(),
+          content: localState.rawContent,
+        });
+        const nextConfig: RivetSyncConfig = {
+          ...config,
+          snippetId: replaced.snippetId,
+        };
+        const now = Date.now();
+        writeSyncConfig(nextConfig);
+        writeSyncMetadata({
+          target: syncTarget(nextConfig),
+          lastRemoteRevision: replaced.revision,
+          lastSyncedFingerprint: localState.fingerprint,
+          lastSyncedAt: now,
+        });
+        setConfig(nextConfig);
+        setTokenStored(true);
+        setLastSyncedAt(now);
+        setPhase("synced");
+        setError("");
+        return;
+      }
+
+      await invoke("save_sync_token", { provider: config.provider, token: token.trim() });
+      setTokenStored(true);
+
+      const ensured = await invoke<EnsureSyncRemoteResult>("ensure_sync_remote", {
         provider: config.provider,
-        token: token.trim(),
         content: localState.rawContent,
       });
       const nextConfig: RivetSyncConfig = {
         ...config,
-        snippetId: replaced.snippetId,
+        snippetId: ensured.snippetId,
       };
-      const now = Date.now();
       writeSyncConfig(nextConfig);
-      writeSyncMetadata({
-        target: syncTarget(nextConfig),
-        lastRemoteRevision: replaced.revision,
-        lastSyncedFingerprint: localState.fingerprint,
-        lastSyncedAt: now,
-      });
       setConfig(nextConfig);
-      setTokenStored(true);
-      setLastSyncedAt(now);
-      setPhase("synced");
+
+      if (ensured.created) {
+        const now = Date.now();
+        writeSyncMetadata({
+          target: syncTarget(nextConfig),
+          lastRemoteRevision: ensured.revision,
+          lastSyncedFingerprint: localState.fingerprint,
+          lastSyncedAt: now,
+        });
+        setLastSyncedAt(now);
+        setPhase("synced");
+        setError("");
+        return;
+      }
+
+      const remoteDocument = parseSyncDocument(ensured.content);
+      const remoteCanonicalContent = serializeSyncDocument(remoteDocument);
+      const remoteFingerprint = await syncFingerprint(remoteCanonicalContent, ensured.secretRevision);
+      const now = Date.now();
+
+      if (localState.fingerprint === remoteFingerprint) {
+        writeSyncMetadata({
+          target: syncTarget(nextConfig),
+          lastRemoteRevision: ensured.revision,
+          lastSyncedFingerprint: localState.fingerprint,
+          lastSyncedAt: now,
+        });
+        setLastSyncedAt(now);
+        setPhase("synced");
+        setError("");
+        return;
+      }
+
+      if (isPristineSyncDocument(localState.document)) {
+        await applyRemoteSyncDocument(nextConfig, ensured.revision, remoteDocument);
+        writeSyncMetadata({
+          target: syncTarget(nextConfig),
+          lastRemoteRevision: ensured.revision,
+          lastSyncedFingerprint: remoteFingerprint,
+          lastSyncedAt: now,
+        });
+        setLastSyncedAt(now);
+        setPhase("synced");
+        setError("");
+        window.location.reload();
+        return;
+      }
+
+      setPhase("conflict");
       setError("");
     } catch (reason) {
       setPhase("error");
       setError(String(reason));
       throw reason;
     }
-  }, [config, desktop]);
+  }, [config, desktop, tokenReady, tokenStored]);
 
   /** 删除当前平台令牌，同时清除仅用于内部定位远端片段的缓存 ID。 */
   const deleteToken = useCallback(async () => {
@@ -886,6 +973,7 @@ export function useRivetSync(): RivetSyncController {
     desktop,
     config,
     tokenStored,
+    tokenReady,
     phase,
     error,
     lastSyncedAt,

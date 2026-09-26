@@ -88,18 +88,18 @@ impl SyncProvider {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncRemoteConfig {
-    provider: String,
-    snippet_id: String,
+    pub(crate) provider: String,
+    pub(crate) snippet_id: String,
 }
 
 /// 返回前端的远端同步文件。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteSyncFile {
-    exists: bool,
-    content: Option<String>,
-    revision: Option<String>,
-    secret_revision: Option<String>,
+    pub(crate) exists: bool,
+    pub(crate) content: Option<String>,
+    pub(crate) revision: Option<String>,
+    pub(crate) secret_revision: Option<String>,
 }
 
 /// 写入成功后的新远端版本。
@@ -154,10 +154,10 @@ pub struct PrepareSyncLocalResult {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupSelection {
-    settings: bool,
-    serial_quick_commands: bool,
-    terminal_connections: bool,
-    terminal_quick_commands: bool,
+    pub(crate) settings: bool,
+    pub(crate) serial_quick_commands: bool,
+    pub(crate) terminal_connections: bool,
+    pub(crate) terminal_quick_commands: bool,
 }
 
 impl BackupSelection {
@@ -172,12 +172,12 @@ impl BackupSelection {
 /// 本地导出文件：记录用户选择的数据分组，SSH 密码、私钥口令和私钥内容使用独立备份密码加密。
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LocalBackupFile {
-    backup_version: u8,
-    exported_at: u64,
-    included: BackupSelection,
-    document: Value,
-    encrypted_secrets: EncryptedBackupSecrets,
+pub(crate) struct LocalBackupFile {
+    pub(crate) backup_version: u8,
+    pub(crate) exported_at: u64,
+    pub(crate) included: BackupSelection,
+    pub(crate) document: Value,
+    pub(crate) encrypted_secrets: EncryptedBackupSecrets,
 }
 
 /// 读取本地恢复文件后返回前端先做严格业务字段校验；backup 仍只包含密文秘密。
@@ -191,14 +191,14 @@ pub struct ReadSyncBackupResult {
 
 /// 已验证的远端片段目标。
 #[derive(Clone, Debug)]
-struct ValidatedRemote {
+pub(crate) struct ValidatedRemote {
     provider: SyncProvider,
     snippet_id: String,
 }
 
 impl ValidatedRemote {
     /// 校验平台和片段 ID，只允许平台实际 ID 使用的安全 ASCII 字符。
-    fn from_config(config: SyncRemoteConfig) -> Result<Self, String> {
+    pub(crate) fn from_config(config: SyncRemoteConfig) -> Result<Self, String> {
         let provider = SyncProvider::parse(config.provider.trim())?;
         let snippet_id = config.snippet_id.trim();
         if snippet_id.is_empty()
@@ -238,7 +238,7 @@ pub async fn sync_token_exists(provider: String) -> Result<bool, String> {
 }
 
 /// 校验同步 Token 的本地格式并返回去除首尾空白后的值。
-fn validate_sync_token(token: String) -> Result<String, String> {
+pub(crate) fn validate_sync_token(token: String) -> Result<String, String> {
     let token = token.trim().to_string();
     if token.is_empty() || token.len() > 8192 || contains_control(&token) {
         return Err("同步 Token 格式无效".to_string());
@@ -572,7 +572,7 @@ fn validate_local_backup_size(content: &str) -> Result<(), String> {
 }
 
 /// 解析并验证本地恢复文件的外层格式。
-fn parse_local_backup(content: &str) -> Result<LocalBackupFile, String> {
+pub(crate) fn parse_local_backup(content: &str) -> Result<LocalBackupFile, String> {
     validate_local_backup_size(content)?;
     let backup: LocalBackupFile =
         serde_json::from_str(content).map_err(|error| format!("备份文件格式无效：{error}"))?;
@@ -699,7 +699,7 @@ async fn encode_remote_content(
     .map_err(|error| format!("准备同步数据任务失败：{error}"))?
 }
 
-fn canonicalize_sync_document(content: &str) -> Result<String, String> {
+pub(crate) fn canonicalize_sync_document(content: &str) -> Result<String, String> {
     let mut document: Value =
         serde_json::from_str(content).map_err(|error| format!("解析同步文档失败：{error}"))?;
     if let Some(connections) = document
@@ -1181,7 +1181,7 @@ async fn write_gitlab_snippet(
 }
 
 /// 从 GitHub/Gitee 兼容的 Gist JSON 中提取固定同步文件。
-fn remote_from_gist_value(payload: &Value) -> Result<RemoteSyncFile, String> {
+pub(crate) fn remote_from_gist_value(payload: &Value) -> Result<RemoteSyncFile, String> {
     let Some(file) = payload
         .get("files")
         .and_then(Value::as_object)
@@ -1198,23 +1198,8 @@ fn remote_from_gist_value(payload: &Value) -> Result<RemoteSyncFile, String> {
     Ok(remote_with_content(content))
 }
 
-/// 判断 GitLab Snippet 是否已经包含固定同步文件。
-#[cfg(test)]
-fn gitlab_has_sync_file(payload: &Value) -> bool {
-    payload
-        .get("files")
-        .and_then(Value::as_array)
-        .is_some_and(|files| {
-            files.iter().any(|file| {
-                file.get("path")
-                    .and_then(Value::as_str)
-                    .is_some_and(|path| path == SYNC_FILE_NAME)
-            })
-        })
-}
-
 /// 生成只用于冲突检测的稳定内容版本标识。
-fn revision_for_content(content: &str) -> String {
+pub(crate) fn revision_for_content(content: &str) -> String {
     let mut hash: u64 = 0xcbf29ce484222325;
     for byte in content.as_bytes() {
         hash ^= u64::from(*byte);
@@ -1393,114 +1378,4 @@ fn open_external_url(url: &str) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("打开系统浏览器失败：{error}"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Token 格式校验：去除首尾空白，拒绝空值、控制字符和超长内容。
-    #[test]
-    fn validates_sync_token_format() {
-        assert_eq!(
-            validate_sync_token("  token-value  ".to_string()).as_deref(),
-            Ok("token-value")
-        );
-        assert!(validate_sync_token("   ".to_string()).is_err());
-        assert!(validate_sync_token("token\nvalue".to_string()).is_err());
-        assert!(validate_sync_token("x".repeat(8193)).is_err());
-    }
-
-    #[test]
-    fn validates_snippet_ids() {
-        assert!(ValidatedRemote::from_config(SyncRemoteConfig {
-            provider: "github".to_string(),
-            snippet_id: "abcdef0123456789".to_string(),
-        })
-        .is_ok());
-        assert!(ValidatedRemote::from_config(SyncRemoteConfig {
-            provider: "gitlab".to_string(),
-            snippet_id: "12345".to_string(),
-        })
-        .is_ok());
-        assert!(ValidatedRemote::from_config(SyncRemoteConfig {
-            provider: "gitee".to_string(),
-            snippet_id: "../bad".to_string(),
-        })
-        .is_err());
-    }
-
-    #[test]
-    fn extracts_gist_sync_file_and_revision() {
-        let payload = json!({
-            "files": {
-                SYNC_FILE_NAME: {
-                    "content": "{\"version\":1}"
-                }
-            }
-        });
-        let remote = remote_from_gist_value(&payload).expect("gist should parse");
-        assert!(remote.exists);
-        assert_eq!(remote.content.as_deref(), Some("{\"version\":1}"));
-        assert_eq!(
-            remote.revision.as_deref(),
-            Some(revision_for_content("{\"version\":1}").as_str())
-        );
-    }
-
-    #[test]
-    fn canonicalizes_local_private_key_paths() {
-        let source = r#"{
-  "terminalConnections": [
-    {
-      "kind": "ssh",
-      "id": "ssh-1",
-      "authType": "privateKey",
-      "keyPath": "C:/Users/test/.ssh/id_ed25519"
-    }
-  ]
-}"#;
-        let canonical = canonicalize_sync_document(source).expect("document should canonicalize");
-        let parsed: Value = serde_json::from_str(&canonical).expect("canonical JSON should parse");
-        assert_eq!(
-            parsed["terminalConnections"][0]["keyPath"].as_str(),
-            Some("")
-        );
-    }
-
-    #[test]
-    fn parses_portable_local_backup() {
-        let encrypted = sync_secrets::encrypt_local_backup_secrets(
-            "portable-test-password",
-            r#"{"terminalConnections":[]}"#,
-        )
-        .expect("backup secrets should encrypt");
-        let backup = LocalBackupFile {
-            backup_version: LOCAL_BACKUP_VERSION,
-            exported_at: 1,
-            included: BackupSelection {
-                settings: true,
-                serial_quick_commands: true,
-                terminal_connections: true,
-                terminal_quick_commands: true,
-            },
-            document: json!({"version": 1, "terminalConnections": []}),
-            encrypted_secrets: encrypted,
-        };
-        let encoded = serde_json::to_string(&backup).expect("backup should serialize");
-        let parsed = parse_local_backup(&encoded).expect("backup should parse");
-        assert_eq!(parsed.backup_version, LOCAL_BACKUP_VERSION);
-        assert_eq!(parsed.document["version"].as_u64(), Some(1));
-    }
-
-    #[test]
-    fn detects_gitlab_sync_file() {
-        let payload = json!({
-            "files": [
-                { "path": "notes.txt" },
-                { "path": SYNC_FILE_NAME }
-            ]
-        });
-        assert!(gitlab_has_sync_file(&payload));
-    }
 }

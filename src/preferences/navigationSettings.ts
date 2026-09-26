@@ -1,4 +1,4 @@
-/** 主导航顺序与可见性使用独立本机存储键。 */
+/** 主导航顺序与可见性的持久化键；该项参与跨设备同步。 */
 export const NAVIGATION_SETTINGS_STORAGE_KEY = "rivet.navigationSettings";
 
 /** 当前允许用户排序和隐藏的主导航工具页；设置入口固定保留。 */

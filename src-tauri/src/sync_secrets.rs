@@ -47,7 +47,7 @@ const BACKUP_PBKDF2_ITERATIONS: u32 = 200_000;
 pub struct EncryptedSyncSecrets {
     version: u8,
     nonce: String,
-    ciphertext: String,
+    pub(crate) ciphertext: String,
 }
 
 /// 可离线跨设备恢复的本地备份密文；密钥只由用户提供的备份密码派生。
@@ -64,7 +64,7 @@ pub struct EncryptedBackupSecrets {
 /// 解密后的 SSH 秘密集合。
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SecretBundle {
+pub(crate) struct SecretBundle {
     version: u8,
     connections: Vec<ConnectionSecret>,
 }
@@ -152,17 +152,6 @@ pub fn apply_encrypted_backup_secrets(
 ) -> Result<HashMap<String, String>, String> {
     let bundle = decrypt_backup_bundle(password, encrypted)?;
     apply_secret_bundle(app, bundle)
-}
-
-/// 解密云端秘密并计算稳定指纹，不把明文返回给前端。
-pub fn encrypted_secret_revision(
-    provider: &str,
-    token: &str,
-    encrypted: &EncryptedSyncSecrets,
-) -> Result<String, String> {
-    let bundle = decrypt_bundle(provider, token, encrypted)?;
-    let bytes = serialize_bundle(&bundle)?;
-    Ok(revision_for_plaintext(&bytes))
 }
 
 /// 把云端秘密恢复到系统凭据库和 Rivet 管理的本机私钥目录。
@@ -302,7 +291,7 @@ fn serialize_bundle(bundle: &SecretBundle) -> Result<Vec<u8>, String> {
 }
 
 /// 解密并严格校验秘密包版本与大小。
-fn decrypt_bundle(
+pub(crate) fn decrypt_bundle(
     provider: &str,
     token: &str,
     encrypted: &EncryptedSyncSecrets,
@@ -340,7 +329,7 @@ fn decrypt_bundle(
 }
 
 /// 使用备份密码解密离线备份中的 SSH 秘密集合。
-fn decrypt_backup_bundle(
+pub(crate) fn decrypt_backup_bundle(
     password: &str,
     encrypted: &EncryptedBackupSecrets,
 ) -> Result<SecretBundle, String> {
@@ -498,41 +487,4 @@ fn write_private_key(path: &Path, content: &[u8]) -> Result<(), String> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn encrypts_and_decrypts_empty_secret_bundle() {
-        let document = r#"{"terminalConnections":[]}"#;
-        let encrypted = encrypt_local_secrets("github", "test-token", document)
-            .expect("encryption should succeed");
-        let local_revision =
-            local_secret_revision(document).expect("local revision should succeed");
-        let remote_revision = encrypted_secret_revision("github", "test-token", &encrypted)
-            .expect("remote revision should succeed");
-        assert_eq!(local_revision, remote_revision);
-    }
-
-    #[test]
-    fn portable_backup_uses_password_and_rejects_wrong_password() {
-        let document = r#"{"terminalConnections":[]}"#;
-        let encrypted = encrypt_local_backup_secrets("portable-password", document)
-            .expect("backup encryption should succeed");
-        let bundle = decrypt_backup_bundle("portable-password", &encrypted)
-            .expect("correct password should decrypt");
-        assert_eq!(bundle.version, SECRET_BUNDLE_VERSION);
-        assert!(decrypt_backup_bundle("wrong-password", &encrypted).is_err());
-    }
-
-    #[test]
-    fn rejects_tampered_ciphertext() {
-        let document = r#"{"terminalConnections":[]}"#;
-        let mut encrypted = encrypt_local_secrets("github", "test-token", document)
-            .expect("encryption should succeed");
-        encrypted.ciphertext.push('A');
-        assert!(encrypted_secret_revision("github", "test-token", &encrypted).is_err());
-    }
 }

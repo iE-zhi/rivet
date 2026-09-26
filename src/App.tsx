@@ -258,13 +258,9 @@ export default function App() {
     persistPreference(NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings(notificationSettings));
   }, [notificationSettings]);
 
-  /** 导航布局仅保存在当前设备，避免不同设备的工具可用性互相覆盖。 */
+  /** 导航布局参与跨设备同步；顺序和可见状态变化会触发自动同步。 */
   useEffect(() => {
-    try {
-      window.localStorage.setItem(NAVIGATION_SETTINGS_STORAGE_KEY, serializeNavigationSettings(navigationSettings));
-    } catch (error) {
-      console.warn("Rivet 无法保存导航设置；本次会话中仍会生效。", error);
-    }
+    persistPreference(NAVIGATION_SETTINGS_STORAGE_KEY, serializeNavigationSettings(navigationSettings));
   }, [navigationSettings]);
 
   /** X11 Server 地址只保存在本机；X Server 端点不参与跨设备同步。 */
