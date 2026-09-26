@@ -343,6 +343,7 @@ function readTerminalTheme(element: HTMLElement): ITheme {
     red: "#ef4444",
     green: style.getPropertyValue("--r-terminal-rx").trim(),
     yellow: style.getPropertyValue("--r-terminal-tx").trim(),
+    brightYellow: style.getPropertyValue("--r-terminal-command").trim(),
     blue: style.getPropertyValue("--r-terminal-info").trim(),
     magenta: "#8b5cf6",
     cyan: "#22c5c7",

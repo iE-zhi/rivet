@@ -28,6 +28,7 @@
   --r-terminal-info: #2563EB;
   --r-terminal-rx: #059669;
   --r-terminal-tx: #D97706;
+  --r-terminal-command: #B45309;
 }
 
 [data-theme="dark"],
@@ -49,4 +50,5 @@
   --r-terminal-info: #60A5FA;
   --r-terminal-rx: #34D399;
   --r-terminal-tx: #FBBF24;
+  --r-terminal-command: #FBBF24;
 }
