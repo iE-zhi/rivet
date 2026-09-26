@@ -39,6 +39,7 @@ import {
 } from "./terminalLayout";
 import type { Locale } from "./SerialPage";
 import SftpPanel from "./SftpPanel";
+import TerminalQuickCommandPanel from "./TerminalQuickCommandPanel";
 
 interface TerminalPageProps {
   locale: Locale;
@@ -157,6 +158,7 @@ const COPY = {
     addSession: "新建会话",
     splitHorizontal: "左右分屏",
     splitVertical: "上下分屏",
+    quickCommands: "快捷命令",
     closePane: "关闭 pane",
     addConnection: "添加连接",
     editConnection: "编辑连接",
@@ -222,6 +224,7 @@ const COPY = {
     addSession: "New session",
     splitHorizontal: "Split left / right",
     splitVertical: "Split top / bottom",
+    quickCommands: "Quick commands",
     closePane: "Close pane",
     addConnection: "Add connection",
     editConnection: "Edit connection",
@@ -895,6 +898,7 @@ export default function TerminalPage({ locale, themeKey, onRequestActivate }: Te
   const [picker, setPicker] = useState<PickerState | null>(null);
   const [connectionPanelOpen, setConnectionPanelOpen] = useState(false);
   const [sftpOpen, setSftpOpen] = useState(false);
+  const [quickCommandOpen, setQuickCommandOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ConnectionFormState>(EMPTY_FORM);
@@ -999,6 +1003,26 @@ export default function TerminalPage({ locale, themeKey, onRequestActivate }: Te
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const activePane = activeTab ? findTerminalPane(activeTab.root, activeTab.activePaneId) : null;
   const activeSession = activePane ? sessionsById.get(activePane.sessionId) ?? null : null;
+
+  /** 将快捷命令文本填入当前活动 pane；不附加 Enter，因此不会自动执行。 */
+  const sendQuickCommandToActiveTerminal = useCallback(async (command: string) => {
+    const session = activeSession;
+    if (!session || session.state !== "connected") {
+      throw new Error(locale === "zh" ? "当前没有可发送的活动终端" : "No active terminal is available");
+    }
+
+    const data = Array.from(new TextEncoder().encode(command));
+
+    if (session.kind === "ssh") {
+      await invoke("ssh_send_input", { sessionId: session.id, data });
+      return;
+    }
+    if (session.kind === "serial") {
+      await invoke("terminal_serial_send_input", { sessionId: session.id, data });
+      return;
+    }
+    await invoke("local_terminal_send_input", { sessionId: session.id, data });
+  }, [activeSession, locale]);
   const occupiedSerialPaths = useMemo(
     () =>
       new Set(
@@ -2252,6 +2276,14 @@ export default function TerminalPage({ locale, themeKey, onRequestActivate }: Te
           locale={locale}
           onClose={() => setSftpOpen(false)}
         />
+
+        <TerminalQuickCommandPanel
+          open={quickCommandOpen}
+          locale={locale}
+          canSend={activeSession?.state === "connected"}
+          onClose={() => setQuickCommandOpen(false)}
+          onSend={sendQuickCommandToActiveTerminal}
+        />
       </section>
 
       {closeConfirmTarget && (
@@ -2315,6 +2347,15 @@ export default function TerminalPage({ locale, themeKey, onRequestActivate }: Te
           <span>{copy.terminalConnections}</span>
         </button>
         <div className="terminal-toolbar-right">
+          <button
+            type="button"
+            className={`terminal-toolbar-button ${quickCommandOpen ? "active" : ""}`}
+            title={copy.quickCommands}
+            aria-label={copy.quickCommands}
+            onClick={() => setQuickCommandOpen(true)}
+          >
+            <SvgIcon name="cmd" size={14} />
+          </button>
           <button
             type="button"
             className="terminal-toolbar-button terminal-picker-trigger"

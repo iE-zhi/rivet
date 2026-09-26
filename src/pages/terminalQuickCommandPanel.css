@@ -1,0 +1,158 @@
+.terminal-command-panel {
+  position: absolute;
+  z-index: 190;
+  right: 14px;
+  bottom: 12px;
+  display: flex;
+  width: 340px;
+  max-width: calc(100% - 28px);
+  height: min(600px, calc(100% - 24px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--r-border);
+  border-radius: 10px;
+  background: var(--r-surface);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .18), 0 3px 12px rgba(0, 0, 0, .08);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px) scale(.985);
+  transition: opacity .16s ease, transform .16s ease, visibility .16s ease;
+}
+
+.terminal-command-panel.open {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+
+.terminal-command-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.terminal-command-header {
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.terminal-command-header-actions {
+  cursor: default;
+  touch-action: auto;
+}
+
+.terminal-command-form {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.terminal-command-form-scroll,
+.terminal-command-groups {
+  min-height: 0;
+  flex: 1;
+}
+
+.terminal-command-form-viewport > div {
+  padding: 12px;
+}
+
+.terminal-command-groups-viewport > div {
+  padding-bottom: 7px;
+}
+
+.terminal-command-payload-field {
+  margin-bottom: 0;
+}
+
+.terminal-command-payload-field .rivet-textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  font-family: var(--rivet-font-family);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.terminal-command-item {
+  position: relative;
+}
+
+.terminal-command-row {
+  position: relative;
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px 5px 17px;
+}
+
+.terminal-command-row:hover {
+  background: var(--r-surface-2);
+}
+
+.terminal-command-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.terminal-command-main strong {
+  overflow: hidden;
+  color: var(--r-text);
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-command-main small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--r-muted);
+  font-family: var(--rivet-font-family);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-command-action {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--r-subtle);
+  cursor: pointer;
+}
+
+.terminal-command-action:hover:not(:disabled),
+.terminal-command-action:focus-visible {
+  background: var(--r-border);
+  color: var(--r-text);
+}
+
+.terminal-command-action:focus-visible {
+  outline: 2px solid var(--r-primary-light);
+  outline-offset: -2px;
+}
+
+.terminal-command-action:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+@media (max-width: 760px) {
+  .terminal-command-panel {
+    right: 8px;
+    width: min(340px, calc(100% - 16px));
+    max-width: none;
+  }
+}
