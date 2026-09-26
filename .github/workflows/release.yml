@@ -97,7 +97,7 @@ jobs:
           pacman -S --noconfirm --needed \
             git github-cli base-devel nodejs pnpm rust \
             webkit2gtk-4.1 openssl appmenu-gtk-module \
-            libappindicator librsvg xdotool shadow
+            libappindicator librsvg xdotool xdg-utils shadow
 
       - name: Checkout
         uses: actions/checkout@v4
