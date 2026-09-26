@@ -9,6 +9,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - src-tauri/tauri.conf.json
+      - packaging/arch/**
   workflow_dispatch:
 
 permissions:
@@ -81,3 +82,41 @@ jobs:
           prerelease: false
           generateReleaseNotes: true
           args: ${{ matrix.args }}
+
+  arch:
+    name: publish (archlinux / omarchy)
+    needs: publish
+    runs-on: ubuntu-22.04
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install Arch build tools
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed \
+            git github-cli base-devel nodejs pnpm rust \
+            webkit2gtk-4.1 openssl appmenu-gtk-module \
+            libappindicator librsvg xdotool shadow
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Arch package
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" packaging/arch/PKGBUILD
+          git archive --format=tar.gz --prefix="rivet-${VERSION}/" -o "packaging/arch/rivet-${VERSION}.tar.gz" HEAD
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          su builder -c "cd '$GITHUB_WORKSPACE/packaging/arch' && makepkg --noconfirm --cleanbuild --clean"
+          ls -lh packaging/arch/*.pkg.tar.zst
+
+      - name: Upload Arch package to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release upload "v${VERSION}" packaging/arch/*.pkg.tar.zst --clobber --repo "$GITHUB_REPOSITORY"
