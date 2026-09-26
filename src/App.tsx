@@ -8,6 +8,7 @@ import SettingsPage, { type FontMode, type ThemeMode } from "./pages/SettingsPag
 import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
 import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
 import { deserializeNotificationSettings, isNotificationSettings, NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings, type NotificationSettings } from "./preferences/notificationSettings";
+import { deserializeNavigationSettings, isNavigationSettings, NAVIGATION_SETTINGS_STORAGE_KEY, serializeNavigationSettings, type NavigationSettings } from "./preferences/navigationSettings";
 import { deserializeX11ServerAddress, X11_SERVER_ADDRESS_STORAGE_KEY } from "./preferences/sshSettings";
 
 const TerminalPage = lazy(() => import("./pages/TerminalPage"));
@@ -137,6 +138,16 @@ function readNotificationSettingsPreference(): NotificationSettings {
   }
 }
 
+/** 从独立存储项恢复主导航顺序与可见状态；存储不可用时使用默认布局。 */
+function readNavigationSettingsPreference(): NavigationSettings {
+  try {
+    return deserializeNavigationSettings(window.localStorage.getItem(NAVIGATION_SETTINGS_STORAGE_KEY));
+  } catch (error) {
+    console.warn("Rivet 无法读取导航设置，将使用默认布局。", error);
+    return deserializeNavigationSettings(null);
+  }
+}
+
 /** 从独立存储项恢复 SSH X11 Server 地址；存储不可用时使用本机默认地址。 */
 function readX11ServerAddressPreference(): string {
   try {
@@ -176,14 +187,18 @@ export default function App() {
   const [serialRxSettings, setSerialRxSettings] = useState<SerialRxSettings>(readSerialRxSettingsPreference);
   /** 普通、警告和错误通知是否弹窗显示；普通开关同时控制 success 与 info。 */
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(readNotificationSettingsPreference);
+  /** 主导航工具页的顺序与可见状态；设置入口固定保留在底部。 */
+  const [navigationSettings, setNavigationSettings] = useState<NavigationSettings>(readNavigationSettingsPreference);
   /** SSH X11 转发连接本机 X Server 时使用的地址。 */
   const [x11ServerAddress, setX11ServerAddress] = useState(readX11ServerAddressPreference);
   /** 系统外观状态仅在主题模式为 system 时决定最终颜色方案。 */
   const [systemPrefersDark, setSystemPrefersDark] = useState(readSystemPrefersDark);
+  /** 首屏采用排序后的第一个可见工具页；全部隐藏时进入始终可访问的设置页。 */
+  const initialPage: AppPage = navigationSettings.find((item) => item.visible)?.id ?? "settings";
   /** 一级页面切换不卸载已挂载的串口/终端页面，以维持活动会话。 */
-  const [page, setPage] = useState<AppPage>("serial");
+  const [page, setPage] = useState<AppPage>(initialPage);
   /** SSH 终端页首次访问后保持挂载，避免初始加载 xterm 且切页不丢会话。 */
-  const [terminalMounted, setTerminalMounted] = useState(false);
+  const [terminalMounted, setTerminalMounted] = useState(initialPage === "terminal");
   /** Git 托管同步控制器常驻应用外壳，设置页只负责展示和人工操作。 */
   const sync = useRivetSync();
   /** 当前 locale 对应的一级导航文案。 */
@@ -242,6 +257,15 @@ export default function App() {
   useEffect(() => {
     persistPreference(NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings(notificationSettings));
   }, [notificationSettings]);
+
+  /** 导航布局仅保存在当前设备，避免不同设备的工具可用性互相覆盖。 */
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(NAVIGATION_SETTINGS_STORAGE_KEY, serializeNavigationSettings(navigationSettings));
+    } catch (error) {
+      console.warn("Rivet 无法保存导航设置；本次会话中仍会生效。", error);
+    }
+  }, [navigationSettings]);
 
   /** X11 Server 地址只保存在本机；X Server 端点不参与跨设备同步。 */
   useEffect(() => {
@@ -315,6 +339,13 @@ export default function App() {
     }
   };
 
+  /** 只接受完整且无重复项的主导航设置，避免损坏顺序进入应用外壳。 */
+  const updateNavigationSettings = (settings: NavigationSettings) => {
+    if (isNavigationSettings(settings)) {
+      setNavigationSettings(settings.map((item) => ({ ...item })));
+    }
+  };
+
   return (
     <div className="app-shell rivet-ui" data-theme={resolvedTheme} data-font={font}>
       <nav className="rail" aria-label={copy.navigation}>
@@ -322,26 +353,33 @@ export default function App() {
           <img src={appIcon} alt="" aria-hidden="true" />
         </a>
         <span className="rail-divider" aria-hidden="true" />
-        <a
-          className={`rail-link${page === "serial" ? " active" : ""}`}
-          href="#serial-page"
-          onClick={navigateToSerial}
-          aria-current={page === "serial" ? "page" : undefined}
-          aria-label={copy.serial}
-          title={copy.serial}
-        >
-          <SvgIcon name="serial" size={24} className="serial-icon" />
-        </a>
-        <a
-          className={`rail-link${page === "terminal" ? " active" : ""}`}
-          href="#terminal-page"
-          onClick={navigateToTerminal}
-          aria-current={page === "terminal" ? "page" : undefined}
-          aria-label={copy.terminal}
-          title={copy.terminal}
-        >
-          <SvgIcon name="terminal" size={23} />
-        </a>
+        {navigationSettings.filter((item) => item.visible).map((item) => (
+          item.id === "serial" ? (
+            <a
+              key={item.id}
+              className={`rail-link${page === "serial" ? " active" : ""}`}
+              href="#serial-page"
+              onClick={navigateToSerial}
+              aria-current={page === "serial" ? "page" : undefined}
+              aria-label={copy.serial}
+              title={copy.serial}
+            >
+              <SvgIcon name="serial" size={24} className="serial-icon" />
+            </a>
+          ) : (
+            <a
+              key={item.id}
+              className={`rail-link${page === "terminal" ? " active" : ""}`}
+              href="#terminal-page"
+              onClick={navigateToTerminal}
+              aria-current={page === "terminal" ? "page" : undefined}
+              aria-label={copy.terminal}
+              title={copy.terminal}
+            >
+              <SvgIcon name="terminal" size={23} />
+            </a>
+          )
+        ))}
         <span className="rail-spacer" />
         <a
           className={`rail-link settings-rail-link${page === "settings" ? " active" : ""}`}
@@ -367,7 +405,7 @@ export default function App() {
             </div>
           )}
           <div className="app-view settings-view" hidden={page !== "settings"}>
-            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} sync={sync} />
+            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} sync={sync} />
           </div>
         </NotificationProvider>
       </div>

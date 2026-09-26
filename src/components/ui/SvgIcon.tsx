@@ -15,6 +15,7 @@ import plusIcon from "../../assets/svg/plus.svg?url";
 import plugIcon from "../../assets/svg/plug.svg?url";
 import refreshIcon from "../../assets/svg/refresh.svg?url";
 import searchIcon from "../../assets/svg/search.svg?url";
+import showIcon from "../../assets/svg/show.svg?url";
 import settingIcon from "../../assets/svg/setting.svg?url";
 import sendIcon from "../../assets/svg/send.svg?url";
 import serialIcon from "../../assets/svg/serial.svg?url";
@@ -22,11 +23,12 @@ import splitHorizontalIcon from "../../assets/svg/split-horizontal.svg?url";
 import splitVerticalIcon from "../../assets/svg/split-vertical.svg?url";
 import terminalIcon from "../../assets/svg/terminal.svg?url";
 import uploadIcon from "../../assets/svg/upload.svg?url";
+import unshowIcon from "../../assets/svg/unshow.svg?url";
 import unplugIcon from "../../assets/svg/unplug.svg?url";
 import waveIcon from "../../assets/svg/wave.svg?url";
 
 /** 可共用的单色图标标识；SVG 通过 CSS mask 继承所在位置的文字颜色。 */
-export type SvgIconName = "check" | "chevron" | "close" | "cmd" | "copy" | "display" | "download" | "file" | "folder" | "globe" | "info" | "more" | "plus" | "plug" | "refresh" | "search" | "send" | "serial" | "setting" | "split-horizontal" | "split-vertical" | "terminal" | "unplug" | "upload" | "wave";
+export type SvgIconName = "check" | "chevron" | "close" | "cmd" | "copy" | "display" | "download" | "file" | "folder" | "globe" | "info" | "more" | "plus" | "plug" | "refresh" | "search" | "send" | "serial" | "setting" | "show" | "split-horizontal" | "split-vertical" | "terminal" | "unplug" | "unshow" | "upload" | "wave";
 
 /** SVG 图标组件参数；尺寸以 CSS 像素计，默认 17px。 */
 export interface SvgIconProps {
@@ -56,6 +58,7 @@ const SVG_ICON_SOURCES: Record<SvgIconName, string> = {
   plug: plugIcon,
   refresh: refreshIcon,
   search: searchIcon,
+  show: showIcon,
   send: sendIcon,
   serial: serialIcon,
   setting: settingIcon,
@@ -64,6 +67,7 @@ const SVG_ICON_SOURCES: Record<SvgIconName, string> = {
   terminal: terminalIcon,
   upload: uploadIcon,
   unplug: unplugIcon,
+  unshow: unshowIcon,
   wave: waveIcon,
 };
 

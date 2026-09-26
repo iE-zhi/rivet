@@ -4,6 +4,7 @@ import { MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialDe
 import { SERIAL_RX_IDLE_MS_MAX, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_PACKET_BYTES_MAX, SERIAL_RX_PACKET_BYTES_MIN, type SerialRxSettings } from "./serialRxSettings";
 import type { Locale } from "./SerialPage";
 import type { NotificationSettings } from "../preferences/notificationSettings";
+import type { NavigationItemId, NavigationSettings } from "../preferences/navigationSettings";
 import { isValidX11ServerAddress, MAX_X11_SERVER_ADDRESS_LENGTH } from "../preferences/sshSettings";
 import { DEFAULT_BACKUP_SELECTION, type BackupSelection, type RivetSyncController, type SyncProvider } from "../rivetSync";
 import AboutPanel from "./AboutPanel";
@@ -102,6 +103,14 @@ interface SettingsPageCopy {
   warningNotifications: string;
   /** 错误消息弹窗开关标题。 */
   errorNotifications: string;
+  /** 主导航排序设置组标题。 */
+  navigationOrderGroupTitle: string;
+  /** 可见状态按钮切换为显示。 */
+  showNavigationItem: string;
+  /** 可见状态按钮切换为隐藏。 */
+  hideNavigationItem: string;
+  /** 主导航项目拖动操作提示。 */
+  dragNavigationItem: string;
   /** 串口默认参数组标题，呈现在设置列表容器之外。 */
   serialGroupTitle: string;
   /** 串口接收分包组标题，呈现在设置列表容器之外。 */
@@ -206,6 +215,10 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     generalNotifications: "普通通知",
     warningNotifications: "警告通知",
     errorNotifications: "错误通知",
+    navigationOrderGroupTitle: "导航排序",
+    showNavigationItem: "显示",
+    hideNavigationItem: "隐藏",
+    dragNavigationItem: "拖动排序",
     serialGroupTitle: "默认通信参数",
     receiveGroupTitle: "接收分包",
     sshGroupTitle: "X11",
@@ -299,6 +312,10 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     generalNotifications: "General notifications",
     warningNotifications: "Warning notifications",
     errorNotifications: "Error notifications",
+    navigationOrderGroupTitle: "Navigation order",
+    showNavigationItem: "Show",
+    hideNavigationItem: "Hide",
+    dragNavigationItem: "Drag to reorder",
     serialGroupTitle: "Default communication parameters",
     receiveGroupTitle: "Receive grouping",
     sshGroupTitle: "X11",
@@ -364,6 +381,10 @@ export interface SettingsPageProps {
   notificationSettings: NotificationSettings;
   /** 更新三类通知弹窗开关。 */
   onNotificationSettingsChange: (settings: NotificationSettings) => void;
+  /** 当前主导航工具页顺序与可见状态。 */
+  navigationSettings: NavigationSettings;
+  /** 更新主导航顺序与可见状态。 */
+  onNavigationSettingsChange: (settings: NavigationSettings) => void;
   /** 当前由应用外壳持有并持久化的串口默认参数。 */
   serialDefaults: SerialDefaults;
   /** 更新经过界面校验的串口默认参数。 */
@@ -386,6 +407,15 @@ export interface SettingsPageProps {
 
 /** 设置页右侧当前展示的分组。 */
 type SettingsCategory = "display" | "serial" | "ssh" | "sync" | "about";
+
+/** 拖动中的导航项相对目标行的落点位置。 */
+type NavigationDropPosition = "before" | "after";
+
+/** 导航拖动预览目标，用于绘制插入位置提示。 */
+interface NavigationDropTarget {
+  id: NavigationItemId;
+  position: NavigationDropPosition;
+}
 
 /** 已保存 Token 的仅展示占位值；密码输入框会将这些字符渲染为圆点。 */
 const SAVED_TOKEN_MASK = "************";
@@ -455,6 +485,8 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
  * @param onFontChange 用户选择新字体模式后的回调。
  * @param notificationSettings 当前普通、警告、错误通知弹窗开关。
  * @param onNotificationSettingsChange 用户修改通知弹窗开关后的回调。
+ * @param navigationSettings 当前主导航工具页顺序和可见状态。
+ * @param onNavigationSettingsChange 用户重排或切换导航可见性后的回调。
  * @param serialDefaults 当前应用级串口默认通信参数。
  * @param onSerialDefaultsChange 用户修改串口默认参数后的回调。
  * @param useSerialDefaults 启动串口页时是否采用设置页默认通信参数。
@@ -465,13 +497,17 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
  * @param onX11ServerAddressChange 用户修改 X11 Server 地址后的回调。
  * @returns 设置侧栏和显示偏好分组。
  */
-export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, notificationSettings, onNotificationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, x11ServerAddress, onX11ServerAddressChange, sync }: SettingsPageProps) {
+export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, notificationSettings, onNotificationSettingsChange, navigationSettings, onNavigationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, x11ServerAddress, onX11ServerAddressChange, sync }: SettingsPageProps) {
   /** 取当前界面语言的文案和选项列表。 */
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 当前页面所有短时反馈均通过应用外壳中的全局通知发送。 */
   const { notify } = useNotification();
   /** 设置页默认展示显示偏好；栏目切换只影响右侧当前分组。 */
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>("display");
+  /** 当前拖动的主导航项。 */
+  const [draggingNavigationId, setDraggingNavigationId] = useState<NavigationItemId | null>(null);
+  /** 当前拖动目标与插入方向，仅用于交互预览。 */
+  const [navigationDropTarget, setNavigationDropTarget] = useState<NavigationDropTarget | null>(null);
   /** Token 输入仅保留在设置页内存；保存成功后回到只显示圆点的状态。 */
   const [syncTokenDraft, setSyncTokenDraft] = useState("");
   /** 区分真实 Token 草稿与已保存 Token 的圆点占位值。 */
@@ -596,6 +632,92 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
 
   /** 显示关于页。 */
   const showAboutSettings = () => setActiveCategory("about");
+
+  /** 返回当前语言下的主导航项目名称。 */
+  const navigationItemLabel = (id: NavigationItemId) => id === "serial" ? copy.serial : copy.ssh;
+
+  /** 根据屏幕坐标解析当前主导航拖动目标及插入方向。 */
+  const resolveNavigationDropTarget = (clientX: number, clientY: number): NavigationDropTarget | null => {
+    const element = document.elementFromPoint(clientX, clientY);
+    const row = element?.closest<HTMLElement>(".settings-navigation-row[data-navigation-id]");
+    if (!row) {
+      return null;
+    }
+
+    const id = row.dataset.navigationId;
+    if (id !== "serial" && id !== "terminal") {
+      return null;
+    }
+
+    const rect = row.getBoundingClientRect();
+    return {
+      id,
+      position: clientY < rect.top + rect.height / 2 ? "before" : "after",
+    };
+  };
+
+  /** 使用 Pointer Capture 启动排序，避免 Tauri/WebView 原生拖放拦截 HTML5 drag 事件。 */
+  const handleNavigationPointerDown = (event: PointerEvent<HTMLDivElement>, id: NavigationItemId) => {
+    if (!event.isPrimary || event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDraggingNavigationId(id);
+    setNavigationDropTarget(null);
+  };
+
+  /** 指针移动时实时解析落点并显示插入线。 */
+  const handleNavigationPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (draggingNavigationId === null || !event.currentTarget.hasPointerCapture(event.pointerId)) {
+      return;
+    }
+
+    const target = resolveNavigationDropTarget(event.clientX, event.clientY);
+    setNavigationDropTarget(target?.id === draggingNavigationId ? null : target);
+  };
+
+  /** 指针释放时按最终落点完成排序并持久化。 */
+  const handleNavigationPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const sourceId = draggingNavigationId;
+    const target = resolveNavigationDropTarget(event.clientX, event.clientY);
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    if (sourceId !== null && target !== null && target.id !== sourceId) {
+      const draggedItem = navigationSettings.find((item) => item.id === sourceId);
+      const reordered = navigationSettings.filter((item) => item.id !== sourceId);
+      const targetIndex = reordered.findIndex((item) => item.id === target.id);
+
+      if (draggedItem && targetIndex >= 0) {
+        const insertIndex = target.position === "after" ? targetIndex + 1 : targetIndex;
+        reordered.splice(insertIndex, 0, { ...draggedItem });
+        onNavigationSettingsChange(reordered);
+      }
+    }
+
+    setDraggingNavigationId(null);
+    setNavigationDropTarget(null);
+  };
+
+  /** Pointer Capture 被系统取消时恢复静止状态。 */
+  const handleNavigationPointerCancel = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDraggingNavigationId(null);
+    setNavigationDropTarget(null);
+  };
+
+  /** 切换单个主导航工具页是否显示，不改变当前排序。 */
+  const toggleNavigationVisibility = (id: NavigationItemId) => {
+    onNavigationSettingsChange(
+      navigationSettings.map((item) => item.id === id ? { ...item, visible: !item.visible } : { ...item }),
+    );
+  };
 
   /** 只接受支持的平台值并切换同步目标。 */
   const handleSyncProviderChange = (value: string) => {
@@ -964,6 +1086,46 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                     <span className="settings-row-label">{copy.errorNotifications}</span>
                     <Switch checked={notificationSettings.error} onCheckedChange={(error) => onNotificationSettingsChange({ ...notificationSettings, error })} ariaLabel={copy.errorNotifications} />
                   </div>
+                </div>
+              </section>
+              <section className="settings-section" aria-labelledby="settings-navigation-order-group-title">
+                <h1 className="settings-section-title" id="settings-navigation-order-group-title">{copy.navigationOrderGroupTitle}</h1>
+                <div className="settings-list settings-navigation-list">
+                  {navigationSettings.map((item) => {
+                    const label = navigationItemLabel(item.id);
+                    const visibilityAction = item.visible ? copy.hideNavigationItem : copy.showNavigationItem;
+                    const visibilityLabel = locale === "zh" ? `${visibilityAction}${label}` : `${visibilityAction} ${label}`;
+                    const dropClass = navigationDropTarget?.id === item.id ? ` is-drop-${navigationDropTarget.position}` : "";
+                    return (
+                      <div
+                        key={item.id}
+                        className={`settings-row settings-navigation-row${item.visible ? "" : " is-hidden"}${draggingNavigationId === item.id ? " is-dragging" : ""}${dropClass}`}
+                        data-navigation-id={item.id}
+                      >
+                        <div
+                          className="settings-navigation-drag-area"
+                          onPointerDown={(event) => handleNavigationPointerDown(event, item.id)}
+                          onPointerMove={handleNavigationPointerMove}
+                          onPointerUp={handleNavigationPointerUp}
+                          onPointerCancel={handleNavigationPointerCancel}
+                          title={copy.dragNavigationItem}
+                        >
+                          <SvgIcon name={item.id === "serial" ? "serial" : "terminal"} size={18} />
+                          <span className="settings-row-label">{label}</span>
+                        </div>
+                        <button
+                          className="settings-navigation-visibility-button"
+                          type="button"
+                          aria-label={visibilityLabel}
+                          aria-pressed={item.visible}
+                          title={visibilityLabel}
+                          onClick={() => toggleNavigationVisibility(item.id)}
+                        >
+                          <SvgIcon name={item.visible ? "show" : "unshow"} size={20} />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
             </>
