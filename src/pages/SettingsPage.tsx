@@ -6,6 +6,7 @@ import type { Locale } from "./SerialPage";
 import type { NotificationSettings } from "../preferences/notificationSettings";
 import { isValidX11ServerAddress, MAX_X11_SERVER_ADDRESS_LENGTH } from "../preferences/sshSettings";
 import { DEFAULT_BACKUP_SELECTION, type BackupSelection, type RivetSyncController, type SyncProvider } from "../rivetSync";
+import AboutPanel from "./AboutPanel";
 
 /** 支持的主题模式；system 会随操作系统外观变化。 */
 export type ThemeMode = "system" | "light" | "dark";
@@ -25,6 +26,8 @@ interface SettingsPageCopy {
   ssh: string;
   /** 同步设置栏目名称。 */
   sync: string;
+  /** 关于栏目名称。 */
+  about: string;
   /** 同步设置组标题。 */
   syncGroupTitle: string;
   /** Git 托管平台设置行。 */
@@ -161,6 +164,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serial: "串口",
     ssh: "SSH",
     sync: "同步",
+    about: "关于",
     syncGroupTitle: "同步",
     syncProvider: "平台",
     syncToken: "访问 Token",
@@ -253,6 +257,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serial: "Serial",
     ssh: "SSH",
     sync: "Sync",
+    about: "About",
     syncGroupTitle: "Sync",
     syncProvider: "Provider",
     syncToken: "Access token",
@@ -380,7 +385,7 @@ export interface SettingsPageProps {
 }
 
 /** 设置页右侧当前展示的分组。 */
-type SettingsCategory = "display" | "serial" | "ssh" | "sync";
+type SettingsCategory = "display" | "serial" | "ssh" | "sync" | "about";
 
 /** 已保存 Token 的仅展示占位值；密码输入框会将这些字符渲染为圆点。 */
 const SAVED_TOKEN_MASK = "************";
@@ -588,6 +593,9 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
 
   /** 显示远端片段同步设置。 */
   const showSyncSettings = () => setActiveCategory("sync");
+
+  /** 显示关于页。 */
+  const showAboutSettings = () => setActiveCategory("about");
 
   /** 只接受支持的平台值并切换同步目标。 */
   const handleSyncProviderChange = (value: string) => {
@@ -907,15 +915,21 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
           <SvgIcon name="refresh" size={18} />
           <span>{copy.sync}</span>
         </button>
+        <span className="settings-nav-spacer" />
+        <span className="settings-nav-divider" aria-hidden="true" />
+        <button className="settings-nav-item" type="button" aria-current={activeCategory === "about" ? "page" : undefined} onClick={showAboutSettings}>
+          <SvgIcon name="info" size={18} />
+          <span>{copy.about}</span>
+        </button>
       </nav>
-      <main className="settings-main" id="settings-display" aria-labelledby={activeCategory === "sync" ? "settings-sync-group-title" : activeCategory === "ssh" ? "settings-ssh-group-title" : "settings-group-title"}>
+      <main className={`settings-main${activeCategory === "about" ? " settings-main-about" : ""}`} id="settings-display" aria-labelledby={activeCategory === "about" ? "settings-about-title" : activeCategory === "sync" ? "settings-sync-group-title" : activeCategory === "ssh" ? "settings-ssh-group-title" : "settings-group-title"}>
         <VerticalScrollbar
-          className="settings-main-scroll"
+          className={`settings-main-scroll${activeCategory === "about" ? " settings-main-scroll-about" : ""}`}
           viewportClassName="settings-main-scroll-viewport"
           height="100%"
-          viewportLabel={activeCategory === "display" ? copy.display : activeCategory === "serial" ? copy.serial : activeCategory === "ssh" ? copy.ssh : copy.sync}
+          viewportLabel={activeCategory === "display" ? copy.display : activeCategory === "serial" ? copy.serial : activeCategory === "ssh" ? copy.ssh : activeCategory === "sync" ? copy.sync : copy.about}
         >
-          <div className="settings-main-content">
+          <div className={`settings-main-content${activeCategory === "about" ? " settings-main-content-about" : ""}`}>
           {activeCategory === "display" ? (
             <>
               <section className="settings-section" aria-labelledby="settings-group-title">
@@ -1053,7 +1067,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                 </div>
               </div>
             </section>
-          ) : (
+          ) : activeCategory === "sync" ? (
             <section className="settings-section" aria-labelledby="settings-sync-group-title">
               <h1 className="settings-section-title" id="settings-sync-group-title">{copy.syncGroupTitle}</h1>
               <div className="settings-list">
@@ -1161,6 +1175,8 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                 )}
               </div>
             </section>
+          ) : (
+            <AboutPanel locale={locale} />
           )}
 
           </div>

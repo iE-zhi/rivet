@@ -21,6 +21,8 @@ use crate::sync_secrets::{self, EncryptedBackupSecrets, EncryptedSyncSecrets};
 
 /// 同步访问令牌在系统凭据库中的服务名。
 const TOKEN_SERVICE_NAME: &str = "Rivet Sync";
+/// Rivet 项目主页；仅由固定命令打开，不接受前端传入任意 URL。
+const RIVET_PROJECT_URL: &str = "https://gitee.com/boo0ood/rivet";
 /// 三个平台片段中统一使用的同步文件名。
 const SYNC_FILE_NAME: &str = "rivet-sync.json";
 /// 自动创建的同步片段使用固定名称，便于同一账号的其他设备自动发现。
@@ -262,6 +264,14 @@ pub async fn open_sync_token_page(provider: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || open_external_url(url))
         .await
         .map_err(|error| format!("打开 Token 页面任务失败：{error}"))?
+}
+
+/// 使用系统默认浏览器打开 Rivet 固定项目主页。
+#[tauri::command]
+pub async fn open_project_page() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| open_external_url(RIVET_PROJECT_URL))
+        .await
+        .map_err(|error| format!("打开项目主页任务失败：{error}"))?
 }
 
 /// 自动查找当前账号已有的 Rivet 同步片段；不存在时创建私有片段并写入当前本机数据。

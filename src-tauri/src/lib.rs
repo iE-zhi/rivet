@@ -54,6 +54,7 @@ pub fn run() -> tauri::Result<()> {
             sync::save_sync_token,
             sync::delete_sync_token,
             sync::open_sync_token_page,
+            sync::open_project_page,
             sync::ensure_sync_remote,
             sync::read_sync_remote,
             sync::write_sync_remote,
