@@ -112,6 +112,8 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
   const [renamePath, setRenamePath] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
   const requestSequenceRef = useRef(0);
+  /** 仅在当前应用进程内按 SSH session 记忆最近访问目录；重连后的新 session 不继承。 */
+  const lastPathBySessionRef = useRef(new Map<string, string>());
 
   /** 读取目录并仅应用最后一次导航请求，防止慢响应覆盖新路径。 */
   const loadDirectory = useCallback(async (requestedPath: string) => {
@@ -128,6 +130,7 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
       setPath(result.path);
       setPathInput(result.path);
       setEntries(result.entries);
+      lastPathBySessionRef.current.set(sessionId, result.path);
     } catch (error) {
       if (requestSequenceRef.current !== sequence) return;
       notify({ kind: "error", message: `${copy.listFailed}${String(error)}` });
@@ -138,10 +141,11 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
 
   useEffect(() => {
     if (!open || !sessionId) return;
-    setPath(".");
-    setPathInput(".");
+    const rememberedPath = lastPathBySessionRef.current.get(sessionId) ?? ".";
+    setPath(rememberedPath);
+    setPathInput(rememberedPath);
     setEntries([]);
-    void loadDirectory(".");
+    void loadDirectory(rememberedPath);
   }, [loadDirectory, open, sessionId]);
 
   useEffect(() => {
