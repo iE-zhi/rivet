@@ -26,6 +26,7 @@ sha256sums=('SKIP')
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"
+  CFLAGS+=" -ffat-lto-objects"
   pnpm install --frozen-lockfile
   pnpm tauri build --no-bundle
 }
@@ -34,7 +35,7 @@ package() {
   cd "$srcdir/$pkgname-$pkgver"
 
   install -Dm755 src-tauri/target/release/rivet "$pkgdir/usr/bin/rivet"
-  install -Dm644 design/app-icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/rivet.svg"
+  install -Dm644 src/assets/svg/app-icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/rivet.svg"
   install -Dm644 packaging/arch/rivet.desktop "$pkgdir/usr/share/applications/rivet.desktop"
 
   install -Dm644 THIRD_PARTY_NOTICES.md "$pkgdir/usr/share/licenses/rivet/THIRD_PARTY_NOTICES.md"
