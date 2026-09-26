@@ -1,5 +1,7 @@
 name: Release
 
+# 正式发布工作流；普通源码提交不自动打包。
+
 on:
   push:
     branches:
