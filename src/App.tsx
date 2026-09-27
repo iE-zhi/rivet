@@ -9,7 +9,7 @@ import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDe
 import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
 import { deserializeNotificationSettings, isNotificationSettings, NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings, type NotificationSettings } from "./preferences/notificationSettings";
 import { deserializeNavigationSettings, isNavigationSettings, NAVIGATION_SETTINGS_STORAGE_KEY, serializeNavigationSettings, type NavigationSettings } from "./preferences/navigationSettings";
-import { DEFAULT_LINUX_XAUTH_PATH, DEFAULT_MACOS_XAUTH_PATH, deserializeX11ServerAddress, deserializeXauthPath, LINUX_XAUTH_PATH_STORAGE_KEY, MACOS_XAUTH_PATH_STORAGE_KEY, X11_SERVER_ADDRESS_STORAGE_KEY } from "./preferences/sshSettings";
+import { DEFAULT_LINUX_XAUTH_PATH, deserializeX11ServerAddress, deserializeXauthPath, LINUX_XAUTH_PATH_STORAGE_KEY, X11_SERVER_ADDRESS_STORAGE_KEY } from "./preferences/sshSettings";
 
 const TerminalPage = lazy(() => import("./pages/TerminalPage"));
 
@@ -168,15 +168,6 @@ function readLinuxXauthPathPreference(): string {
   }
 }
 
-/** 从本机存储恢复 macOS xauth 路径；该设置不参与跨设备同步。 */
-function readMacosXauthPathPreference(): string {
-  try {
-    return deserializeXauthPath(window.localStorage.getItem(MACOS_XAUTH_PATH_STORAGE_KEY), DEFAULT_MACOS_XAUTH_PATH);
-  } catch (error) {
-    console.warn("Rivet 无法读取 macOS xauth 路径，将使用默认路径。", error);
-    return DEFAULT_MACOS_XAUTH_PATH;
-  }
-}
 
 /**
  * 读取系统当前深色外观状态；缺少 matchMedia 时按浅色安全默认值处理。
@@ -213,8 +204,6 @@ export default function App() {
   const [x11ServerAddress, setX11ServerAddress] = useState(readX11ServerAddressPreference);
   /** Linux 本机 xauth 可执行文件路径；仅保存在当前设备。 */
   const [linuxXauthPath, setLinuxXauthPath] = useState(readLinuxXauthPathPreference);
-  /** macOS 本机 xauth 可执行文件路径；仅保存在当前设备。 */
-  const [macosXauthPath, setMacosXauthPath] = useState(readMacosXauthPathPreference);
   /** 系统外观状态仅在主题模式为 system 时决定最终颜色方案。 */
   const [systemPrefersDark, setSystemPrefersDark] = useState(readSystemPrefersDark);
   /** 首屏采用排序后的第一个可见工具页；全部隐藏时进入始终可访问的设置页。 */
@@ -304,15 +293,6 @@ export default function App() {
       console.warn("Rivet 无法保存 Linux xauth 路径；本次会话中仍会生效。", error);
     }
   }, [linuxXauthPath]);
-
-  /** macOS xauth 路径只保存在本机，不触发同步数据变更事件。 */
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(MACOS_XAUTH_PATH_STORAGE_KEY, macosXauthPath);
-    } catch (error) {
-      console.warn("Rivet 无法保存 macOS xauth 路径；本次会话中仍会生效。", error);
-    }
-  }, [macosXauthPath]);
 
   /** 同步或恢复配置后原地刷新持久化 React 状态，保留当前页面与活动会话。 */
   useEffect(() => {
@@ -454,12 +434,12 @@ export default function App() {
           {terminalMounted && (
             <div className="app-view terminal-view" hidden={page !== "terminal"}>
               <Suspense fallback={null}>
-                <TerminalPage locale={locale} themeKey={resolvedTheme} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} macosXauthPath={macosXauthPath} onRequestActivate={activateTerminalPage} />
+                <TerminalPage locale={locale} themeKey={resolvedTheme} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} onRequestActivate={activateTerminalPage} />
               </Suspense>
             </div>
           )}
           <div className="app-view settings-view" hidden={page !== "settings"}>
-            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} macosXauthPath={macosXauthPath} onMacosXauthPathChange={setMacosXauthPath} sync={sync} />
+            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} sync={sync} />
           </div>
         </NotificationProvider>
       </div>

@@ -437,10 +437,6 @@ export interface SettingsPageProps {
   linuxXauthPath: string;
   /** 更新仅保存在本机的 Linux xauth 路径。 */
   onLinuxXauthPathChange: (path: string) => void;
-  /** 当前 macOS 本机 xauth 可执行文件路径。 */
-  macosXauthPath: string;
-  /** 更新仅保存在本机的 macOS xauth 路径。 */
-  onMacosXauthPathChange: (path: string) => void;
   /** Git 托管同步控制器；常驻应用外壳并把交互集中展示在设置页。 */
   sync: RivetSyncController;
 }
@@ -537,7 +533,7 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
  * @param onX11ServerAddressChange 用户修改 X11 Server 地址后的回调。
  * @returns 设置侧栏和显示偏好分组。
  */
-export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, notificationSettings, onNotificationSettingsChange, navigationSettings, onNavigationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, x11ServerAddress, onX11ServerAddressChange, linuxXauthPath, onLinuxXauthPathChange, macosXauthPath, onMacosXauthPathChange, sync }: SettingsPageProps) {
+export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, notificationSettings, onNotificationSettingsChange, navigationSettings, onNavigationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, x11ServerAddress, onX11ServerAddressChange, linuxXauthPath, onLinuxXauthPathChange, sync }: SettingsPageProps) {
   /** 取当前界面语言的文案和选项列表。 */
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 当前页面所有短时反馈均通过应用外壳中的全局通知发送。 */
@@ -572,11 +568,9 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   /** X11 地址仅在校验通过后提交到父级持久化状态。 */
   const [x11ServerAddressDraft, setX11ServerAddressDraft] = useState(x11ServerAddress);
   const [x11ServerAddressInvalid, setX11ServerAddressInvalid] = useState(false);
-  /** Linux/macOS xauth 路径仅在校验通过后提交到父级本机持久化状态。 */
+  /** Linux xauth 路径仅在校验通过后提交到父级本机持久化状态。 */
   const [linuxXauthPathDraft, setLinuxXauthPathDraft] = useState(linuxXauthPath);
-  const [macosXauthPathDraft, setMacosXauthPathDraft] = useState(macosXauthPath);
   const [linuxXauthPathInvalid, setLinuxXauthPathInvalid] = useState(false);
-  const [macosXauthPathInvalid, setMacosXauthPathInvalid] = useState(false);
   /** 开关指针激活造成输入框失焦时，阻止草稿提交到默认通信参数。 */
   const suppressBaudBlurCommitRef = useRef(false);
 
@@ -605,11 +599,6 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     setLinuxXauthPathDraft(linuxXauthPath);
     setLinuxXauthPathInvalid(false);
   }, [linuxXauthPath]);
-
-  useEffect(() => {
-    setMacosXauthPathDraft(macosXauthPath);
-    setMacosXauthPathInvalid(false);
-  }, [macosXauthPath]);
 
   /**
    * 只把受支持的语言值转交给外层状态。
@@ -683,7 +672,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     }
   };
 
-  /** 校验并提交 Linux/macOS xauth 路径；路径仅保存在当前设备。 */
+  /** 校验并提交 Linux xauth 路径；路径仅保存在当前设备。 */
   const commitXauthPath = (
     draft: string,
     current: string,
@@ -1354,28 +1343,6 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                         if (linuxXauthPathInvalid && isValidXauthPath(value)) setLinuxXauthPathInvalid(false);
                       }}
                       onBlur={() => commitXauthPath(linuxXauthPathDraft, linuxXauthPath, setLinuxXauthPathDraft, setLinuxXauthPathInvalid, onLinuxXauthPathChange)}
-                    />
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <span className="settings-row-label settings-x11-address-label">
-                    {copy.xauthPath}
-                    <span className="settings-x11-platform-note">Mac</span>
-                  </span>
-                  <div className="settings-row-control">
-                    <Input
-                      aria-label={`${copy.xauthPath} Mac`}
-                      aria-invalid={macosXauthPathInvalid}
-                      className="settings-input settings-address-input"
-                      maxLength={MAX_XAUTH_PATH_LENGTH}
-                      placeholder="/opt/X11/bin/xauth"
-                      value={macosXauthPathDraft}
-                      onChange={(event) => {
-                        const value = event.currentTarget.value;
-                        setMacosXauthPathDraft(value);
-                        if (macosXauthPathInvalid && isValidXauthPath(value)) setMacosXauthPathInvalid(false);
-                      }}
-                      onBlur={() => commitXauthPath(macosXauthPathDraft, macosXauthPath, setMacosXauthPathDraft, setMacosXauthPathInvalid, onMacosXauthPathChange)}
                     />
                   </div>
                 </div>

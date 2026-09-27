@@ -73,8 +73,6 @@ pub struct SshConnectConfig {
     pub x11_server_address: Option<String>,
     /// Linux 本机 xauth 可执行文件路径；仅在启用 X11 时使用。
     pub x11_linux_xauth_path: Option<String>,
-    /// macOS 本机 xauth 可执行文件路径；仅在启用 X11 时使用。
-    pub x11_macos_xauth_path: Option<String>,
     /// 初始 PTY 列数。
     pub columns: u32,
     /// 初始 PTY 行数。
@@ -249,7 +247,7 @@ pub async fn open_ssh_session(
     let port = config.port;
     let x11_config = if config.x11 {
         #[cfg(target_os = "macos")]
-        let xauth_path = config.x11_macos_xauth_path.clone();
+        let xauth_path = None;
         #[cfg(all(unix, not(target_os = "macos")))]
         let xauth_path = config.x11_linux_xauth_path.clone();
         #[cfg(windows)]
@@ -608,13 +606,7 @@ fn validate_connect_config(config: &SshConnectConfig) -> Result<(), String> {
         return Err("X11 Server 地址为空或过长".to_string());
     }
     if config.x11 {
-        for path in [
-            config.x11_linux_xauth_path.as_deref(),
-            config.x11_macos_xauth_path.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        {
+        if let Some(path) = config.x11_linux_xauth_path.as_deref() {
             if path.trim().is_empty()
                 || path.len() > MAX_CREDENTIAL_BYTES
                 || !path.trim().starts_with('/')

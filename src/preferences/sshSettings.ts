@@ -2,15 +2,11 @@
 export const X11_SERVER_ADDRESS_STORAGE_KEY = "rivet.ssh.x11ServerAddress";
 /** Linux xauth 可执行文件路径，仅保存在本机。 */
 export const LINUX_XAUTH_PATH_STORAGE_KEY = "rivet.ssh.linuxXauthPath";
-/** macOS xauth 可执行文件路径，仅保存在本机。 */
-export const MACOS_XAUTH_PATH_STORAGE_KEY = "rivet.ssh.macosXauthPath";
 
 /** 未配置时默认连接本机 display 0 的 TCP 端口。 */
 export const DEFAULT_X11_SERVER_ADDRESS = "127.0.0.1:6000";
 /** Linux 常见 xauth 安装路径。 */
 export const DEFAULT_LINUX_XAUTH_PATH = "/usr/bin/xauth";
-/** XQuartz 提供的 macOS xauth 安装路径。 */
-export const DEFAULT_MACOS_XAUTH_PATH = "/opt/X11/bin/xauth";
 
 /** 限制异常存储值和无界输入占用。 */
 export const MAX_X11_SERVER_ADDRESS_LENGTH = 255;

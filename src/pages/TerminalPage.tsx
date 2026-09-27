@@ -49,8 +49,6 @@ interface TerminalPageProps {
   x11ServerAddress: string;
   /** Linux 本机 xauth 可执行文件路径。 */
   linuxXauthPath: string;
-  /** macOS 本机 xauth 可执行文件路径。 */
-  macosXauthPath: string;
   /** 系统窗口关闭被拦截时，确保终端页可见以展示确认弹窗。 */
   onRequestActivate: () => void;
 }
@@ -400,12 +398,11 @@ interface SessionTerminalProps {
   locale: Locale;
   x11ServerAddress: string;
   linuxXauthPath: string;
-  macosXauthPath: string;
   onStateChange: (sessionId: string, state: TerminalSessionState) => void;
 }
 
 /** 挂载 SSH xterm，并把字节流、键盘输入和尺寸变化桥接到对应 Rust worker。 */
-function SessionTerminal({ session, active, themeKey, locale, x11ServerAddress, linuxXauthPath, macosXauthPath, onStateChange }: SessionTerminalProps) {
+function SessionTerminal({ session, active, themeKey, locale, x11ServerAddress, linuxXauthPath, onStateChange }: SessionTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -509,7 +506,6 @@ function SessionTerminal({ session, active, themeKey, locale, x11ServerAddress, 
             x11: session.connection.x11,
             x11ServerAddress: session.connection.x11 ? x11ServerAddress : null,
             x11LinuxXauthPath: session.connection.x11 ? linuxXauthPath : null,
-            x11MacosXauthPath: session.connection.x11 ? macosXauthPath : null,
             columns: Math.max(1, terminal.cols),
             rows: Math.max(1, terminal.rows),
           },
@@ -544,7 +540,7 @@ function SessionTerminal({ session, active, themeKey, locale, x11ServerAddress, 
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [linuxXauthPath, macosXauthPath, onStateChange, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
+  }, [linuxXauthPath, onStateChange, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -900,7 +896,7 @@ function SerialSessionTerminal({ session, active, themeKey, locale, onStateChang
 }
 
 /** Rivet 终端页面：Tab 之内使用递归 pane 树管理本地、SSH 与串口终端。 */
-export default function TerminalPage({ locale, themeKey, x11ServerAddress, linuxXauthPath, macosXauthPath, onRequestActivate }: TerminalPageProps) {
+export default function TerminalPage({ locale, themeKey, x11ServerAddress, linuxXauthPath, onRequestActivate }: TerminalPageProps) {
   const copy = COPY[locale];
   const { notify } = useNotification();
   const [initialWorkspace] = useState(() => createInitialTerminalWorkspace(copy.terminal));
@@ -1731,7 +1727,6 @@ export default function TerminalPage({ locale, themeKey, x11ServerAddress, linux
               locale={locale}
               x11ServerAddress={x11ServerAddress}
               linuxXauthPath={linuxXauthPath}
-              macosXauthPath={macosXauthPath}
               onStateChange={updateSessionState}
             />
           ) : session.kind === "serial" ? (
