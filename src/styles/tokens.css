@@ -33,19 +33,19 @@
 
 [data-theme="dark"],
 .rivet-theme-dark {
-  --r-bg: #09090A;
-  --r-surface: #111113;
-  --r-surface-2: #18181B;
-  --r-border: #2A2A2E;
+  --r-bg: #404040;
+  --r-surface: #404040;
+  --r-surface-2: #4A4A4A;
+  --r-border: #5A5A5A;
   --r-muted: #85858F;
   --r-subtle: #A1A1AA;
   --r-text: #E7E7EA;
 
-  --r-scrollbar-track: #18181B;
-  --r-scrollbar-thumb: #3F3F46;
-  --r-scrollbar-thumb-hover: #52525B;
+  --r-scrollbar-track: #404040;
+  --r-scrollbar-thumb: #666666;
+  --r-scrollbar-thumb-hover: #777777;
 
-  --r-terminal-bg: #050506;
+  --r-terminal-bg: #404040;
   --r-terminal-text: #E7E7EA;
   --r-terminal-info: #60A5FA;
   --r-terminal-rx: #34D399;
