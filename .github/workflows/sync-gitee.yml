@@ -93,6 +93,30 @@ jobs:
 
           TARGET_BRANCH=$(jq -r '.default_branch // "master"' gitee-repo.json)
 
+          TAG_STATUS=$(curl "${CURL_READ[@]}" -o gitee-tags.json -w "%{http_code}" \
+            -H "$AUTH_HEADER" \
+            "$API/tags?per_page=100")
+          if [ "$TAG_STATUS" != "200" ]; then
+            cat gitee-tags.json
+            echo "::error::Failed to query Gitee tags, HTTP $TAG_STATUS"
+            exit 1
+          fi
+
+          if ! jq -e --arg tag "$TAG" '.[] | select(.name == $tag)' gitee-tags.json >/dev/null; then
+            CREATE_TAG_STATUS=$(curl "${CURL_READ[@]}" -o gitee-tag-write.json -w "%{http_code}" \
+              -X POST \
+              -H "$AUTH_HEADER" \
+              --data-urlencode "refs=$TARGET_BRANCH" \
+              --data-urlencode "tag_name=$TAG" \
+              --data-urlencode "tag_message=$NAME" \
+              "$API/tags")
+            if [ "$CREATE_TAG_STATUS" -lt 200 ] || [ "$CREATE_TAG_STATUS" -ge 300 ]; then
+              cat gitee-tag-write.json
+              echo "::error::Failed to create Gitee tag, HTTP $CREATE_TAG_STATUS"
+              exit 1
+            fi
+          fi
+
           STATUS=$(curl "${CURL_READ[@]}" -o gitee-release.json -w "%{http_code}" \
             -H "$AUTH_HEADER" \
             "$API/releases/tags/$TAG")
