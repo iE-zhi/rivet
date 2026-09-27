@@ -18,6 +18,17 @@ export const APP_PREFERENCE_STORAGE_KEYS = {
 /** 受支持的远端片段服务。 */
 export type SyncProvider = "github" | "gitee" | "gitlab";
 
+/** 会触发同步结果通知的四类同步来源。 */
+export type SyncNotificationTrigger = "dataChange" | "startup" | "focus" | "manual";
+
+/** 各同步来源是否显示同步成功、冲突或错误通知。 */
+export interface SyncNotificationSettings {
+  dataChange: boolean;
+  startup: boolean;
+  focus: boolean;
+  manual: boolean;
+}
+
 /** 本地备份可单独选择导出的数据分组。 */
 export interface BackupSelection {
   settings: boolean;
@@ -31,6 +42,7 @@ export interface RivetSyncConfig {
   provider: SyncProvider;
   snippetId: string;
   autoSync: boolean;
+  notifications: SyncNotificationSettings;
 }
 
 /** 同步运行阶段。 */
@@ -45,6 +57,7 @@ export interface RivetSyncController {
   phase: RivetSyncPhase;
   error: string;
   lastSyncedAt: number | null;
+  notificationTrigger: SyncNotificationTrigger | null;
   updateConfig: (config: RivetSyncConfig) => void;
   saveToken: (token: string) => Promise<void>;
   deleteToken: () => Promise<void>;
@@ -67,6 +80,7 @@ interface RivetSyncDocument {
     useSerialDefaults: boolean;
     serialRxSettings: SerialRxSettings;
     notificationSettings: NotificationSettings;
+    syncNotifications: SyncNotificationSettings;
     navigationSettings: NavigationSettings;
   };
   serialQuickCommands: SerialQuickCommandGroup[];
@@ -135,10 +149,17 @@ export const DEFAULT_BACKUP_SELECTION: BackupSelection = {
   terminalConnections: true,
   terminalQuickCommands: true,
 };
+const DEFAULT_SYNC_NOTIFICATIONS: Readonly<SyncNotificationSettings> = {
+  dataChange: true,
+  startup: true,
+  focus: true,
+  manual: true,
+};
 const DEFAULT_SYNC_CONFIG: RivetSyncConfig = {
   provider: "github",
   snippetId: "",
   autoSync: false,
+  notifications: { ...DEFAULT_SYNC_NOTIFICATIONS },
 };
 
 /** 判断未知值是否是普通对象。 */
@@ -151,21 +172,49 @@ function isSyncProvider(value: unknown): value is SyncProvider {
   return value === "github" || value === "gitee" || value === "gitlab";
 }
 
+/** 严格校验四类同步通知开关。 */
+function isSyncNotificationSettings(value: unknown): value is SyncNotificationSettings {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length === 4
+    && keys.every((key) => key === "dataChange" || key === "startup" || key === "focus" || key === "manual")
+    && typeof value.dataChange === "boolean"
+    && typeof value.startup === "boolean"
+    && typeof value.focus === "boolean"
+    && typeof value.manual === "boolean";
+}
+
+/** 旧配置没有同步通知字段时默认全部开启。 */
+function readSyncNotifications(value: unknown): SyncNotificationSettings {
+  return isSyncNotificationSettings(value)
+    ? { ...value }
+    : { ...DEFAULT_SYNC_NOTIFICATIONS };
+}
+
 /** 校验并恢复本机同步配置，同时丢弃旧版仓库/分支配置。 */
 function readSyncConfig(): RivetSyncConfig {
+  const fallback = (): RivetSyncConfig => ({
+    ...DEFAULT_SYNC_CONFIG,
+    notifications: { ...DEFAULT_SYNC_NOTIFICATIONS },
+  });
   try {
     const raw = window.localStorage.getItem(SYNC_CONFIG_STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_SYNC_CONFIG };
+    if (!raw) return fallback();
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed) || !isSyncProvider(parsed.provider) || typeof parsed.autoSync !== "boolean") {
-      return { ...DEFAULT_SYNC_CONFIG };
+      return fallback();
     }
     const snippetId = typeof parsed.snippetId === "string" && parsed.snippetId.length <= MAX_SNIPPET_ID_LENGTH
       ? parsed.snippetId
       : "";
-    return { provider: parsed.provider, snippetId, autoSync: parsed.autoSync };
+    return {
+      provider: parsed.provider,
+      snippetId,
+      autoSync: parsed.autoSync,
+      notifications: readSyncNotifications(parsed.notifications),
+    };
   } catch {
-    return { ...DEFAULT_SYNC_CONFIG };
+    return fallback();
   }
 }
 
@@ -281,6 +330,7 @@ function createSyncDocument(): RivetSyncDocument {
       useSerialDefaults: deserializeSerialDefaultsEnabled(readStorage(SERIAL_DEFAULTS_ENABLED_STORAGE_KEY)),
       serialRxSettings: deserializeSerialRxSettings(readStorage(SERIAL_RX_SETTINGS_STORAGE_KEY)),
       notificationSettings: deserializeNotificationSettings(readStorage(NOTIFICATION_SETTINGS_STORAGE_KEY)),
+      syncNotifications: readSyncConfig().notifications,
       navigationSettings: deserializeNavigationSettings(readStorage(NAVIGATION_SETTINGS_STORAGE_KEY)),
     },
     serialQuickCommands: deserializeSerialQuickCommands(readStorage(SERIAL_QUICK_COMMANDS_STORAGE_KEY)),
@@ -316,6 +366,7 @@ function createPristineSyncDocument(): RivetSyncDocument {
       useSerialDefaults: deserializeSerialDefaultsEnabled(null),
       serialRxSettings: deserializeSerialRxSettings(null),
       notificationSettings: deserializeNotificationSettings(null),
+      syncNotifications: { ...DEFAULT_SYNC_NOTIFICATIONS },
       navigationSettings: deserializeNavigationSettings(null),
     },
     serialQuickCommands: [],
@@ -377,6 +428,11 @@ function parseSyncDocument(content: string): RivetSyncDocument {
   const serialDefaults = settings.serialDefaults;
   const serialRxSettings = settings.serialRxSettings;
   const notificationSettings = settings.notificationSettings;
+  const syncNotifications = settings.syncNotifications === undefined
+    ? { ...DEFAULT_SYNC_NOTIFICATIONS }
+    : isSyncNotificationSettings(settings.syncNotifications)
+      ? { ...settings.syncNotifications }
+      : null;
   const navigationSettings = settings.navigationSettings === undefined
     ? deserializeNavigationSettings(null)
     : settings.navigationSettings;
@@ -389,6 +445,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
     !isSerialDefaults(serialDefaults) ||
     !isSerialRxSettings(serialRxSettings) ||
     !isNotificationSettings(notificationSettings) ||
+    syncNotifications === null ||
     !isNavigationSettings(navigationSettings) ||
     !isSerialQuickCommandGroups(parsed.serialQuickCommands) ||
     terminalConnections === null ||
@@ -407,6 +464,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
       useSerialDefaults: settings.useSerialDefaults,
       serialRxSettings: { ...serialRxSettings },
       notificationSettings: { ...notificationSettings },
+      syncNotifications,
       navigationSettings: navigationSettings.map((item) => ({ ...item })),
     },
     serialQuickCommands: parsed.serialQuickCommands.map((group) => ({
@@ -425,7 +483,13 @@ function applySyncDocument(document: RivetSyncDocument, keyPaths: Record<string,
       ? { ...connection, keyPath: keyPaths[connection.id] }
       : { ...connection },
   );
+  const currentSyncConfig = readSyncConfig();
+  const mergedSyncConfig: RivetSyncConfig = {
+    ...currentSyncConfig,
+    notifications: { ...document.settings.syncNotifications },
+  };
   const writes: Array<[string, string]> = [
+    [SYNC_CONFIG_STORAGE_KEY, JSON.stringify(mergedSyncConfig)],
     [APP_PREFERENCE_STORAGE_KEYS.locale, document.settings.locale],
     [APP_PREFERENCE_STORAGE_KEYS.theme, document.settings.theme],
     [APP_PREFERENCE_STORAGE_KEYS.font, document.settings.font],
@@ -543,22 +607,33 @@ export function useRivetSync(): RivetSyncController {
   const [phase, setPhase] = useState<RivetSyncPhase>("idle");
   const [error, setError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(() => readSyncMetadata(readSyncConfig()).lastSyncedAt);
+  const [notificationTrigger, setNotificationTrigger] = useState<SyncNotificationTrigger | null>(null);
   const runningRef = useRef<Promise<void> | null>(null);
   const autoTimerRef = useRef<number | null>(null);
 
-  /** 修改同步配置并立即持久化。 */
+  /** 修改同步配置并立即持久化；通知偏好变化会进入现有自动同步防抖链路。 */
   const updateConfig = useCallback((next: RivetSyncConfig) => {
     const normalized: RivetSyncConfig = {
       provider: next.provider,
       snippetId: next.snippetId.slice(0, MAX_SNIPPET_ID_LENGTH),
       autoSync: next.autoSync,
+      notifications: { ...next.notifications },
     };
+    const notificationsChanged =
+      normalized.notifications.dataChange !== config.notifications.dataChange
+      || normalized.notifications.startup !== config.notifications.startup
+      || normalized.notifications.focus !== config.notifications.focus
+      || normalized.notifications.manual !== config.notifications.manual;
     writeSyncConfig(normalized);
     setConfig(normalized);
+    setNotificationTrigger(null);
     setPhase("idle");
     setError("");
     setLastSyncedAt(readSyncMetadata(normalized).lastSyncedAt);
-  }, []);
+    if (notificationsChanged) {
+      window.dispatchEvent(new CustomEvent(SYNC_DATA_CHANGED_EVENT, { detail: { key: SYNC_CONFIG_STORAGE_KEY } }));
+    }
+  }, [config.notifications]);
 
   /** 查询当前平台是否已在系统凭据库保存访问令牌。 */
   useEffect(() => {
@@ -605,6 +680,7 @@ export function useRivetSync(): RivetSyncController {
         }
       }
 
+      setNotificationTrigger("manual");
       setPhase("syncing");
       setError("");
       const localState = await prepareLocalSyncState();
@@ -725,13 +801,17 @@ export function useRivetSync(): RivetSyncController {
   }, [config.provider, desktop]);
 
   /** 执行一次双向同步；片段 ID 对用户隐藏，缺失或失效时自动发现或创建。 */
-  const performSync = useCallback(async (resolution: "normal" | "local" | "remote" = "normal") => {
+  const performSync = useCallback(async (
+    resolution: "normal" | "local" | "remote" = "normal",
+    trigger: SyncNotificationTrigger = "manual",
+  ) => {
     if (!desktop) throw new Error("同步仅在 Rivet 桌面应用中可用");
     if (!tokenStored) throw new Error("请先保存访问 Token");
 
     while (runningRef.current) await runningRef.current;
 
     const task = (async () => {
+      setNotificationTrigger(trigger);
       setPhase("syncing");
       setError("");
 
@@ -900,9 +980,13 @@ export function useRivetSync(): RivetSyncController {
     await task;
   }, [config, desktop, tokenStored]);
 
-  const syncNow = useCallback(() => performSync("normal"), [performSync]);
-  const resolveWithLocal = useCallback(() => performSync("local"), [performSync]);
-  const resolveWithRemote = useCallback(() => performSync("remote"), [performSync]);
+  const syncNow = useCallback(() => performSync("normal", "manual"), [performSync]);
+  const resolveWithLocal = useCallback(() => performSync("local", "manual"), [performSync]);
+  const resolveWithRemote = useCallback(() => performSync("remote", "manual"), [performSync]);
+
+  /** 自动触发器始终调用最新的同步实现，避免通知偏好变化重新注册启动检查。 */
+  const performSyncRef = useRef(performSync);
+  performSyncRef.current = performSync;
 
   /** 导出可复制到任意离线设备恢复的本地文件；SSH 敏感数据只由用户备份密码加密。 */
   const exportBackup = useCallback(async (password: string, included: BackupSelection) => {
@@ -938,7 +1022,7 @@ export function useRivetSync(): RivetSyncController {
       if (autoTimerRef.current !== null) window.clearTimeout(autoTimerRef.current);
       autoTimerRef.current = window.setTimeout(() => {
         autoTimerRef.current = null;
-        void performSync("normal").catch(() => undefined);
+        void performSyncRef.current("normal", "dataChange").catch(() => undefined);
       }, AUTO_SYNC_DEBOUNCE_MS);
     };
     window.addEventListener(SYNC_DATA_CHANGED_EVENT, handleDataChanged);
@@ -949,17 +1033,17 @@ export function useRivetSync(): RivetSyncController {
         autoTimerRef.current = null;
       }
     };
-  }, [config, desktop, performSync, tokenStored]);
+  }, [config.autoSync, desktop, tokenStored]);
 
   /** 自动同步开启时启动检查一次；窗口重新获得焦点时再检查一次，不再固定轮询。 */
   useEffect(() => {
     if (!config.autoSync || !desktop || !tokenStored) return;
 
     const firstCheck = window.setTimeout(() => {
-      void performSync("normal").catch(() => undefined);
+      void performSyncRef.current("normal", "startup").catch(() => undefined);
     }, AUTO_SYNC_DEBOUNCE_MS);
     const handleWindowFocus = () => {
-      void performSync("normal").catch(() => undefined);
+      void performSyncRef.current("normal", "focus").catch(() => undefined);
     };
     window.addEventListener("focus", handleWindowFocus);
 
@@ -967,7 +1051,7 @@ export function useRivetSync(): RivetSyncController {
       window.clearTimeout(firstCheck);
       window.removeEventListener("focus", handleWindowFocus);
     };
-  }, [config, desktop, performSync, tokenStored]);
+  }, [config.autoSync, desktop, tokenStored]);
 
   return {
     desktop,
@@ -977,6 +1061,7 @@ export function useRivetSync(): RivetSyncController {
     phase,
     error,
     lastSyncedAt,
+    notificationTrigger,
     updateConfig,
     saveToken,
     deleteToken,

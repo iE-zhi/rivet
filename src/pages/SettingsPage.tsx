@@ -31,12 +31,22 @@ interface SettingsPageCopy {
   about: string;
   /** 同步设置组标题。 */
   syncGroupTitle: string;
+  /** 同步通知设置组标题。 */
+  syncNotificationGroupTitle: string;
   /** Git 托管平台设置行。 */
   syncProvider: string;
   /** 访问令牌设置行。 */
   syncToken: string;
   /** 自动同步开关。 */
   autoSync: string;
+  /** 本地数据改动自动同步的通知开关。 */
+  syncNotifyDataChange: string;
+  /** 启动首次同步检查的通知开关。 */
+  syncNotifyStartup: string;
+  /** 窗口重新聚焦同步检查的通知开关。 */
+  syncNotifyFocus: string;
+  /** 手动同步及冲突处理的通知开关。 */
+  syncNotifyManual: string;
   /** 手动同步按钮。 */
   syncNow: string;
   /** 从本地恢复文件导入。 */
@@ -175,9 +185,14 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     sync: "同步",
     about: "关于",
     syncGroupTitle: "同步",
+    syncNotificationGroupTitle: "通知",
     syncProvider: "平台",
     syncToken: "访问 Token",
     autoSync: "检测到改动时自动同步",
+    syncNotifyDataChange: "本地改动同步通知",
+    syncNotifyStartup: "启动检查同步通知",
+    syncNotifyFocus: "窗口聚焦同步通知",
+    syncNotifyManual: "手动同步通知",
     syncNow: "立即同步",
     importBackup: "导入",
     exportBackup: "导出",
@@ -272,9 +287,14 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     sync: "Sync",
     about: "About",
     syncGroupTitle: "Sync",
+    syncNotificationGroupTitle: "Notifications",
     syncProvider: "Provider",
     syncToken: "Access token",
     autoSync: "Sync automatically when changes are detected",
+    syncNotifyDataChange: "Local-change sync notifications",
+    syncNotifyStartup: "Startup-check sync notifications",
+    syncNotifyFocus: "Window-focus sync notifications",
+    syncNotifyManual: "Manual sync notifications",
     syncNow: "Sync now",
     importBackup: "Import",
     exportBackup: "Export",
@@ -826,8 +846,11 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [backupAction]);
 
-  /** 将每次同步结果统一转成全局通知。 */
+  /** 将每次同步结果按对应触发来源的通知开关转成全局通知。 */
   useEffect(() => {
+    const notificationsEnabled = sync.notificationTrigger === null
+      || sync.config.notifications[sync.notificationTrigger];
+    if (!notificationsEnabled) return;
     if (sync.error) {
       notify({ kind: "error", message: sync.error });
       return;
@@ -839,7 +862,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     if (sync.phase === "synced") {
       notify({ kind: "success", message: copy.syncSucceededNotice });
     }
-  }, [copy.syncConflict, copy.syncSucceededNotice, notify, sync.error, sync.lastSyncedAt, sync.phase]);
+  }, [copy.syncConflict, copy.syncSucceededNotice, notify, sync.config.notifications, sync.error, sync.lastSyncedAt, sync.notificationTrigger, sync.phase]);
 
   /** 更新单个导出内容分组。 */
   const updateBackupSelection = (key: keyof BackupSelection, checked: boolean) => {
@@ -1243,6 +1266,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
               </div>
             </section>
           ) : activeCategory === "sync" ? (
+            <>
             <section className="settings-section" aria-labelledby="settings-sync-group-title">
               <h1 className="settings-section-title" id="settings-sync-group-title">{copy.syncGroupTitle}</h1>
               <div className="settings-list">
@@ -1349,6 +1373,48 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                 )}
               </div>
             </section>
+            <section className="settings-section" aria-labelledby="settings-sync-notification-group-title">
+              <h1 className="settings-section-title" id="settings-sync-notification-group-title">{copy.syncNotificationGroupTitle}</h1>
+              <div className="settings-list">
+                <div className="settings-row">
+                  <span className="settings-row-label">{copy.syncNotifyDataChange}</span>
+                  <Switch
+                    checked={sync.config.notifications.dataChange}
+                    onCheckedChange={(dataChange) => sync.updateConfig({ ...sync.config, notifications: { ...sync.config.notifications, dataChange } })}
+                    ariaLabel={copy.syncNotifyDataChange}
+                    disabled={!sync.desktop}
+                  />
+                </div>
+                <div className="settings-row">
+                  <span className="settings-row-label">{copy.syncNotifyStartup}</span>
+                  <Switch
+                    checked={sync.config.notifications.startup}
+                    onCheckedChange={(startup) => sync.updateConfig({ ...sync.config, notifications: { ...sync.config.notifications, startup } })}
+                    ariaLabel={copy.syncNotifyStartup}
+                    disabled={!sync.desktop}
+                  />
+                </div>
+                <div className="settings-row">
+                  <span className="settings-row-label">{copy.syncNotifyFocus}</span>
+                  <Switch
+                    checked={sync.config.notifications.focus}
+                    onCheckedChange={(focus) => sync.updateConfig({ ...sync.config, notifications: { ...sync.config.notifications, focus } })}
+                    ariaLabel={copy.syncNotifyFocus}
+                    disabled={!sync.desktop}
+                  />
+                </div>
+                <div className="settings-row">
+                  <span className="settings-row-label">{copy.syncNotifyManual}</span>
+                  <Switch
+                    checked={sync.config.notifications.manual}
+                    onCheckedChange={(manual) => sync.updateConfig({ ...sync.config, notifications: { ...sync.config.notifications, manual } })}
+                    ariaLabel={copy.syncNotifyManual}
+                    disabled={!sync.desktop}
+                  />
+                </div>
+              </div>
+            </section>
+            </>
           ) : (
             <AboutPanel locale={locale} />
           )}
