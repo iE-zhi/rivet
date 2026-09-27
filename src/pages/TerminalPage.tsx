@@ -45,6 +45,8 @@ import TerminalQuickCommandPanel from "./TerminalQuickCommandPanel";
 interface TerminalPageProps {
   locale: Locale;
   themeKey: "light" | "dark";
+  /** 当前本机 X Server TCP 地址，由设置页统一管理。 */
+  x11ServerAddress: string;
   /** 系统窗口关闭被拦截时，确保终端页可见以展示确认弹窗。 */
   onRequestActivate: () => void;
 }
@@ -392,11 +394,12 @@ interface SessionTerminalProps {
   active: boolean;
   themeKey: "light" | "dark";
   locale: Locale;
+  x11ServerAddress: string;
   onStateChange: (sessionId: string, state: TerminalSessionState) => void;
 }
 
 /** 挂载 SSH xterm，并把字节流、键盘输入和尺寸变化桥接到对应 Rust worker。 */
-function SessionTerminal({ session, active, themeKey, locale, onStateChange }: SessionTerminalProps) {
+function SessionTerminal({ session, active, themeKey, locale, x11ServerAddress, onStateChange }: SessionTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -498,6 +501,7 @@ function SessionTerminal({ session, active, themeKey, locale, onStateChange }: S
             keyPath: session.connection.authType === "privateKey" ? session.connection.keyPath : null,
             keyPassphrase: session.connection.authType === "privateKey" ? session.secrets.keyPassphrase || null : null,
             x11: session.connection.x11,
+            x11ServerAddress: session.connection.x11 ? x11ServerAddress : null,
             columns: Math.max(1, terminal.cols),
             rows: Math.max(1, terminal.rows),
           },
@@ -532,7 +536,7 @@ function SessionTerminal({ session, active, themeKey, locale, onStateChange }: S
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [onStateChange, session.connection, session.id, session.secrets, syncScrollMetrics]);
+  }, [onStateChange, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -888,7 +892,7 @@ function SerialSessionTerminal({ session, active, themeKey, locale, onStateChang
 }
 
 /** Rivet 终端页面：Tab 之内使用递归 pane 树管理本地、SSH 与串口终端。 */
-export default function TerminalPage({ locale, themeKey, onRequestActivate }: TerminalPageProps) {
+export default function TerminalPage({ locale, themeKey, x11ServerAddress, onRequestActivate }: TerminalPageProps) {
   const copy = COPY[locale];
   const { notify } = useNotification();
   const [initialWorkspace] = useState(() => createInitialTerminalWorkspace(copy.terminal));
@@ -1707,6 +1711,7 @@ export default function TerminalPage({ locale, themeKey, onRequestActivate }: Te
               active={active}
               themeKey={themeKey}
               locale={locale}
+              x11ServerAddress={x11ServerAddress}
               onStateChange={updateSessionState}
             />
           ) : session.kind === "serial" ? (

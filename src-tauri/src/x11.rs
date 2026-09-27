@@ -52,15 +52,21 @@ enum LocalEndpoint {
 trait LocalX11Stream: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T> LocalX11Stream for T where T: AsyncRead + AsyncWrite + Unpin + Send {}
 
-/// 读取 DISPLAY 与 xauth，并生成只提供给远端的随机假 cookie。
-pub(crate) async fn prepare_x11_forwarding() -> Result<X11ForwardConfig, String> {
-    tauri::async_runtime::spawn_blocking(prepare_x11_forwarding_blocking)
-        .await
-        .map_err(|error| format!("准备 X11 转发任务失败：{error}"))?
+/// 读取 DISPLAY/xauth，并使用设置中的本机 X Server 地址生成转发配置。
+pub(crate) async fn prepare_x11_forwarding(
+    server_address: Option<String>,
+) -> Result<X11ForwardConfig, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        prepare_x11_forwarding_blocking(server_address.as_deref())
+    })
+    .await
+    .map_err(|error| format!("准备 X11 转发任务失败：{error}"))?
 }
 
 /// 在阻塞线程解析环境变量、运行 xauth 并生成转发配置。
-fn prepare_x11_forwarding_blocking() -> Result<X11ForwardConfig, String> {
+fn prepare_x11_forwarding_blocking(
+    server_address: Option<&str>,
+) -> Result<X11ForwardConfig, String> {
     let display =
         env::var("DISPLAY").map_err(|_| "启用 X11 转发前必须设置 DISPLAY 环境变量".to_string())?;
     let display = display.trim();
@@ -69,7 +75,10 @@ fn prepare_x11_forwarding_blocking() -> Result<X11ForwardConfig, String> {
     }
 
     let (display_number, screen) = parse_display_numbers(display)?;
-    let endpoint = parse_local_endpoint(display, display_number)?;
+    let endpoint = match server_address {
+        Some(address) => parse_server_address(address)?,
+        None => parse_local_endpoint(display, display_number)?,
+    };
     let real_cookie = read_xauth_cookie(display)?;
 
     let mut fake_cookie = [0_u8; X11_COOKIE_BYTES];
@@ -272,6 +281,52 @@ fn parse_local_endpoint(display: &str, display_number: u16) -> Result<LocalEndpo
     let port = X11_TCP_BASE_PORT
         .checked_add(display_number)
         .ok_or_else(|| "DISPLAY 对应的 TCP 端口溢出".to_string())?;
+    Ok(LocalEndpoint::Tcp {
+        host: Arc::from(if host == "localhost" {
+            "127.0.0.1"
+        } else {
+            host
+        }),
+        port,
+    })
+}
+
+/// 将设置页的 hostname:port、IPv4:port 或 [IPv6]:port 解析为本机 X Server 目标。
+fn parse_server_address(address: &str) -> Result<LocalEndpoint, String> {
+    let address = address.trim();
+    if address.is_empty() || address.len() > 255 || address.chars().any(char::is_whitespace) {
+        return Err("X11 Server 地址为空、过长或包含空白字符".to_string());
+    }
+
+    let (host, port_text) = if let Some(rest) = address.strip_prefix('[') {
+        let closing = rest
+            .find(']')
+            .ok_or_else(|| "X11 Server IPv6 地址缺少右方括号".to_string())?;
+        let host = &rest[..closing];
+        let suffix = &rest[closing + 1..];
+        let port_text = suffix
+            .strip_prefix(':')
+            .ok_or_else(|| "X11 Server 地址缺少端口".to_string())?;
+        if host.is_empty() {
+            return Err("X11 Server 主机不能为空".to_string());
+        }
+        (host, port_text)
+    } else {
+        let (host, port_text) = address
+            .rsplit_once(':')
+            .ok_or_else(|| "X11 Server 地址必须包含端口".to_string())?;
+        if host.is_empty() || host.contains(':') {
+            return Err("IPv6 X11 Server 地址必须使用方括号".to_string());
+        }
+        (host, port_text)
+    };
+
+    let port = port_text
+        .parse::<u16>()
+        .ok()
+        .filter(|port| *port != 0)
+        .ok_or_else(|| "X11 Server 端口无效".to_string())?;
+
     Ok(LocalEndpoint::Tcp {
         host: Arc::from(if host == "localhost" {
             "127.0.0.1"

@@ -396,7 +396,7 @@ export default function App() {
           {terminalMounted && (
             <div className="app-view terminal-view" hidden={page !== "terminal"}>
               <Suspense fallback={null}>
-                <TerminalPage locale={locale} themeKey={resolvedTheme} onRequestActivate={activateTerminalPage} />
+                <TerminalPage locale={locale} themeKey={resolvedTheme} x11ServerAddress={x11ServerAddress} onRequestActivate={activateTerminalPage} />
               </Suspense>
             </div>
           )}

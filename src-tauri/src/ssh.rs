@@ -67,8 +67,10 @@ pub struct SshConnectConfig {
     pub key_path: Option<String>,
     /// 私钥解密口令；未加密私钥使用空值。
     pub key_passphrase: Option<String>,
-    /// 是否请求 X11 forwarding；启用时使用本机 DISPLAY/xauth。
+    /// 是否请求 X11 forwarding。
     pub x11: bool,
+    /// X11 转发连接的本机 X Server TCP 地址；仅在启用 X11 时使用。
+    pub x11_server_address: Option<String>,
     /// 初始 PTY 列数。
     pub columns: u32,
     /// 初始 PTY 行数。
@@ -242,7 +244,7 @@ pub async fn open_ssh_session(
     let username = config.username.trim().to_string();
     let port = config.port;
     let x11_config = if config.x11 {
-        Some(x11::prepare_x11_forwarding().await?)
+        Some(x11::prepare_x11_forwarding(config.x11_server_address.clone()).await?)
     } else {
         None
     };
@@ -585,6 +587,14 @@ fn validate_connect_config(config: &SshConnectConfig) -> Result<(), String> {
             .is_some_and(|value| value.len() > MAX_CREDENTIAL_BYTES)
     {
         return Err("SSH 认证字段过长".to_string());
+    }
+    if config.x11
+        && config
+            .x11_server_address
+            .as_ref()
+            .is_none_or(|value| value.trim().is_empty() || value.len() > 255)
+    {
+        return Err("X11 Server 地址为空或过长".to_string());
     }
     validate_terminal_size(config.columns, config.rows)
 }
