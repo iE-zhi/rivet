@@ -117,7 +117,9 @@ export default function AboutPanel({ locale }: AboutPanelProps) {
   return (
     <div className="settings-about">
       <section className="settings-about-product" aria-labelledby="settings-about-title">
-        <img className="settings-about-logo" src={appIcon} alt="" aria-hidden="true" />
+        <div className="settings-about-logo-wrap" aria-hidden="true">
+          <img className="settings-about-logo" src={appIcon} alt="" />
+        </div>
         <h1 className="settings-about-name" id="settings-about-title">Rivet</h1>
         <div className="settings-about-version">Version {APP_VERSION}</div>
         <p className="settings-about-description">{copy.description}</p>

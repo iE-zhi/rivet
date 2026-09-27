@@ -346,13 +346,30 @@ button, input, textarea { font: inherit; }
 }
 
 .settings-about-product { align-self: center; text-align: center; }
-.settings-about-logo {
-  display: block;
+.settings-about-logo-wrap {
+  position: relative;
+  display: grid;
   width: 88px;
   height: 88px;
   margin: 0 auto 16px;
+  place-items: center;
+}
+.settings-about-logo-wrap::before {
+  position: absolute;
+  inset: 8px;
+  z-index: 0;
+  border-radius: 20px;
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--r-primary) 16%, transparent);
+  content: "";
+  pointer-events: none;
+}
+.settings-about-logo {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 88px;
+  height: 88px;
   object-fit: contain;
-  filter: drop-shadow(0 12px 24px color-mix(in srgb, var(--r-primary) 16%, transparent));
 }
 .settings-about-name { margin: 0; color: var(--r-text); font-size: 22px; font-weight: 700; letter-spacing: -.4px; }
 .settings-about-version { margin-top: 7px; color: var(--r-muted); font-family: "JetBrains Mono", "Cascadia Mono", Consolas, monospace; font-size: var(--r-font-size-secondary); line-height: 1.4; }
