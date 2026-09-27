@@ -1,0 +1,155 @@
+name: Sync Release to Gitee
+
+on:
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-22.04
+
+    env:
+      GITEE_OWNER: boo0ood
+      GITEE_REPO: rivet
+      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Check Gitee token
+        shell: bash
+        run: |
+          if [ -z "$GITEE_TOKEN" ]; then
+            echo "::error::Missing repository secret GITEE_TOKEN"
+            exit 1
+          fi
+
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download GitHub release assets
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          gh release download "${{ steps.version.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir release-assets \
+            --clobber
+          gh release view "${{ steps.version.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json name,body \
+            > github-release.json
+          ls -lh release-assets
+
+      - name: Create or update Gitee release
+        id: gitee_release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${{ steps.version.outputs.tag }}"
+          NAME=$(jq -r '.name // empty' github-release.json)
+          BODY=$(jq -r '.body // empty' github-release.json)
+
+          if [ -z "$NAME" ]; then
+            NAME="Rivet $TAG"
+          fi
+
+          API="https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO"
+          AUTH_HEADER="Authorization: Bearer $GITEE_TOKEN"
+
+          STATUS=$(curl -sS -o gitee-release.json -w "%{http_code}" \
+            -H "$AUTH_HEADER" \
+            "$API/releases/tags/$TAG")
+
+          PAYLOAD=$(jq -n \
+            --arg tag "$TAG" \
+            --arg name "$NAME" \
+            --arg body "$BODY" \
+            '{
+              tag_name: $tag,
+              target_commitish: "main",
+              name: $name,
+              body: $body,
+              prerelease: false
+            }')
+
+          if [ "$STATUS" = "200" ]; then
+            RELEASE_ID=$(jq -r '.id' gitee-release.json)
+            curl -fsS \
+              -X PATCH \
+              -H "$AUTH_HEADER" \
+              -H "Content-Type: application/json" \
+              --data "$PAYLOAD" \
+              "$API/releases/$RELEASE_ID" \
+              > gitee-release.json
+          elif [ "$STATUS" = "404" ]; then
+            curl -fsS \
+              -X POST \
+              -H "$AUTH_HEADER" \
+              -H "Content-Type: application/json" \
+              --data "$PAYLOAD" \
+              "$API/releases" \
+              > gitee-release.json
+          else
+            cat gitee-release.json
+            echo "::error::Failed to query Gitee release, HTTP $STATUS"
+            exit 1
+          fi
+
+          RELEASE_ID=$(jq -r '.id' gitee-release.json)
+          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+            cat gitee-release.json
+            echo "::error::Gitee release ID is missing"
+            exit 1
+          fi
+
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Replace Gitee release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RELEASE_ID="${{ steps.gitee_release.outputs.release_id }}"
+          API="https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO"
+          AUTH_HEADER="Authorization: Bearer $GITEE_TOKEN"
+
+          curl -fsS \
+            -H "$AUTH_HEADER" \
+            "$API/releases/$RELEASE_ID/attach_files?per_page=100" \
+            > gitee-assets.json
+
+          jq -r '.[].id' gitee-assets.json | while read -r ASSET_ID; do
+            [ -n "$ASSET_ID" ] || continue
+            curl -fsS \
+              -X DELETE \
+              -H "$AUTH_HEADER" \
+              "$API/releases/$RELEASE_ID/attach_files/$ASSET_ID"
+          done
+
+          find release-assets -maxdepth 1 -type f -print0 | while IFS= read -r -d '' FILE; do
+            echo "Uploading $(basename "$FILE")"
+            curl -fsS \
+              -X POST \
+              -H "$AUTH_HEADER" \
+              -F "file=@$FILE" \
+              "$API/releases/$RELEASE_ID/attach_files"
+          done
