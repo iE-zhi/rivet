@@ -75,11 +75,11 @@ jobs:
           tagName: v__VERSION__
           releaseName: Rivet v__VERSION__
           releaseBody: |
-            ## v0.1.5 更新内容
+            ## v0.1.6 更新内容
 
-            - 修复 Debian 13 / Wayland / NVIDIA 环境下 WebKitGTK 可能因 GBM/KMS 与 DMA-BUF 渲染失败而无法正常启动的问题。
-            - Linux 默认采用 X11 后端并关闭 WebKitGTK DMA-BUF renderer，提升 NVIDIA 等图形环境下的启动兼容性。
-            - 如果用户已显式设置 `GDK_BACKEND` 或 `WEBKIT_DISABLE_DMABUF_RENDERER`，Rivet 会保留用户配置，不会强制覆盖。
+            - SSH 私钥认证新增系统文件选择器，可直接从本机选择私钥文件，不再需要手动输入路径。
+            - 私钥路径输入框改为只读，点击输入框或文件夹按钮都可打开选择器，减少路径填写错误。
+            - 补充中英文文件选择提示与错误反馈，选择失败时会通过应用通知提示具体原因。
 
             请在下方 Assets 下载对应平台的安装包。
           releaseDraft: false
