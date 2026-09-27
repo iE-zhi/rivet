@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState, type MouseEvent } from "react";
 import appIcon from "../src-tauri/icons/128x128.png";
 import { NotificationProvider, SvgIcon } from "./components/ui";
-import { APP_PREFERENCE_STORAGE_KEYS, persistSyncedStorage, useRivetSync } from "./rivetSync";
+import { APP_PREFERENCE_STORAGE_KEYS, persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT, useRivetSync } from "./rivetSync";
 import SerialPage, { type Locale } from "./pages/SerialPage";
 import SettingsPage, { type FontMode, type ThemeMode } from "./pages/SettingsPage";
 
@@ -271,6 +271,22 @@ export default function App() {
       console.warn("Rivet 无法保存 X11 Server 地址；本次会话中仍会生效。", error);
     }
   }, [x11ServerAddress]);
+
+  /** 同步或恢复配置后原地刷新持久化 React 状态，保留当前页面与活动会话。 */
+  useEffect(() => {
+    const handleDocumentApplied = () => {
+      setLocale(readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.locale, isLocale, "zh"));
+      setTheme(readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.theme, isThemeMode, "system"));
+      setFont(readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.font, isFontMode, "builtin"));
+      setSerialDefaults(readSerialDefaultsPreference());
+      setUseSerialDefaults(readSerialDefaultsEnabledPreference());
+      setSerialRxSettings(readSerialRxSettingsPreference());
+      setNotificationSettings(readNotificationSettingsPreference());
+      setNavigationSettings(readNavigationSettingsPreference());
+    };
+    window.addEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
+    return () => window.removeEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
+  }, []);
 
   /**
    * 导航到串口页；阻止浏览器修改 URL hash。

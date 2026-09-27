@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { notifySyncedSecretsChanged, persistSyncedStorage } from "../rivetSync";
+import { notifySyncedSecretsChanged, persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT } from "../rivetSync";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FitAddon } from "@xterm/addon-fit";
@@ -937,6 +937,13 @@ export default function TerminalPage({ locale, themeKey, x11ServerAddress, onReq
       // 浏览器存储不可用时连接仍保留在当前 React 会话内。
     }
   }, [connections]);
+
+  /** 同步应用连接配置后刷新连接列表；已有终端会话继续使用其当前连接快照。 */
+  useEffect(() => {
+    const handleDocumentApplied = () => setConnections(readConnections());
+    window.addEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
+    return () => window.removeEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
+  }, []);
 
   useEffect(() => {
     setRecentConnectionIds((current) => pruneRecentConnectionIds(current, connections));

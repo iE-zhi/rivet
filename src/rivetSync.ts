@@ -15,6 +15,9 @@ export const APP_PREFERENCE_STORAGE_KEYS = {
   font: "rivet.font",
 } as const;
 
+/** 云端同步或本地恢复已将持久化配置应用到当前进程。 */
+export const SYNC_DOCUMENT_APPLIED_EVENT = "rivet:sync-document-applied";
+
 /** 受支持的远端片段服务。 */
 export type SyncProvider = "github" | "gitee" | "gitlab";
 
@@ -516,6 +519,7 @@ function applySyncDocument(document: RivetSyncDocument, keyPaths: Record<string,
     }
     throw error;
   }
+  window.dispatchEvent(new Event(SYNC_DOCUMENT_APPLIED_EVENT));
 }
 
 /** 序列化为稳定、可读的片段文件。 */
@@ -610,6 +614,13 @@ export function useRivetSync(): RivetSyncController {
   const [notificationTrigger, setNotificationTrigger] = useState<SyncNotificationTrigger | null>(null);
   const runningRef = useRef<Promise<void> | null>(null);
   const autoTimerRef = useRef<number | null>(null);
+
+  /** 同步应用持久化配置后只刷新控制器自身配置状态，不重载 WebView。 */
+  useEffect(() => {
+    const handleDocumentApplied = () => setConfig(readSyncConfig());
+    window.addEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
+    return () => window.removeEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
+  }, []);
 
   /** 修改同步配置并立即持久化；通知偏好变化会进入现有自动同步防抖链路。 */
   const updateConfig = useCallback((next: RivetSyncConfig) => {
@@ -768,7 +779,6 @@ export function useRivetSync(): RivetSyncController {
         setLastSyncedAt(now);
         setPhase("synced");
         setError("");
-        window.location.reload();
         return;
       }
 
@@ -879,7 +889,6 @@ export function useRivetSync(): RivetSyncController {
         });
         setLastSyncedAt(now);
         setPhase("synced");
-        window.location.reload();
         return;
       }
 
@@ -930,7 +939,6 @@ export function useRivetSync(): RivetSyncController {
         });
         setLastSyncedAt(now);
         setPhase("synced");
-        window.location.reload();
         return;
       }
 
@@ -963,7 +971,6 @@ export function useRivetSync(): RivetSyncController {
         });
         setLastSyncedAt(now);
         setPhase("synced");
-        window.location.reload();
         return;
       }
 

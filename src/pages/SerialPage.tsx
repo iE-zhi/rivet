@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeE
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Button, Checkbox, Input, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, useNotification, type TerminalLine } from "../components/ui";
-import { persistSyncedStorage } from "../rivetSync";
+import { persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT } from "../rivetSync";
 import { buildSerialBytes, type HexInputError } from "./serialBytes";
 import { appendSerialLogEntry, appendSerialRxBurst, createSerialLogBuffer, flattenSerialRxBurst, getSerialLogLines, isSerialRxBurstIdle, serializeSerialLogLines, splitSerialRxBytes, type SerialLogEntry, type SerialRxBurst } from "./serialLog";
 import { isSerialDefaults, LAST_USED_SERIAL_CONFIG_STORAGE_KEY, selectSerialStartupDefaults, serialDefaultsEqual, serializeSerialDefaults, type SerialDefaults } from "./serialDefaults";
@@ -359,6 +359,13 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
       console.warn("Rivet 无法保存快捷命令；本次会话中仍会保留。", error);
     }
   }, [quickGroups]);
+
+  /** 远端同步或本地恢复后只热更新快捷命令，不影响当前串口连接和日志。 */
+  useEffect(() => {
+    const handleDocumentApplied = () => setQuickGroups(readInitialSerialQuickCommands());
+    window.addEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
+    return () => window.removeEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
+  }, []);
 
   /** 打开的分组选择器和更多菜单在点击对应控件外部时收起。 */
   useEffect(() => {

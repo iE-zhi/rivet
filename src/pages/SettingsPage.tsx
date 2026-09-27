@@ -890,9 +890,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
         : await sync.importBackup(backupPassword);
       if (!completed) return;
       notify({ kind: "success", message: backupAction === "export" ? copy.backupExportedNotice : copy.backupImportedNotice });
-      const imported = backupAction === "import";
       closeBackupAction();
-      if (imported) window.setTimeout(() => window.location.reload(), 120);
     } catch (error) {
       notify({ kind: "error", message: String(error) });
     }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Button, Input, SvgIcon, Textarea, VerticalScrollbar, useNotification } from "../components/ui";
-import { persistSyncedStorage } from "../rivetSync";
+import { persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT } from "../rivetSync";
 import type { Locale } from "./SerialPage";
 import {
   createTerminalQuickCommandId,
@@ -153,6 +153,13 @@ export default function TerminalQuickCommandPanel({
       // 当前会话仍保留命令；存储失败不阻断操作。
     }
   }, [commands]);
+
+  /** 同步或恢复后原地刷新命令数据，保留终端会话和悬浮窗口本身。 */
+  useEffect(() => {
+    const handleDocumentApplied = () => setCommands(readCommands());
+    window.addEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
+    return () => window.removeEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
+  }, []);
 
   /** 只关闭窗口内部的下拉和菜单，不关闭快捷命令窗口。 */
   useEffect(() => {
