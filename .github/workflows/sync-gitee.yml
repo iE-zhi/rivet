@@ -80,7 +80,9 @@ jobs:
           API="https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO"
           AUTH_HEADER="Authorization: Bearer $GITEE_TOKEN"
 
-          REPO_STATUS=$(curl -sS -o gitee-repo.json -w "%{http_code}" \
+          CURL_READ=(--silent --show-error --connect-timeout 15 --max-time 90 --retry 3 --retry-delay 5 --retry-all-errors)
+
+          REPO_STATUS=$(curl "${CURL_READ[@]}" -o gitee-repo.json -w "%{http_code}" \
             -H "$AUTH_HEADER" \
             "$API")
           if [ "$REPO_STATUS" != "200" ]; then
@@ -91,13 +93,13 @@ jobs:
 
           TARGET_BRANCH=$(jq -r '.default_branch // "master"' gitee-repo.json)
 
-          STATUS=$(curl -sS -o gitee-release.json -w "%{http_code}" \
+          STATUS=$(curl "${CURL_READ[@]}" -o gitee-release.json -w "%{http_code}" \
             -H "$AUTH_HEADER" \
             "$API/releases/tags/$TAG")
 
           if [ "$STATUS" = "200" ]; then
             RELEASE_ID=$(jq -r '.id' gitee-release.json)
-            WRITE_STATUS=$(curl -sS -o gitee-release-write.json -w "%{http_code}" \
+            WRITE_STATUS=$(curl "${CURL_READ[@]}" -o gitee-release-write.json -w "%{http_code}" \
               -X PATCH \
               -H "$AUTH_HEADER" \
               --data-urlencode "tag_name=$TAG" \
@@ -107,7 +109,9 @@ jobs:
               --data-urlencode "prerelease=false" \
               "$API/releases/$RELEASE_ID")
           elif [ "$STATUS" = "404" ]; then
-            WRITE_STATUS=$(curl -sS -o gitee-release-write.json -w "%{http_code}" \
+            set +e
+            WRITE_STATUS=$(curl --silent --show-error --connect-timeout 15 --max-time 90 \
+              -o gitee-release-write.json -w "%{http_code}" \
               -X POST \
               -H "$AUTH_HEADER" \
               --data-urlencode "tag_name=$TAG" \
@@ -116,6 +120,22 @@ jobs:
               --data-urlencode "body=$BODY" \
               --data-urlencode "prerelease=false" \
               "$API/releases")
+            WRITE_RC=$?
+            set -e
+
+            if [ "$WRITE_RC" -ne 0 ]; then
+              echo "Gitee create release request failed (curl=$WRITE_RC), checking whether the release was created..."
+              sleep 5
+              CHECK_STATUS=$(curl "${CURL_READ[@]}" -o gitee-release-write.json -w "%{http_code}" \
+                -H "$AUTH_HEADER" \
+                "$API/releases/tags/$TAG")
+              if [ "$CHECK_STATUS" = "200" ]; then
+                WRITE_STATUS=200
+              else
+                echo "::error::Gitee release creation timed out and release was not found afterwards"
+                exit "$WRITE_RC"
+              fi
+            fi
           else
             cat gitee-release.json
             echo "::error::Failed to query Gitee release, HTTP $STATUS"
@@ -148,14 +168,14 @@ jobs:
           API="https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO"
           AUTH_HEADER="Authorization: Bearer $GITEE_TOKEN"
 
-          curl -fsS \
+          curl --fail --silent --show-error --connect-timeout 15 --max-time 90 --retry 3 --retry-delay 5 --retry-all-errors \
             -H "$AUTH_HEADER" \
             "$API/releases/$RELEASE_ID/attach_files?per_page=100" \
             > gitee-assets.json
 
           jq -r '.[].id' gitee-assets.json | while read -r ASSET_ID; do
             [ -n "$ASSET_ID" ] || continue
-            curl -fsS \
+            curl --fail --silent --show-error --connect-timeout 15 --max-time 90 --retry 3 --retry-delay 5 --retry-all-errors \
               -X DELETE \
               -H "$AUTH_HEADER" \
               "$API/releases/$RELEASE_ID/attach_files/$ASSET_ID"
@@ -163,7 +183,7 @@ jobs:
 
           find release-assets -maxdepth 1 -type f -print0 | while IFS= read -r -d '' FILE; do
             echo "Uploading $(basename "$FILE")"
-            curl -fsS \
+            curl --fail --silent --show-error --connect-timeout 20 --max-time 900 --retry 3 --retry-delay 5 --retry-all-errors \
               -X POST \
               -H "$AUTH_HEADER" \
               -F "file=@$FILE" \
