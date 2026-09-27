@@ -4,7 +4,7 @@
 
 :root { color-scheme: light dark; font-family: var(--rivet-font-family); }
 * { box-sizing: border-box; }
-html, body, #root { width: 100%; height: 100%; margin: 0; }
+html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
 body { background: var(--r-bg); color: var(--r-text); }
 button, input, textarea { font: inherit; }
 .app-shell { display: grid; width: 100%; height: 100%; min-height: 560px; grid-template-columns: 52px minmax(0, 1fr); background: var(--r-bg); color: var(--r-text); font-family: var(--rivet-font-family); }
@@ -42,6 +42,8 @@ button, input, textarea { font: inherit; }
 .console-footer > span:last-child { flex: 0 0 auto; margin-left: auto; white-space: nowrap; }
 .control-panel { --quick-command-x: 22px; --quick-command-bottom: 22px; --quick-command-top: 91px; position: relative; display: flex; min-width: 0; min-height: 0; flex-direction: column; border-left: 1px solid var(--r-border); background: var(--r-surface); }
 .control-panel-scroll { min-height: 0; flex: 1; }
+.control-panel-scroll .rivet-vertical-scrollbar-track { display: none; }
+.control-panel-viewport { padding-right: 0; }
 .control-panel-viewport > div { display: flex; min-height: 100%; flex-direction: column; }
 .control-panel-content { display: flex; flex: 1; flex-direction: column; padding: 22px 22px 20px; }
 /* 设备选择与刷新按钮共用 36px 控件高度；窄屏时下拉框收缩并省略长设备名。 */
