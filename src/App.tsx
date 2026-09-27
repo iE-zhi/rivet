@@ -450,7 +450,7 @@ export default function App() {
           {terminalMounted && (
             <div className="app-view terminal-view" hidden={page !== "terminal"}>
               <Suspense fallback={null}>
-                <TerminalPage locale={locale} themeKey={resolvedTheme} fontSize={Number(fontSize)} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} onRequestActivate={activateTerminalPage} />
+                <TerminalPage locale={locale} themeKey={resolvedTheme} pageActive={page === "terminal"} fontSize={Number(fontSize)} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} onRequestActivate={activateTerminalPage} />
               </Suspense>
             </div>
           )}
