@@ -29,6 +29,11 @@ const ABOUT_COPY: Record<Locale, {
     project: "项目地址",
     timeline: [
       {
+        date: "2026.09.27",
+        title: "X11 与快捷命令体验完善",
+        description: "完善 Windows、Linux 与 macOS 的 X11 转发链路和 X Server 下载入口，同步改为无感热更新，并为终端快捷命令增加详情与展开查看。",
+      },
+      {
         date: "2026.09.26",
         title: "SSH、同步与终端能力完善",
         description: "新增 X11 Server 设置、多平台配置同步和离线备份，完善 SSH 会话、SFTP 传输及终端快捷命令。",
@@ -56,6 +61,11 @@ const ABOUT_COPY: Record<Locale, {
     core: "Core",
     project: "Project",
     timeline: [
+      {
+        date: "2026.09.27",
+        title: "X11 and quick command improvements",
+        description: "Improved X11 forwarding across Windows, Linux, and macOS with X Server download links, switched sync to hot updates without reloads, and added details with inline expansion for terminal quick commands.",
+      },
       {
         date: "2026.09.26",
         title: "SSH, sync, and terminal improvements",
