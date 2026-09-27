@@ -80,44 +80,55 @@ jobs:
           API="https://gitee.com/api/v5/repos/$GITEE_OWNER/$GITEE_REPO"
           AUTH_HEADER="Authorization: Bearer $GITEE_TOKEN"
 
+          REPO_STATUS=$(curl -sS -o gitee-repo.json -w "%{http_code}" \
+            -H "$AUTH_HEADER" \
+            "$API")
+          if [ "$REPO_STATUS" != "200" ]; then
+            cat gitee-repo.json
+            echo "::error::Failed to query Gitee repository, HTTP $REPO_STATUS"
+            exit 1
+          fi
+
+          TARGET_BRANCH=$(jq -r '.default_branch // "master"' gitee-repo.json)
+
           STATUS=$(curl -sS -o gitee-release.json -w "%{http_code}" \
             -H "$AUTH_HEADER" \
             "$API/releases/tags/$TAG")
 
-          PAYLOAD=$(jq -n \
-            --arg tag "$TAG" \
-            --arg name "$NAME" \
-            --arg body "$BODY" \
-            '{
-              tag_name: $tag,
-              target_commitish: "main",
-              name: $name,
-              body: $body,
-              prerelease: false
-            }')
-
           if [ "$STATUS" = "200" ]; then
             RELEASE_ID=$(jq -r '.id' gitee-release.json)
-            curl -fsS \
+            WRITE_STATUS=$(curl -sS -o gitee-release-write.json -w "%{http_code}" \
               -X PATCH \
               -H "$AUTH_HEADER" \
-              -H "Content-Type: application/json" \
-              --data "$PAYLOAD" \
-              "$API/releases/$RELEASE_ID" \
-              > gitee-release.json
+              --data-urlencode "tag_name=$TAG" \
+              --data-urlencode "target_commitish=$TARGET_BRANCH" \
+              --data-urlencode "name=$NAME" \
+              --data-urlencode "body=$BODY" \
+              --data-urlencode "prerelease=false" \
+              "$API/releases/$RELEASE_ID")
           elif [ "$STATUS" = "404" ]; then
-            curl -fsS \
+            WRITE_STATUS=$(curl -sS -o gitee-release-write.json -w "%{http_code}" \
               -X POST \
               -H "$AUTH_HEADER" \
-              -H "Content-Type: application/json" \
-              --data "$PAYLOAD" \
-              "$API/releases" \
-              > gitee-release.json
+              --data-urlencode "tag_name=$TAG" \
+              --data-urlencode "target_commitish=$TARGET_BRANCH" \
+              --data-urlencode "name=$NAME" \
+              --data-urlencode "body=$BODY" \
+              --data-urlencode "prerelease=false" \
+              "$API/releases")
           else
             cat gitee-release.json
             echo "::error::Failed to query Gitee release, HTTP $STATUS"
             exit 1
           fi
+
+          if [ "$WRITE_STATUS" -lt 200 ] || [ "$WRITE_STATUS" -ge 300 ]; then
+            cat gitee-release-write.json
+            echo "::error::Failed to create/update Gitee release, HTTP $WRITE_STATUS"
+            exit 1
+          fi
+
+          mv gitee-release-write.json gitee-release.json
 
           RELEASE_ID=$(jq -r '.id' gitee-release.json)
           if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
