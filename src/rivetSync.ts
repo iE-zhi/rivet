@@ -40,7 +40,7 @@ export interface BackupSelection {
   terminalQuickCommands: boolean;
 }
 
-/** 同步目标配置；访问令牌单独保存在系统凭据库。 */
+/** 同步目标配置；访问令牌单独保存在 Rivet 自有加密凭据文件。 */
 export interface RivetSyncConfig {
   provider: SyncProvider;
   snippetId: string;
@@ -647,7 +647,7 @@ export function useRivetSync(): RivetSyncController {
     }
   }, [config.notifications]);
 
-  /** 查询当前平台是否已在系统凭据库保存访问令牌。 */
+  /** 查询当前平台是否已在 Rivet 自有凭据文件保存访问令牌。 */
   useEffect(() => {
     if (!desktop) {
       setTokenStored(false);

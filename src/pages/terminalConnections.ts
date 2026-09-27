@@ -32,7 +32,7 @@ export interface SavedSerialConnection extends SavedTerminalConnectionBase {
 /** 终端连接管理器支持的持久化连接。 */
 export type SavedTerminalConnection = SavedSshConnection | SavedSerialConnection;
 
-/** SSH 认证秘密；运行时驻留内存，桌面端另由系统凭据库安全持久化。 */
+/** SSH 认证秘密；运行时驻留内存，桌面端另由 Rivet 自有加密凭据文件持久化。 */
 export interface SshConnectionSecrets {
   password: string;
   keyPassphrase: string;
@@ -159,7 +159,7 @@ export function deserializeTerminalConnections(raw: string | null): SavedTermina
 }
 
 /**
- * 序列化非敏感终端连接；SSH 密码和私钥口令由系统凭据库保存，不进入 localStorage。
+ * 序列化非敏感终端连接；SSH 密码和私钥口令由 Rivet 自有加密凭据文件保存，不进入 localStorage。
  * @param connections 已验证的终端连接列表。
  * @returns 可写入 localStorage 的 JSON。
  */

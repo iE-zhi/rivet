@@ -819,7 +819,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     }
   };
 
-  /** 编辑 Token；已保存 Token 的圆点全部删空时立即删除系统凭据。 */
+  /** 编辑 Token；已保存 Token 的圆点全部删空时立即删除 Rivet 本地凭据。 */
   const handleSyncTokenChange = async (value: string) => {
     setSyncTokenDraft(value);
     setSyncTokenEditing(true);
@@ -835,7 +835,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     }
   };
 
-  /** Token 输入框失焦时自动保存真实新值；部分修改圆点占位不会覆盖系统凭据。 */
+  /** Token 输入框失焦时自动保存真实新值；部分修改圆点占位不会覆盖 Rivet 本地凭据。 */
   const handleSyncTokenBlur = async () => {
     if (!syncTokenEditing) return;
     const token = syncTokenDraft.trim();

@@ -946,9 +946,12 @@ export default function TerminalPage({ locale, themeKey, x11ServerAddress, linux
     }
   }, [connections]);
 
-  /** 同步应用连接配置后刷新连接列表；已有终端会话继续使用其当前连接快照。 */
+  /** 同步应用连接配置和 SSH 凭据后刷新连接列表，并丢弃同步前缓存的旧凭据。 */
   useEffect(() => {
-    const handleDocumentApplied = () => setConnections(readConnections());
+    const handleDocumentApplied = () => {
+      secretsRef.current.clear();
+      setConnections(readConnections());
+    };
     window.addEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
     return () => window.removeEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
   }, []);
@@ -1081,7 +1084,7 @@ export default function TerminalPage({ locale, themeKey, x11ServerAddress, linux
 
 
 
-  /** 从内存或系统凭据库读取 SSH 秘密，并缓存到当前前端会话。 */
+  /** 从内存或 Rivet 自有凭据文件读取 SSH 秘密，并缓存到当前前端会话。 */
   const loadConnectionSecrets = useCallback(async (connectionId: string): Promise<SshConnectionSecrets | null> => {
     const cached = secretsRef.current.get(connectionId);
     if (cached) return cached;
@@ -1177,7 +1180,7 @@ export default function TerminalPage({ locale, themeKey, x11ServerAddress, linux
     [activeTab, copy.terminal, instantiateSession],
   );
 
-  /** 选择已保存连接；优先从系统凭据库恢复密码，再决定是否需要用户补录。 */
+  /** 选择已保存连接；优先从 Rivet 自有凭据文件恢复密码，再决定是否需要用户补录。 */
   const openSavedConnection = useCallback(
     async (connection: SavedTerminalConnection, action: PickerState) => {
       const markRecent = () => {
@@ -1505,7 +1508,7 @@ export default function TerminalPage({ locale, themeKey, x11ServerAddress, linux
     setDeleteGroupName(null);
   };
 
-  /** 保存连接；SSH 密码和私钥口令写入操作系统凭据库，不进入 localStorage。 */
+  /** 保存连接；SSH 密码和私钥口令写入 Rivet 自有加密凭据文件，不进入 localStorage。 */
   const saveConnection = async (event: FormEvent) => {
     event.preventDefault();
     const port = Number(form.port);
