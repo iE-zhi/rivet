@@ -4,12 +4,20 @@
 
 #[path = "../src/credential_store.rs"]
 mod credential_store;
+#[path = "../src/external_links.rs"]
+mod external_links;
 #[path = "../src/sync.rs"]
 mod sync;
 #[path = "../src/sync_secrets.rs"]
 mod sync_secrets;
+#[path = "../src/x11.rs"]
+mod x11;
 
+#[path = "unit/external_links.rs"]
+mod external_links_tests;
 #[path = "unit/sync_secrets.rs"]
 mod sync_secrets_tests;
 #[path = "unit/sync.rs"]
 mod sync_tests;
+#[path = "unit/x11.rs"]
+mod x11_tests;

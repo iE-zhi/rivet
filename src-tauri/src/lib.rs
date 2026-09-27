@@ -2,6 +2,7 @@
 
 mod config;
 mod credential_store;
+mod external_links;
 mod local_terminal;
 mod log_export;
 mod serial;
@@ -55,7 +56,7 @@ pub fn run() -> tauri::Result<()> {
             sync::replace_sync_token,
             sync::delete_sync_token,
             sync::open_sync_token_page,
-            sync::open_project_page,
+            external_links::open_external_page,
             sync::ensure_sync_remote,
             sync::read_sync_remote,
             sync::write_sync_remote,

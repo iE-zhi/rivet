@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent, type PointerEvent } from "react";
 import { Button, Checkbox, Input, Select, SvgIcon, Switch, VerticalScrollbar, useNotification, type SelectOption } from "../components/ui";
 import { MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialDefaults, type SerialFlowControl, type SerialParity } from "./serialDefaults";
 import { SERIAL_RX_IDLE_MS_MAX, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_PACKET_BYTES_MAX, SERIAL_RX_PACKET_BYTES_MIN, type SerialRxSettings } from "./serialRxSettings";
@@ -8,6 +9,9 @@ import type { NavigationItemId, NavigationSettings } from "../preferences/naviga
 import { isValidX11ServerAddress, MAX_X11_SERVER_ADDRESS_LENGTH } from "../preferences/sshSettings";
 import { DEFAULT_BACKUP_SELECTION, type BackupSelection, type RivetSyncController, type SyncProvider } from "../rivetSync";
 import AboutPanel from "./AboutPanel";
+
+const VCXSRV_PROJECT_URL = "https://github.com/marchaesen/vcxsrv";
+const XQUARTZ_PROJECT_URL = "https://www.xquartz.org/";
 
 /** 支持的主题模式；system 会随操作系统外观变化。 */
 export type ThemeMode = "system" | "light" | "dark";
@@ -647,6 +651,22 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     }
   };
 
+  /** 使用系统默认浏览器打开 X11 Server 下载页；Web 预览回退到普通新窗口。 */
+  const handleX11ServerLinkClick = (
+    event: MouseEvent<HTMLAnchorElement>,
+    page: "vcxsrv" | "xquartz",
+    url: string,
+  ) => {
+    event.preventDefault();
+    if ("__TAURI_INTERNALS__" in window) {
+      void invoke("open_external_page", { page }).catch((error) => {
+        notify({ kind: "error", message: String(error) });
+      });
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   /** 显示远端片段同步设置。 */
   const showSyncSettings = () => setActiveCategory("sync");
 
@@ -1247,7 +1267,10 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
               <h1 className="settings-section-title" id="settings-ssh-group-title">{copy.sshGroupTitle}</h1>
               <div className="settings-list">
                 <div className="settings-row">
-                  <span className="settings-row-label">{copy.x11ServerAddress}</span>
+                  <span className="settings-row-label settings-x11-address-label">
+                    {copy.x11ServerAddress}
+                    <span className="settings-x11-platform-note">Windows</span>
+                  </span>
                   <div className="settings-row-control">
                     <Input
                       aria-label={copy.x11ServerAddress}
@@ -1259,6 +1282,29 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                       onChange={handleX11ServerAddressChange}
                       onBlur={handleX11ServerAddressBlur}
                     />
+                  </div>
+                </div>
+                <div className="settings-row">
+                  <span className="settings-row-label">X11 Server 下载</span>
+                  <div className="settings-x11-server-links">
+                    <a
+                      className="settings-x11-server-link"
+                      href={VCXSRV_PROJECT_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(event) => handleX11ServerLinkClick(event, "vcxsrv", VCXSRV_PROJECT_URL)}
+                    >
+                      Windows
+                    </a>
+                    <a
+                      className="settings-x11-server-link"
+                      href={XQUARTZ_PROJECT_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(event) => handleX11ServerLinkClick(event, "xquartz", XQUARTZ_PROJECT_URL)}
+                    >
+                      Mac
+                    </a>
                   </div>
                 </div>
               </div>

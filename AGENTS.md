@@ -78,6 +78,7 @@ Unless explicitly required:
 - Do not modify unrelated files.
 - Preserve existing architecture and coding style.
 - Prefer existing utilities and patterns.
+- Production source directories must not contain test implementations. In Rust, do not add `#[cfg(test)] mod tests`, `#[test]` functions, test fixtures, or test-only helpers under `src-tauri/src/`; place all Rust test implementations under `src-tauri/tests/` and wire them through the test entrypoint.
 
 ## Verification
 

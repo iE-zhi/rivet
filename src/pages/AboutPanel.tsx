@@ -88,15 +88,15 @@ export interface AboutPanelProps {
 export default function AboutPanel({ locale }: AboutPanelProps) {
   const copy = ABOUT_COPY[locale];
 
-  /** 桌面端通过后端打开白名单项目主页；Web 预览仍使用普通新窗口。 */
+  /** 桌面端通过后端打开白名单外部页面；Web 预览仍使用普通新窗口。 */
   const handleProjectLinkClick = (
     event: MouseEvent<HTMLAnchorElement>,
-    project: "github" | "gitee",
+    page: "rivet-github" | "rivet-gitee",
     url: string,
   ) => {
     event.preventDefault();
     if ("__TAURI_INTERNALS__" in window) {
-      void invoke("open_project_page", { project }).catch((error) => {
+      void invoke("open_external_page", { page }).catch((error) => {
         console.error("Rivet 无法打开项目主页。", error);
       });
       return;
@@ -128,7 +128,7 @@ export default function AboutPanel({ locale }: AboutPanelProps) {
                 href={GITHUB_PROJECT_URL}
                 target="_blank"
                 rel="noreferrer"
-                onClick={(event) => handleProjectLinkClick(event, "github", GITHUB_PROJECT_URL)}
+                onClick={(event) => handleProjectLinkClick(event, "rivet-github", GITHUB_PROJECT_URL)}
               >
                 GitHub
               </a>
@@ -137,7 +137,7 @@ export default function AboutPanel({ locale }: AboutPanelProps) {
                 href={GITEE_PROJECT_URL}
                 target="_blank"
                 rel="noreferrer"
-                onClick={(event) => handleProjectLinkClick(event, "gitee", GITEE_PROJECT_URL)}
+                onClick={(event) => handleProjectLinkClick(event, "rivet-gitee", GITEE_PROJECT_URL)}
               >
                 Gitee
               </a>

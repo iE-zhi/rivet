@@ -8,23 +8,19 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::process::Command;
-
 use reqwest::{Client, RequestBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
-use crate::sync_secrets::{self, EncryptedBackupSecrets, EncryptedSyncSecrets};
+use crate::{
+    external_links,
+    sync_secrets::{self, EncryptedBackupSecrets, EncryptedSyncSecrets},
+};
 
 /// 同步访问令牌在系统凭据库中的服务名。
 const TOKEN_SERVICE_NAME: &str = "Rivet Sync";
-/// Rivet GitHub 项目主页；仅由固定命令打开，不接受前端传入任意 URL。
-const RIVET_GITHUB_PROJECT_URL: &str = "https://github.com/iE-zhi/rivet";
-/// Rivet Gitee 项目主页；仅由固定命令打开，不接受前端传入任意 URL。
-const RIVET_GITEE_PROJECT_URL: &str = "https://gitee.com/boo0ood/rivet";
 /// 三个平台片段中统一使用的同步文件名。
 const SYNC_FILE_NAME: &str = "rivet-sync.json";
 /// 自动创建的同步片段使用固定名称，便于同一账号的其他设备自动发现。
@@ -316,22 +312,9 @@ pub async fn delete_sync_token(provider: String) -> Result<(), String> {
 pub async fn open_sync_token_page(provider: String) -> Result<(), String> {
     let provider = SyncProvider::parse(provider.trim())?;
     let url = provider.token_creation_url();
-    tauri::async_runtime::spawn_blocking(move || open_external_url(url))
+    tauri::async_runtime::spawn_blocking(move || external_links::open_external_url(url))
         .await
         .map_err(|error| format!("打开 Token 页面任务失败：{error}"))?
-}
-
-/// 使用系统默认浏览器打开 Rivet 白名单项目主页。
-#[tauri::command]
-pub async fn open_project_page(project: String) -> Result<(), String> {
-    let url = match project.as_str() {
-        "github" => RIVET_GITHUB_PROJECT_URL,
-        "gitee" => RIVET_GITEE_PROJECT_URL,
-        _ => return Err("不支持的项目主页".to_string()),
-    };
-    tauri::async_runtime::spawn_blocking(move || open_external_url(url))
-        .await
-        .map_err(|error| format!("打开项目主页任务失败：{error}"))?
 }
 
 /// 自动查找当前账号已有的 Rivet 同步片段；不存在时创建私有片段并写入当前本机数据。
@@ -1327,62 +1310,4 @@ fn percent_encode(value: &str) -> String {
 /// 检查字符串中是否存在控制字符。
 fn contains_control(value: &str) -> bool {
     value.chars().any(char::is_control)
-}
-
-/// 使用系统默认浏览器打开由平台白名单决定的固定 HTTPS 页面。
-fn open_external_url(url: &str) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::{iter::once, os::windows::ffi::OsStrExt};
-        use windows::{
-            core::PCWSTR,
-            Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL},
-        };
-
-        let wide_url: Vec<u16> = std::ffi::OsStr::new(url)
-            .encode_wide()
-            .chain(once(0))
-            .collect();
-        // ShellExecuteW 按 URL 协议关联调用系统默认浏览器，避免 explorer.exe 将 URL 当作文件路径处理。
-        let result = unsafe {
-            ShellExecuteW(
-                None,
-                PCWSTR::null(),
-                PCWSTR(wide_url.as_ptr()),
-                PCWSTR::null(),
-                PCWSTR::null(),
-                SW_SHOWNORMAL,
-            )
-        };
-        if result.0 as isize <= 32 {
-            return Err(format!(
-                "打开系统浏览器失败：ShellExecuteW 返回 {}",
-                result.0 as isize
-            ));
-        }
-        return Ok(());
-    }
-
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut command = Command::new("open");
-        command.arg(url);
-        command
-    };
-
-    #[cfg(target_os = "linux")]
-    let mut command = {
-        let mut command = Command::new("xdg-open");
-        command.arg(url);
-        command
-    };
-
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    return Err("当前平台不支持直接打开浏览器".to_string());
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    command
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| format!("打开系统浏览器失败：{error}"))
 }
