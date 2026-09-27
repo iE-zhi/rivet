@@ -36,7 +36,7 @@ button, input, textarea { font: inherit; }
 .empty-state { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: var(--r-subtle); text-align: center; }
 .empty-state strong { color: var(--r-text); font-size: var(--r-font-size-base); font-weight: 600; }
 .empty-icon { display: grid; width: 52px; height: 52px; margin-bottom: 4px; place-items: center; border: 1px solid var(--r-border); border-radius: 50%; color: var(--r-primary-light); }
-.console-footer { display: flex; min-height: 38px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; border-top: 1px solid var(--r-border); color: var(--r-muted); font-size: var(--r-font-size-base); }
+.console-footer { display: flex; min-height: 38px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; border-top: 1px solid var(--r-border); color: var(--r-muted); font-size: var(--r-font-size-secondary); }
 .console-byte-counts { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .console-byte-counts > span { white-space: nowrap; }
 .console-footer > span:last-child { flex: 0 0 auto; margin-left: auto; white-space: nowrap; }
