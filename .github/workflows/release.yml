@@ -75,14 +75,14 @@ jobs:
           tagName: v__VERSION__
           releaseName: Rivet v__VERSION__
           releaseBody: |
-            ## v0.1.2 更新内容
+            ## v0.1.4 更新内容
 
-            - 新增同步通知设置，可分别控制本地改动、启动检查、窗口聚焦和手动同步的结果通知。
-            - 同步与本地恢复改为无刷新热更新，应用配置后保留当前页面、串口日志和已有终端会话。
-            - 完善 X11：设置的 X11 Server 地址现在会实际生效，并补充 Windows、Linux 与 macOS/XQuartz 的跨平台解析和认证处理。
-            - 设置页新增 VcXsrv 与 XQuartz 下载入口，外部链接统一由桌面后端安全打开。
-            - 终端快捷命令新增详情说明、展开/收起交互，并兼容旧版快捷命令数据。
-            - 关于页新增 GitHub 项目地址，并更新 0.1.2 版本与开发时间线。
+            - 新增全局字体大小设置，支持 12 / 14 / 16 / 18 px，终端字体同步跟随调整。
+            - 凭据存储改为 Rivet 自有的跨平台加密存储，不再依赖 Windows Credential Manager、macOS Keychain 或 Linux Secret Service；同步后会及时清理 SSH 凭据缓存。
+            - 完善 X11 配置：Linux 支持自定义 xauth 路径，优化 macOS/XQuartz 的 DISPLAY 与认证处理并移除冗余配置。
+            - 优化深色主题层级和辅助文字对比度，统一串口状态栏等次级文字字号。
+            - 修复应用滚动、串口操作区滚动条、关于页在 Linux WebKitGTK 下的渲染及 Logo 阴影兼容问题。
+            - 修复终端页面隐藏期间切换主题后，重新显示时背景和主题未正确刷新的问题。
 
             请在下方 Assets 下载对应平台的安装包。
           releaseDraft: false
