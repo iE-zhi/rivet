@@ -355,6 +355,7 @@ button, input, textarea { font: inherit; }
 .settings-about-meta-row { display: flex; min-height: 31px; align-items: center; justify-content: space-between; gap: 14px; font-size: 10px; }
 .settings-about-meta-row > span { color: var(--r-muted); }
 .settings-about-meta-row > strong { color: var(--r-subtle); font-weight: 400; text-align: right; }
+.settings-about-project-links { display: flex; align-items: center; gap: 10px; }
 .settings-about-link { color: var(--r-primary-light); font-weight: 500; text-decoration: none; }
 .settings-about-link:hover { text-decoration: underline; }
 .settings-about-link:focus-visible { outline: 2px solid var(--r-primary-light); outline-offset: 2px; border-radius: 2px; }

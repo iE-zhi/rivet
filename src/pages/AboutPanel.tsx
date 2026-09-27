@@ -4,7 +4,8 @@ import appIcon from "../assets/svg/app-icon.svg";
 import { APP_VERSION } from "../appVersion";
 import type { Locale } from "./SerialPage";
 
-const PROJECT_URL = "https://gitee.com/boo0ood/rivet";
+const GITHUB_PROJECT_URL = "https://github.com/iE-zhi/rivet";
+const GITEE_PROJECT_URL = "https://gitee.com/boo0ood/rivet";
 
 /** 单日 Git 提交汇总后的关于页时间线条目。 */
 interface AboutTimelineItem {
@@ -87,16 +88,20 @@ export interface AboutPanelProps {
 export default function AboutPanel({ locale }: AboutPanelProps) {
   const copy = ABOUT_COPY[locale];
 
-  /** 桌面端通过后端调用系统默认浏览器；Web 预览仍使用普通新窗口。 */
-  const handleProjectLinkClick = (event: MouseEvent<HTMLAnchorElement>) => {
+  /** 桌面端通过后端打开白名单项目主页；Web 预览仍使用普通新窗口。 */
+  const handleProjectLinkClick = (
+    event: MouseEvent<HTMLAnchorElement>,
+    project: "github" | "gitee",
+    url: string,
+  ) => {
     event.preventDefault();
     if ("__TAURI_INTERNALS__" in window) {
-      void invoke("open_project_page").catch((error) => {
+      void invoke("open_project_page", { project }).catch((error) => {
         console.error("Rivet 无法打开项目主页。", error);
       });
       return;
     }
-    window.open(PROJECT_URL, "_blank", "noopener,noreferrer");
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -117,7 +122,26 @@ export default function AboutPanel({ locale }: AboutPanelProps) {
           </div>
           <div className="settings-about-meta-row">
             <span>{copy.project}</span>
-            <a className="settings-about-link" href={PROJECT_URL} target="_blank" rel="noreferrer" onClick={handleProjectLinkClick}>gitee</a>
+            <span className="settings-about-project-links">
+              <a
+                className="settings-about-link"
+                href={GITHUB_PROJECT_URL}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(event) => handleProjectLinkClick(event, "github", GITHUB_PROJECT_URL)}
+              >
+                GitHub
+              </a>
+              <a
+                className="settings-about-link"
+                href={GITEE_PROJECT_URL}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(event) => handleProjectLinkClick(event, "gitee", GITEE_PROJECT_URL)}
+              >
+                Gitee
+              </a>
+            </span>
           </div>
         </div>
       </section>
