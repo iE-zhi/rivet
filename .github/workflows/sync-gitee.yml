@@ -6,6 +6,11 @@ on:
       - Release
     types:
       - completed
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/sync-gitee.yml
   workflow_dispatch:
 
 permissions:
@@ -13,7 +18,7 @@ permissions:
 
 jobs:
   sync:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-22.04
 
     env:
