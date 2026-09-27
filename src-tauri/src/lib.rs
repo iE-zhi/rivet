@@ -47,6 +47,7 @@ pub fn run() -> tauri::Result<()> {
             terminal_serial::open_terminal_serial_session,
             terminal_serial::terminal_serial_send_input,
             terminal_serial::close_terminal_serial_session,
+            ssh::pick_ssh_private_key,
             ssh::open_ssh_session,
             ssh::ssh_send_input,
             ssh::ssh_resize_session,

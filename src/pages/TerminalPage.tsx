@@ -184,6 +184,8 @@ const COPY = {
     password: "密码",
     privateKey: "私钥",
     keyPath: "私钥路径",
+    selectKeyFile: "选择文件",
+    keyPickerFailed: "选择 SSH 私钥失败：",
     keyPassphrase: "私钥密码",
     x11: "X11 转发",
     device: "设备",
@@ -250,6 +252,8 @@ const COPY = {
     password: "Password",
     privateKey: "Private key",
     keyPath: "Private key path",
+    selectKeyFile: "Choose file",
+    keyPickerFailed: "Failed to choose SSH private key: ",
     keyPassphrase: "Key passphrase",
     x11: "X11 forwarding",
     device: "Device",
@@ -1517,6 +1521,22 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
     setDeleteGroupName(null);
   };
 
+  /** 使用系统文件选择器选择本机 SSH 私钥，路径仅保存到当前连接表单。 */
+  const choosePrivateKey = async () => {
+    if (!isTauri()) {
+      notify({ kind: "warning", message: copy.desktopOnly });
+      return;
+    }
+    try {
+      const selected = await invoke<string | null>("pick_ssh_private_key");
+      if (selected) {
+        setForm((current) => ({ ...current, keyPath: selected }));
+      }
+    } catch (error) {
+      notify({ kind: "error", message: `${copy.keyPickerFailed}${String(error)}` });
+    }
+  };
+
   /** 保存连接；SSH 密码和私钥口令写入 Rivet 自有加密凭据文件，不进入 localStorage。 */
   const saveConnection = async (event: FormEvent) => {
     event.preventDefault();
@@ -2126,13 +2146,24 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
                       <>
                         <label className="terminal-field">
                           <span>{copy.keyPath}</span>
-                          <Input
-                            value={form.keyPath}
-                            onChange={(event) => {
-                              const value = event.currentTarget.value;
-                              setForm((current) => ({ ...current, keyPath: value }));
-                            }}
-                          />
+                          <div className="terminal-key-path-control">
+                            <Input
+                              value={form.keyPath}
+                              readOnly
+                              title={form.keyPath || copy.selectKeyFile}
+                              onClick={() => void choosePrivateKey()}
+                            />
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="terminal-key-path-button"
+                              onClick={() => void choosePrivateKey()}
+                              aria-label={copy.selectKeyFile}
+                              title={copy.selectKeyFile}
+                            >
+                              <SvgIcon name="folder" size={16} />
+                            </Button>
+                          </div>
                         </label>
                         <label className="terminal-field">
                           <span>{copy.keyPassphrase}</span>

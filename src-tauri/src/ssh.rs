@@ -17,6 +17,7 @@ use russh::{
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_dialog::DialogExt;
 use tokio::{
     sync::{mpsc, oneshot, RwLock},
     time::timeout,
@@ -226,6 +227,30 @@ impl client::Handler for ClientHandler {
 }
 
 /// 建立 SSH PTY Shell，并在成功后启动独立异步 worker。
+/// 打开系统文件选择器，让用户选择本机 SSH 私钥文件。
+///
+/// 返回 `None` 表示用户取消；仅返回可转换为 UTF-8 的本机文件路径。
+#[tauri::command]
+pub async fn pick_ssh_private_key(app: AppHandle) -> Result<Option<String>, String> {
+    let dialog_app = app.clone();
+    let selected = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app.dialog().file().blocking_pick_file()
+    })
+    .await
+    .map_err(|error| format!("打开 SSH 私钥文件选择器失败：{error}"))?;
+
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let path = selected
+        .into_path()
+        .map_err(|error| format!("SSH 私钥文件路径无效：{error}"))?;
+    let path = path
+        .to_str()
+        .ok_or_else(|| "SSH 私钥文件路径不是有效 UTF-8".to_string())?;
+    Ok(Some(path.to_string()))
+}
+
 #[tauri::command]
 pub async fn open_ssh_session(
     app: AppHandle,
