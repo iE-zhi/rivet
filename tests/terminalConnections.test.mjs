@@ -49,6 +49,10 @@ test("terminal connections persist SSH and serial records without secrets", () =
     group: "串口",
     path: "COM5",
     baudRate: 115200,
+    dataBits: 7,
+    parity: "even",
+    stopBits: 2,
+    flowControl: "hardware",
   };
   const serialized = serializeTerminalConnections([ssh, serial]);
   const restored = deserializeTerminalConnections(serialized);
@@ -58,6 +62,30 @@ test("terminal connections persist SSH and serial records without secrets", () =
   assert.deepEqual(restored, [ssh, serial]);
   assert.equal("password" in JSON.parse(serialized)[0], false);
   assert.equal("keyPassphrase" in JSON.parse(serialized)[0], false);
+});
+
+/** 旧版串口连接缺少帧格式时迁移为 8N1、无流控。 */
+test("terminal connections migrate legacy serial frame settings", () => {
+  const [restored] = deserializeTerminalConnections(JSON.stringify([{
+    kind: "serial",
+    id: "legacy-serial",
+    name: "COM7",
+    group: "串口",
+    path: "COM7",
+    baudRate: 115200,
+  }]));
+  assert.deepEqual(restored, {
+    kind: "serial",
+    id: "legacy-serial",
+    name: "COM7",
+    group: "串口",
+    path: "COM7",
+    baudRate: 115200,
+    dataBits: 8,
+    parity: "none",
+    stopBits: 1,
+    flowControl: "none",
+  });
 });
 
 /** 非法类型、越界端口和越界波特率不能进入连接列表。 */
@@ -86,6 +114,23 @@ test("terminal connection persistence rejects malformed records", () => {
           baudRate: 0,
         },
       ]),
+    ),
+    [],
+  );
+  assert.deepEqual(
+    deserializeTerminalConnections(
+      JSON.stringify([{
+        kind: "serial",
+        id: "bad-frame",
+        name: "bad-frame",
+        group: "串口",
+        path: "COM2",
+        baudRate: 115200,
+        dataBits: 9,
+        parity: "none",
+        stopBits: 1,
+        flowControl: "none",
+      }]),
     ),
     [],
   );

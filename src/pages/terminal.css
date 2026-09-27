@@ -808,6 +808,41 @@
 
 .terminal-field .rivet-select { width: 100%; }
 
+.terminal-serial-device-controls {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.terminal-serial-device-select {
+  width: 0 !important;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.terminal-serial-device-select .rivet-select-trigger {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-serial-refresh-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.terminal-serial-field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
 .terminal-key-path-control {
   display: flex;
   min-width: 0;

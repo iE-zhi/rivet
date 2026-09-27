@@ -29,10 +29,8 @@ const READ_TIMEOUT: Duration = Duration::from_millis(80);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 /// 关闭命令等待串口句柄实际释放的最大时间。
 const CLOSE_RELEASE_TIMEOUT: Duration = Duration::from_secs(3);
-/// 终端页保存串口连接允许的最大波特率。
-const MAX_BAUD_RATE: u32 = 20_000_000;
 
-/// 终端串口会话配置；终端模式固定使用 8N1、无流控。
+/// 终端串口会话配置；完整保存设备、波特率、帧格式和流控参数。
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalSerialConfig {
@@ -40,8 +38,16 @@ pub struct TerminalSerialConfig {
     session_id: String,
     /// 操作系统串口设备路径。
     path: String,
-    /// 每秒波特数，范围为 1..=20_000_000。
+    /// 每秒波特数，必须大于零。
     baud_rate: u32,
+    /// 数据位数，仅支持 5、6、7、8。
+    data_bits: u8,
+    /// 校验模式：none、even、odd。
+    parity: String,
+    /// 停止位数，仅支持 1 或 2。
+    stop_bits: u8,
+    /// 流控模式：none、hardware、software。
+    flow_control: String,
 }
 
 /// 终端串口数据事件。
@@ -235,10 +241,30 @@ fn start_terminal_serial_worker(
     let mut port = SerialPort::open(&config.path, |mut settings: Settings| {
         settings.set_raw();
         settings.set_baud_rate(config.baud_rate)?;
-        settings.set_char_size(CharSize::Bits8);
-        settings.set_stop_bits(StopBits::One);
-        settings.set_parity(Parity::None);
-        settings.set_flow_control(FlowControl::None);
+        settings.set_char_size(match config.data_bits {
+            5 => CharSize::Bits5,
+            6 => CharSize::Bits6,
+            7 => CharSize::Bits7,
+            8 => CharSize::Bits8,
+            _ => unreachable!("串口参数已在打开前校验"),
+        });
+        settings.set_stop_bits(match config.stop_bits {
+            1 => StopBits::One,
+            2 => StopBits::Two,
+            _ => unreachable!("串口参数已在打开前校验"),
+        });
+        settings.set_parity(match config.parity.as_str() {
+            "none" => Parity::None,
+            "even" => Parity::Even,
+            "odd" => Parity::Odd,
+            _ => unreachable!("串口参数已在打开前校验"),
+        });
+        settings.set_flow_control(match config.flow_control.as_str() {
+            "none" => FlowControl::None,
+            "hardware" => FlowControl::RtsCts,
+            "software" => FlowControl::XonXoff,
+            _ => unreachable!("串口参数已在打开前校验"),
+        });
         Ok(settings)
     })
     .map_err(|error| format!("打开串口终端失败：{error}"))?;
@@ -367,8 +393,20 @@ fn validate_config(config: &TerminalSerialConfig) -> Result<(), String> {
     if config.path.trim().is_empty() || config.path.len() > 4096 {
         return Err("串口终端设备路径无效".to_string());
     }
-    if config.baud_rate == 0 || config.baud_rate > MAX_BAUD_RATE {
-        return Err(format!("串口终端波特率范围为 1..={MAX_BAUD_RATE}"));
+    if config.baud_rate == 0 {
+        return Err("串口终端波特率必须大于零".to_string());
+    }
+    if !matches!(config.data_bits, 5..=8) {
+        return Err("串口终端数据位仅支持 5、6、7 或 8".to_string());
+    }
+    if !matches!(config.stop_bits, 1 | 2) {
+        return Err("串口终端停止位仅支持 1 或 2".to_string());
+    }
+    if !matches!(config.parity.as_str(), "none" | "even" | "odd") {
+        return Err("串口终端校验位参数无效".to_string());
+    }
+    if !matches!(config.flow_control.as_str(), "none" | "hardware" | "software") {
+        return Err("串口终端流控参数无效".to_string());
     }
     let available =
         SerialPort::available_ports().map_err(|error| format!("验证串口终端设备失败：{error}"))?;

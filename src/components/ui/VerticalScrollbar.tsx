@@ -348,6 +348,8 @@ export function VerticalScrollbarTrack({
     height: minThumbSize,
     visible: false,
   });
+  /** 外部滚动模型通常是离散单位（如 xterm 行号）；拖动期间单独保存连续像素位置，避免滑块被离散位置拉回。 */
+  const [dragTop, setDragTop] = useState<number | null>(null);
 
   const update = useCallback(() => {
     const track = trackRef.current;
@@ -378,9 +380,11 @@ export function VerticalScrollbarTrack({
     resizeObserver.observe(track);
     return () => {
       resizeObserver.disconnect();
-      dragCleanupRef.current?.();
     };
   }, [update]);
+
+  /** 仅在组件真正卸载时结束活动拖动；滚动位置变化不应中断当前指针手势。 */
+  useLayoutEffect(() => () => dragCleanupRef.current?.(), []);
 
   const onTrackPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget || !metrics.visible) return;
@@ -405,18 +409,23 @@ export function VerticalScrollbarTrack({
     const thumb = event.currentTarget;
     const pointerId = event.pointerId;
     const startY = event.clientY;
-    const startScrollTop = scrollTop;
+    const startThumbTop = metrics.top;
     const scrollRange = Math.max(0, scrollHeight - clientHeight);
     const thumbRange = Math.max(1, track.clientHeight - metrics.height);
-    const ratio = scrollRange / thumbRange;
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
-      onScrollTopChange(startScrollTop + (moveEvent.clientY - startY) * ratio);
+      const nextTop = Math.min(
+        thumbRange,
+        Math.max(0, startThumbTop + moveEvent.clientY - startY),
+      );
+      setDragTop(nextTop);
+      onScrollTopChange((nextTop / thumbRange) * scrollRange);
     };
     let cleanup: () => void;
     const onPointerEnd = (endEvent: PointerEvent) => {
       if (endEvent.pointerId !== pointerId) return;
+      setDragTop(null);
       cleanup();
     };
     cleanup = () => {
@@ -446,7 +455,7 @@ export function VerticalScrollbarTrack({
         className="rivet-vertical-scrollbar-thumb"
         style={{
           height: metrics.height,
-          transform: `translateY(${metrics.top}px)`,
+          transform: `translateY(${dragTop ?? metrics.top}px)`,
         }}
         onPointerDown={onThumbPointerDown}
       />

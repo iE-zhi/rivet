@@ -1,3 +1,5 @@
+import { DEFAULT_SERIAL_DEFAULTS, MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialFlowControl, type SerialParity } from "./serialDefaults.ts";
+
 /** 已保存终端连接的协议类型。 */
 export type TerminalConnectionKind = "ssh" | "serial";
 /** SSH 连接认证方式；敏感认证数据不写入浏览器持久化模型。 */
@@ -22,11 +24,15 @@ export interface SavedSshConnection extends SavedTerminalConnectionBase {
   x11: boolean;
 }
 
-/** 可安全持久化的串口终端连接信息；终端模式固定使用 8N1、无流控。 */
+/** 可安全持久化的串口终端连接信息；保存完整帧格式和流控参数。 */
 export interface SavedSerialConnection extends SavedTerminalConnectionBase {
   kind: "serial";
   path: string;
   baudRate: number;
+  dataBits: number;
+  parity: SerialParity;
+  stopBits: number;
+  flowControl: SerialFlowControl;
 }
 
 /** 终端连接管理器支持的持久化连接。 */
@@ -47,8 +53,6 @@ export const TERMINAL_RECENT_CONNECTIONS_STORAGE_KEY = "rivet.terminal.recentCon
 
 /** 已保存连接 JSON 的最大长度，避免解析异常大的浏览器存储内容。 */
 const MAX_CONNECTIONS_JSON_LENGTH = 1_048_576;
-/** 串口终端允许的最大波特率。 */
-const MAX_SERIAL_BAUD_RATE = 20_000_000;
 /** 最近使用连接最多保留 20 条。 */
 export const MAX_RECENT_TERMINAL_CONNECTIONS = 20;
 
@@ -104,7 +108,11 @@ function isPersistedSerialConnection(value: unknown): boolean {
     typeof connection.baudRate === "number" &&
     Number.isInteger(connection.baudRate) &&
     connection.baudRate > 0 &&
-    connection.baudRate <= MAX_SERIAL_BAUD_RATE
+    connection.baudRate <= MAX_SERIAL_BAUD_RATE &&
+    (connection.dataBits === undefined || (typeof connection.dataBits === "number" && SERIAL_DATA_BITS.includes(connection.dataBits as (typeof SERIAL_DATA_BITS)[number]))) &&
+    (connection.parity === undefined || connection.parity === "none" || connection.parity === "even" || connection.parity === "odd") &&
+    (connection.stopBits === undefined || (typeof connection.stopBits === "number" && SERIAL_STOP_BITS.includes(connection.stopBits as (typeof SERIAL_STOP_BITS)[number]))) &&
+    (connection.flowControl === undefined || connection.flowControl === "none" || connection.flowControl === "hardware" || connection.flowControl === "software")
   );
 }
 
@@ -132,6 +140,10 @@ function restoreConnection(connection: Record<string, unknown>): SavedTerminalCo
       group: connection.group as string,
       path: connection.path as string,
       baudRate: connection.baudRate as number,
+      dataBits: connection.dataBits === undefined ? DEFAULT_SERIAL_DEFAULTS.dataBits : connection.dataBits as number,
+      parity: connection.parity === undefined ? DEFAULT_SERIAL_DEFAULTS.parity : connection.parity as SerialParity,
+      stopBits: connection.stopBits === undefined ? DEFAULT_SERIAL_DEFAULTS.stopBits : connection.stopBits as number,
+      flowControl: connection.flowControl === undefined ? DEFAULT_SERIAL_DEFAULTS.flowControl : connection.flowControl as SerialFlowControl,
     };
   }
   return null;

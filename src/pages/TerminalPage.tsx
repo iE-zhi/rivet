@@ -25,6 +25,7 @@ import {
   type SshConnectionSecrets,
   type TerminalConnectionKind,
 } from "./terminalConnections";
+import { DEFAULT_SERIAL_DEFAULTS, MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialFlowControl, type SerialParity } from "./serialDefaults";
 import {
   collectTerminalSessionIds,
   countTerminalPanes,
@@ -122,7 +123,13 @@ interface ConnectionFormState {
   x11: boolean;
   serialPath: string;
   serialBaudRate: string;
+  serialDataBits: string;
+  serialParity: SerialParity;
+  serialStopBits: string;
+  serialFlowControl: SerialFlowControl;
 }
+
+type PortInfo = { path: string; name: string };
 
 type PickerState =
   | { action: "new-tab"; anchor: "top" }
@@ -151,7 +158,11 @@ const EMPTY_FORM: ConnectionFormState = {
   keyPassphrase: "",
   x11: false,
   serialPath: "",
-  serialBaudRate: "115200",
+  serialBaudRate: String(DEFAULT_SERIAL_DEFAULTS.baudRate),
+  serialDataBits: String(DEFAULT_SERIAL_DEFAULTS.dataBits),
+  serialParity: DEFAULT_SERIAL_DEFAULTS.parity,
+  serialStopBits: String(DEFAULT_SERIAL_DEFAULTS.stopBits),
+  serialFlowControl: DEFAULT_SERIAL_DEFAULTS.flowControl,
 };
 
 const COPY = {
@@ -190,6 +201,19 @@ const COPY = {
     x11: "X11 转发",
     device: "设备",
     baudRate: "波特率",
+    dataBits: "数据位",
+    parity: "校验位",
+    stopBits: "停止位",
+    flowControl: "流控",
+    refreshPorts: "刷新设备",
+    noSerialDevices: "暂无串口设备",
+    serialPortsFailed: "刷新串口设备失败：",
+    parityNone: "无校验",
+    parityEven: "偶校验",
+    parityOdd: "奇校验",
+    flowNone: "无",
+    flowHardware: "硬件 RTS/CTS",
+    flowSoftware: "软件 XON/XOFF",
     save: "保存",
     cancel: "取消",
     edit: "编辑",
@@ -258,6 +282,19 @@ const COPY = {
     x11: "X11 forwarding",
     device: "Device",
     baudRate: "Baud rate",
+    dataBits: "Data bits",
+    parity: "Parity",
+    stopBits: "Stop bits",
+    flowControl: "Flow control",
+    refreshPorts: "Refresh devices",
+    noSerialDevices: "No serial devices",
+    serialPortsFailed: "Failed to refresh serial devices: ",
+    parityNone: "None",
+    parityEven: "Even",
+    parityOdd: "Odd",
+    flowNone: "None",
+    flowHardware: "Hardware RTS/CTS",
+    flowSoftware: "Software XON/XOFF",
     save: "Save",
     cancel: "Cancel",
     edit: "Edit",
@@ -846,6 +883,10 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
             sessionId: session.id,
             path: session.connection.path,
             baudRate: session.connection.baudRate,
+            dataBits: session.connection.dataBits,
+            parity: session.connection.parity,
+            stopBits: session.connection.stopBits,
+            flowControl: session.connection.flowControl,
           },
         });
         if (cancelled) {
@@ -929,6 +970,8 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ConnectionFormState>(EMPTY_FORM);
+  const [serialPorts, setSerialPorts] = useState<PortInfo[]>([]);
+  const [serialPortsLoading, setSerialPortsLoading] = useState(false);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [groupMenuId, setGroupMenuId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -1223,7 +1266,11 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
           keyPassphrase: secrets.keyPassphrase,
           x11: connection.x11,
           serialPath: "",
-          serialBaudRate: "115200",
+          serialBaudRate: String(DEFAULT_SERIAL_DEFAULTS.baudRate),
+          serialDataBits: String(DEFAULT_SERIAL_DEFAULTS.dataBits),
+          serialParity: DEFAULT_SERIAL_DEFAULTS.parity,
+          serialStopBits: String(DEFAULT_SERIAL_DEFAULTS.stopBits),
+          serialFlowControl: DEFAULT_SERIAL_DEFAULTS.flowControl,
         });
         setFormOpen(true);
         setConnectionGroupPickerOpen(false);
@@ -1469,6 +1516,42 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
     );
   }, []);
 
+  /** 刷新系统当前可见串口；新建串口连接时自动选择第一项。 */
+  const refreshSerialPorts = useCallback(async () => {
+    if (!isTauri()) {
+      setSerialPorts([]);
+      return;
+    }
+    setSerialPortsLoading(true);
+    try {
+      const ports = await invoke<PortInfo[]>("list_ports");
+      setSerialPorts(ports);
+      setForm((current) =>
+        current.kind === "serial" && !current.serialPath && ports.length > 0
+          ? { ...current, serialPath: ports[0].path }
+          : current,
+      );
+    } catch (error) {
+      notify({ kind: "error", message: `${copy.serialPortsFailed}${String(error)}` });
+    } finally {
+      setSerialPortsLoading(false);
+    }
+  }, [copy.serialPortsFailed, notify]);
+
+  useEffect(() => {
+    if (formOpen && form.kind === "serial") {
+      void refreshSerialPorts();
+    }
+  }, [form.kind, formOpen, refreshSerialPorts]);
+
+  const serialPortOptions = useMemo(() => {
+    const options = serialPorts.map((port) => ({ value: port.path, label: port.name }));
+    if (form.serialPath && !serialPorts.some((port) => port.path === form.serialPath)) {
+      options.unshift({ value: form.serialPath, label: form.serialPath });
+    }
+    return options.length ? options : [{ value: "", label: copy.noSerialDevices }];
+  }, [copy.noSerialDevices, form.serialPath, serialPorts]);
+
   const openCreateForm = () => {
     pendingOpenRef.current = null;
     setEditingId(null);
@@ -1492,6 +1575,10 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
         group: connection.group,
         serialPath: connection.path,
         serialBaudRate: String(connection.baudRate),
+        serialDataBits: String(connection.dataBits),
+        serialParity: connection.parity,
+        serialStopBits: String(connection.stopBits),
+        serialFlowControl: connection.flowControl,
       });
     } else {
       const secrets = (await loadConnectionSecrets(connection.id)) ?? {
@@ -1542,6 +1629,8 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
     event.preventDefault();
     const port = Number(form.port);
     const baudRate = Number(form.serialBaudRate);
+    const dataBits = Number(form.serialDataBits);
+    const stopBits = Number(form.serialStopBits);
     const commonInvalid =
       !form.name.trim() ||
       form.name.length > 128 ||
@@ -1565,7 +1654,11 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
         form.serialPath.length > 4096 ||
         !Number.isInteger(baudRate) ||
         baudRate < 1 ||
-        baudRate > 20_000_000);
+        baudRate > MAX_SERIAL_BAUD_RATE ||
+        !SERIAL_DATA_BITS.includes(dataBits as (typeof SERIAL_DATA_BITS)[number]) ||
+        !SERIAL_STOP_BITS.includes(stopBits as (typeof SERIAL_STOP_BITS)[number]) ||
+        !["none", "even", "odd"].includes(form.serialParity) ||
+        !["none", "hardware", "software"].includes(form.serialFlowControl));
 
     if (commonInvalid || sshInvalid || serialInvalid) {
       notify({ kind: "warning", message: copy.invalidForm });
@@ -1594,6 +1687,10 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
         group: form.group.trim() || copy.serial,
         path: form.serialPath.trim(),
         baudRate,
+        dataBits,
+        parity: form.serialParity,
+        stopBits,
+        flowControl: form.serialFlowControl,
       };
       secretsRef.current.delete(id);
     } else {
@@ -2056,16 +2153,29 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
 
                 {form.kind === "serial" ? (
                   <>
-                    <label className="terminal-field">
+                    <div className="terminal-field">
                       <span>{copy.device}</span>
-                      <Input
-                        value={form.serialPath}
-                        onChange={(event) => {
-                          const value = event.currentTarget.value;
-                          setForm((current) => ({ ...current, serialPath: value }));
-                        }}
-                      />
-                    </label>
+                      <div className="terminal-serial-device-controls">
+                        <Select
+                          className="terminal-serial-device-select"
+                          ariaLabel={copy.device}
+                          value={form.serialPath}
+                          options={serialPortOptions}
+                          onChange={(value) => setForm((current) => ({ ...current, serialPath: value }))}
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="terminal-serial-refresh-button"
+                          onClick={() => void refreshSerialPorts()}
+                          disabled={serialPortsLoading}
+                          aria-label={copy.refreshPorts}
+                          title={copy.refreshPorts}
+                        >
+                          <SvgIcon name="refresh" size={16} />
+                        </Button>
+                      </div>
+                    </div>
                     <label className="terminal-field">
                       <span>{copy.baudRate}</span>
                       <Input
@@ -2073,13 +2183,58 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
                         value={form.serialBaudRate}
                         onChange={(event) => {
                           const value = event.currentTarget.value;
-                          setForm((current) => ({
-                            ...current,
-                            serialBaudRate: value,
-                          }));
+                          setForm((current) => ({ ...current, serialBaudRate: value }));
                         }}
                       />
                     </label>
+                    <div className="terminal-serial-field-grid">
+                      <label className="terminal-field">
+                        <span>{copy.dataBits}</span>
+                        <Select
+                          ariaLabel={copy.dataBits}
+                          value={form.serialDataBits}
+                          options={SERIAL_DATA_BITS.map((bits) => ({ value: String(bits), label: String(bits) }))}
+                          onChange={(value) => setForm((current) => ({ ...current, serialDataBits: value }))}
+                        />
+                      </label>
+                      <label className="terminal-field">
+                        <span>{copy.parity}</span>
+                        <Select
+                          ariaLabel={copy.parity}
+                          value={form.serialParity}
+                          options={[
+                            { value: "none", label: copy.parityNone },
+                            { value: "even", label: copy.parityEven },
+                            { value: "odd", label: copy.parityOdd },
+                          ]}
+                          onChange={(value) => setForm((current) => ({ ...current, serialParity: value as SerialParity }))}
+                        />
+                      </label>
+                    </div>
+                    <div className="terminal-serial-field-grid">
+                      <label className="terminal-field">
+                        <span>{copy.stopBits}</span>
+                        <Select
+                          ariaLabel={copy.stopBits}
+                          value={form.serialStopBits}
+                          options={SERIAL_STOP_BITS.map((bits) => ({ value: String(bits), label: String(bits) }))}
+                          onChange={(value) => setForm((current) => ({ ...current, serialStopBits: value }))}
+                        />
+                      </label>
+                      <label className="terminal-field">
+                        <span>{copy.flowControl}</span>
+                        <Select
+                          ariaLabel={copy.flowControl}
+                          value={form.serialFlowControl}
+                          options={[
+                            { value: "none", label: copy.flowNone },
+                            { value: "hardware", label: copy.flowHardware },
+                            { value: "software", label: copy.flowSoftware },
+                          ]}
+                          onChange={(value) => setForm((current) => ({ ...current, serialFlowControl: value as SerialFlowControl }))}
+                        />
+                      </label>
+                    </div>
                   </>
                 ) : (
                   <>
