@@ -75,14 +75,11 @@ jobs:
           tagName: v__VERSION__
           releaseName: Rivet v__VERSION__
           releaseBody: |
-            ## v0.1.4 更新内容
+            ## v0.1.5 更新内容
 
-            - 新增全局字体大小设置，支持 12 / 14 / 16 / 18 px，终端字体同步跟随调整。
-            - 凭据存储改为 Rivet 自有的跨平台加密存储，不再依赖 Windows Credential Manager、macOS Keychain 或 Linux Secret Service；同步后会及时清理 SSH 凭据缓存。
-            - 完善 X11 配置：Linux 支持自定义 xauth 路径，优化 macOS/XQuartz 的 DISPLAY 与认证处理并移除冗余配置。
-            - 优化深色主题层级和辅助文字对比度，统一串口状态栏等次级文字字号。
-            - 修复应用滚动、串口操作区滚动条、关于页在 Linux WebKitGTK 下的渲染及 Logo 阴影兼容问题。
-            - 修复终端页面隐藏期间切换主题后，重新显示时背景和主题未正确刷新的问题。
+            - 修复 Debian 13 / Wayland / NVIDIA 环境下 WebKitGTK 可能因 GBM/KMS 与 DMA-BUF 渲染失败而无法正常启动的问题。
+            - Linux 默认采用 X11 后端并关闭 WebKitGTK DMA-BUF renderer，提升 NVIDIA 等图形环境下的启动兼容性。
+            - 如果用户已显式设置 `GDK_BACKEND` 或 `WEBKIT_DISABLE_DMABUF_RENDERER`，Rivet 会保留用户配置，不会强制覆盖。
 
             请在下方 Assets 下载对应平台的安装包。
           releaseDraft: false
