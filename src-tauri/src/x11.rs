@@ -1,15 +1,17 @@
 //! X11 转发桥接。
 //!
-//! 本模块读取本机 DISPLAY/xauth，向远端仅暴露随机假 cookie，并在 X11 setup
-//! 握手进入本地 X Server 前替换为真实 cookie。后续字节流直接双向转发。
+//! 本模块按平台准备本机 X Server，向远端仅暴露随机假 cookie，并在 X11 setup
+//! 握手进入本地 X Server 前改写本地认证字段。后续字节流直接双向转发。
 
-use std::{env, process::Command, sync::Arc};
+use std::sync::Arc;
+
+#[cfg(any(unix, test))]
+use std::path::PathBuf;
+#[cfg(unix)]
+use std::{env, process::Command};
 
 use russh::Channel;
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-
-#[cfg(unix)]
-use std::path::PathBuf;
 use tokio::net::TcpStream;
 #[cfg(unix)]
 use tokio::net::UnixStream;
@@ -18,7 +20,8 @@ use tokio::net::UnixStream;
 const X11_COOKIE_BYTES: usize = 16;
 /// X11 setup 中认证协议名称与数据的最大长度。
 const MAX_X11_AUTH_FIELD_BYTES: usize = 256;
-/// X11 TCP 基础端口。
+/// Unix DISPLAY 映射使用的 X11 TCP 基础端口。
+#[cfg(unix)]
 const X11_TCP_BASE_PORT: u16 = 6000;
 
 /// 供 russh handler 克隆使用的 X11 转发配置。
@@ -30,8 +33,8 @@ pub(crate) struct X11ForwardConfig {
     pub fake_cookie_hex: Arc<str>,
     /// 假 cookie 的原始字节，用于远端 X11 setup 验证。
     fake_cookie: Arc<[u8]>,
-    /// 本机 X Server 实际 cookie 原始字节。
-    real_cookie: Arc<[u8]>,
+    /// 本机 X Server 使用的认证方式。
+    local_auth: LocalAuth,
     /// 远端 DISPLAY 的 screen 编号。
     pub screen: u32,
     /// 本地 X Server socket 目标。
@@ -48,11 +51,22 @@ enum LocalEndpoint {
     Unix(PathBuf),
 }
 
+/// 本机 X Server setup 使用的认证方式。
+#[derive(Clone)]
+enum LocalAuth {
+    /// Windows 本机 X Server 不要求 X11 setup 认证数据。
+    #[cfg(windows)]
+    Disabled,
+    /// Unix 本机 X Server 使用 MIT-MAGIC-COOKIE-1。
+    #[cfg(unix)]
+    Cookie(Arc<[u8]>),
+}
+
 /// 用于统一 TCP/Unix X Server stream 的异步流边界。
 trait LocalX11Stream: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T> LocalX11Stream for T where T: AsyncRead + AsyncWrite + Unpin + Send {}
 
-/// 读取 DISPLAY/xauth，并使用设置中的本机 X Server 地址生成转发配置。
+/// 按当前平台准备本地 X Server 目标和认证，并生成仅提供给远端的随机假 cookie。
 pub(crate) async fn prepare_x11_forwarding(
     server_address: Option<String>,
 ) -> Result<X11ForwardConfig, String> {
@@ -63,23 +77,11 @@ pub(crate) async fn prepare_x11_forwarding(
     .map_err(|error| format!("准备 X11 转发任务失败：{error}"))?
 }
 
-/// 在阻塞线程解析环境变量、运行 xauth 并生成转发配置。
+/// 在阻塞线程准备本地 X Server 连接参数，并生成远端使用的假 cookie。
 fn prepare_x11_forwarding_blocking(
     server_address: Option<&str>,
 ) -> Result<X11ForwardConfig, String> {
-    let display =
-        env::var("DISPLAY").map_err(|_| "启用 X11 转发前必须设置 DISPLAY 环境变量".to_string())?;
-    let display = display.trim();
-    if display.is_empty() || display.len() > 4096 {
-        return Err("DISPLAY 环境变量为空或过长".to_string());
-    }
-
-    let (display_number, screen) = parse_display_numbers(display)?;
-    let endpoint = match server_address {
-        Some(address) => parse_server_address(address)?,
-        None => parse_local_endpoint(display, display_number)?,
-    };
-    let real_cookie = read_xauth_cookie(display)?;
+    let (endpoint, local_auth, screen) = prepare_local_x11(server_address)?;
 
     let mut fake_cookie = [0_u8; X11_COOKIE_BYTES];
     getrandom::fill(&mut fake_cookie)
@@ -90,10 +92,39 @@ fn prepare_x11_forwarding_blocking(
         protocol: Arc::from("MIT-MAGIC-COOKIE-1"),
         fake_cookie_hex: Arc::from(fake_cookie_hex),
         fake_cookie: Arc::from(fake_cookie),
-        real_cookie: Arc::from(real_cookie),
+        local_auth,
         screen,
         endpoint,
     })
+}
+
+/// Windows 直接使用设置中的 TCP X Server；本地 setup 不携带认证字段。
+#[cfg(windows)]
+fn prepare_local_x11(
+    server_address: Option<&str>,
+) -> Result<(LocalEndpoint, LocalAuth, u32), String> {
+    let address = server_address
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "启用 X11 转发前必须配置 X11 Server 地址".to_string())?;
+    Ok((parse_server_address(address)?, LocalAuth::Disabled, 0))
+}
+
+/// Unix 平台从 DISPLAY/xauth 获取本地 X Server 目标、screen 和真实 cookie。
+#[cfg(unix)]
+fn prepare_local_x11(
+    _server_address: Option<&str>,
+) -> Result<(LocalEndpoint, LocalAuth, u32), String> {
+    let display =
+        env::var("DISPLAY").map_err(|_| "启用 X11 转发前必须设置 DISPLAY 环境变量".to_string())?;
+    let display = display.trim();
+    if display.is_empty() || display.len() > 4096 {
+        return Err("DISPLAY 环境变量为空或过长".to_string());
+    }
+
+    let (display_number, screen) = parse_display_numbers(display)?;
+    let endpoint = parse_local_endpoint(display, display_number)?;
+    let real_cookie = read_xauth_cookie(display)?;
+    Ok((endpoint, LocalAuth::Cookie(Arc::from(real_cookie)), screen))
 }
 
 /// 连接当前配置对应的本机 X Server。
@@ -133,7 +164,7 @@ pub(crate) async fn bridge_x11_channel(
     Ok(())
 }
 
-/// 验证远端 setup 使用假 cookie，并将认证数据替换为本地真实 cookie。
+/// 验证远端 setup 使用假 cookie，并按本机 X Server 认证方式改写认证数据。
 async fn rewrite_x11_setup<R, W>(
     remote: &mut R,
     local: &mut W,
@@ -168,6 +199,46 @@ where
         .await
         .map_err(|error| format!("读取 X11 setup 认证数据失败：{error}"))?;
 
+    let auth_len = rewrite_x11_auth(&mut header, &mut auth, config)?;
+    local
+        .write_all(&header)
+        .await
+        .map_err(|error| format!("写入本地 X11 setup 头失败：{error}"))?;
+    if auth_len != 0 {
+        local
+            .write_all(&auth[..auth_len])
+            .await
+            .map_err(|error| format!("写入本地 X11 setup 认证失败：{error}"))?;
+    }
+    local
+        .flush()
+        .await
+        .map_err(|error| format!("刷新本地 X11 setup 失败：{error}"))?;
+    Ok(())
+}
+
+/// 校验远端假 cookie，并返回应写入本地 X Server 的认证区长度。
+fn rewrite_x11_auth(
+    header: &mut [u8; 12],
+    auth: &mut [u8],
+    config: &X11ForwardConfig,
+) -> Result<usize, String> {
+    let little_endian = match header[0] {
+        b'l' => true,
+        b'B' => false,
+        _ => return Err("X11 setup 使用了无效字节序标识".to_string()),
+    };
+    let protocol_len = read_u16(&header[6..8], little_endian) as usize;
+    let cookie_len = read_u16(&header[8..10], little_endian) as usize;
+    let protocol_padded = padded_x11_len(protocol_len)?;
+    let cookie_padded = padded_x11_len(cookie_len)?;
+    let expected_auth_len = protocol_padded
+        .checked_add(cookie_padded)
+        .ok_or_else(|| "X11 setup 认证区长度溢出".to_string())?;
+    if auth.len() != expected_auth_len {
+        return Err("X11 setup 认证区长度无效".to_string());
+    }
+
     let protocol = &auth[..protocol_len];
     let cookie_offset = protocol_padded;
     let cookie = &auth[cookie_offset..cookie_offset + cookie_len];
@@ -177,27 +248,26 @@ where
     if cookie != config.fake_cookie.as_ref() {
         return Err("远端 X11 cookie 校验失败".to_string());
     }
-    if config.real_cookie.len() != cookie_len {
-        return Err("本地 X11 cookie 长度与远端握手不匹配".to_string());
-    }
 
-    auth[cookie_offset..cookie_offset + cookie_len].copy_from_slice(&config.real_cookie);
-    local
-        .write_all(&header)
-        .await
-        .map_err(|error| format!("写入本地 X11 setup 头失败：{error}"))?;
-    local
-        .write_all(&auth)
-        .await
-        .map_err(|error| format!("写入本地 X11 setup 认证失败：{error}"))?;
-    local
-        .flush()
-        .await
-        .map_err(|error| format!("刷新本地 X11 setup 失败：{error}"))?;
-    Ok(())
+    match &config.local_auth {
+        #[cfg(windows)]
+        LocalAuth::Disabled => {
+            header[6..10].fill(0);
+            Ok(0)
+        }
+        #[cfg(unix)]
+        LocalAuth::Cookie(real_cookie) => {
+            if real_cookie.len() != cookie_len {
+                return Err("本地 X11 cookie 长度与远端握手不匹配".to_string());
+            }
+            auth[cookie_offset..cookie_offset + cookie_len].copy_from_slice(real_cookie);
+            Ok(auth.len())
+        }
+    }
 }
 
 /// 从 xauth 输出中读取 DISPLAY 对应的 MIT-MAGIC-COOKIE-1。
+#[cfg(unix)]
 fn read_xauth_cookie(display: &str) -> Result<[u8; X11_COOKIE_BYTES], String> {
     let output = Command::new("xauth")
         .args(["list", display])
@@ -228,6 +298,7 @@ fn read_xauth_cookie(display: &str) -> Result<[u8; X11_COOKIE_BYTES], String> {
 }
 
 /// 解析 DISPLAY 中的 display 与 screen 编号。
+#[cfg(any(unix, test))]
 fn parse_display_numbers(display: &str) -> Result<(u16, u32), String> {
     let colon = display
         .rfind(':')
@@ -247,37 +318,36 @@ fn parse_display_numbers(display: &str) -> Result<(u16, u32), String> {
     Ok((display_number, screen))
 }
 
-/// 将 DISPLAY 映射成本机 TCP 或 Unix X Server socket。
-fn parse_local_endpoint(display: &str, display_number: u16) -> Result<LocalEndpoint, String> {
+/// 将本机 Unix DISPLAY 映射为 Unix socket；远程主机形式返回 None。
+#[cfg(any(unix, test))]
+fn local_unix_socket_path(display: &str, display_number: u16) -> Result<Option<PathBuf>, String> {
     let colon = display
         .rfind(':')
         .ok_or_else(|| "DISPLAY 缺少主机分隔符".to_string())?;
     let host = &display[..colon];
 
-    #[cfg(unix)]
     if display.starts_with('/') {
-        return Ok(LocalEndpoint::Unix(PathBuf::from(display)));
+        return Ok(Some(PathBuf::from(display)));
     }
-
     if host.is_empty() || host == "unix" {
-        #[cfg(unix)]
-        {
-            return Ok(LocalEndpoint::Unix(PathBuf::from(format!(
-                "/tmp/.X11-unix/X{display_number}"
-            ))));
-        }
-        #[cfg(not(unix))]
-        {
-            let port = X11_TCP_BASE_PORT
-                .checked_add(display_number)
-                .ok_or_else(|| "DISPLAY 对应的 TCP 端口溢出".to_string())?;
-            return Ok(LocalEndpoint::Tcp {
-                host: Arc::from("127.0.0.1"),
-                port,
-            });
-        }
+        return Ok(Some(PathBuf::from(format!(
+            "/tmp/.X11-unix/X{display_number}"
+        ))));
+    }
+    Ok(None)
+}
+
+/// 将 DISPLAY 映射成本机 TCP 或 Unix X Server socket。
+#[cfg(unix)]
+fn parse_local_endpoint(display: &str, display_number: u16) -> Result<LocalEndpoint, String> {
+    if let Some(path) = local_unix_socket_path(display, display_number)? {
+        return Ok(LocalEndpoint::Unix(path));
     }
 
+    let colon = display
+        .rfind(':')
+        .ok_or_else(|| "DISPLAY 缺少主机分隔符".to_string())?;
+    let host = &display[..colon];
     let port = X11_TCP_BASE_PORT
         .checked_add(display_number)
         .ok_or_else(|| "DISPLAY 对应的 TCP 端口溢出".to_string())?;
@@ -292,6 +362,7 @@ fn parse_local_endpoint(display: &str, display_number: u16) -> Result<LocalEndpo
 }
 
 /// 将设置页的 hostname:port、IPv4:port 或 [IPv6]:port 解析为本机 X Server 目标。
+#[cfg(windows)]
 fn parse_server_address(address: &str) -> Result<LocalEndpoint, String> {
     let address = address.trim();
     if address.is_empty() || address.len() > 255 || address.chars().any(char::is_whitespace) {
@@ -338,6 +409,7 @@ fn parse_server_address(address: &str) -> Result<LocalEndpoint, String> {
 }
 
 /// 将十六进制 xauth cookie 解析为固定 16 字节。
+#[cfg(unix)]
 fn decode_cookie_hex(input: &str) -> Result<[u8; X11_COOKIE_BYTES], String> {
     if input.len() != X11_COOKIE_BYTES * 2 || !input.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("xauth cookie 长度或格式无效".to_string());
@@ -376,5 +448,136 @@ fn read_u16(bytes: &[u8], little_endian: bool) -> u16 {
         u16::from_le_bytes(pair)
     } else {
         u16::from_be_bytes(pair)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 构造远端 X11 setup 的认证头和对齐后的认证区。
+    fn fake_setup(config: &X11ForwardConfig, little_endian: bool) -> ([u8; 12], Vec<u8>) {
+        let protocol = config.protocol.as_bytes();
+        let cookie = config.fake_cookie.as_ref();
+        let protocol_padded = padded_x11_len(protocol.len()).unwrap();
+        let cookie_padded = padded_x11_len(cookie.len()).unwrap();
+        let mut header = [0_u8; 12];
+        header[0] = if little_endian { b'l' } else { b'B' };
+        let protocol_len = protocol.len() as u16;
+        let cookie_len = cookie.len() as u16;
+        let protocol_bytes = if little_endian {
+            protocol_len.to_le_bytes()
+        } else {
+            protocol_len.to_be_bytes()
+        };
+        let cookie_bytes = if little_endian {
+            cookie_len.to_le_bytes()
+        } else {
+            cookie_len.to_be_bytes()
+        };
+        header[6..8].copy_from_slice(&protocol_bytes);
+        header[8..10].copy_from_slice(&cookie_bytes);
+
+        let mut auth = vec![0_u8; protocol_padded + cookie_padded];
+        auth[..protocol.len()].copy_from_slice(protocol);
+        auth[protocol_padded..protocol_padded + cookie.len()].copy_from_slice(cookie);
+        (header, auth)
+    }
+
+    /// Linux 本地 DISPLAY 应映射到 /tmp/.X11-unix 下的 Unix socket。
+    #[test]
+    fn linux_display_resolves_local_unix_socket() {
+        let display = ":10.0";
+        let (display_number, screen) = parse_display_numbers(display).unwrap();
+        let path = local_unix_socket_path(display, display_number)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(display_number, 10);
+        assert_eq!(screen, 0);
+        assert_eq!(path, PathBuf::from("/tmp/.X11-unix/X10"));
+    }
+
+    /// XQuartz 的绝对路径 DISPLAY 应直接作为本机 Unix socket。
+    #[test]
+    fn xquartz_display_resolves_launchd_socket() {
+        let display = "/private/tmp/com.apple.launchd.example/org.xquartz:0";
+        let (display_number, screen) = parse_display_numbers(display).unwrap();
+        let path = local_unix_socket_path(display, display_number)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(display_number, 0);
+        assert_eq!(screen, 0);
+        assert_eq!(path, PathBuf::from(display));
+    }
+
+    /// Windows 无认证模式应保留远端假 cookie 校验，但向本地 X Server 清除认证字段。
+    #[cfg(windows)]
+    #[test]
+    fn disabled_local_auth_strips_setup_authentication() {
+        let fake_cookie = [0x5a_u8; X11_COOKIE_BYTES];
+        let config = X11ForwardConfig {
+            protocol: Arc::from("MIT-MAGIC-COOKIE-1"),
+            fake_cookie_hex: Arc::from(encode_hex(&fake_cookie)),
+            fake_cookie: Arc::from(fake_cookie),
+            local_auth: LocalAuth::Disabled,
+            screen: 0,
+            endpoint: LocalEndpoint::Tcp {
+                host: Arc::from("127.0.0.1"),
+                port: 6000,
+            },
+        };
+        let (mut header, mut auth) = fake_setup(&config, true);
+
+        let auth_len = rewrite_x11_auth(&mut header, &mut auth, &config).unwrap();
+
+        assert_eq!(auth_len, 0);
+        assert_eq!(&header[6..10], &[0, 0, 0, 0]);
+    }
+
+    /// Unix cookie 模式应把远端假 cookie 替换为本机真实 cookie，并保留完整认证区。
+    #[cfg(unix)]
+    #[test]
+    fn cookie_local_auth_replaces_fake_cookie() {
+        let fake_cookie = [0x11_u8; X11_COOKIE_BYTES];
+        let real_cookie = [0x22_u8; X11_COOKIE_BYTES];
+        let config = X11ForwardConfig {
+            protocol: Arc::from("MIT-MAGIC-COOKIE-1"),
+            fake_cookie_hex: Arc::from(encode_hex(&fake_cookie)),
+            fake_cookie: Arc::from(fake_cookie),
+            local_auth: LocalAuth::Cookie(Arc::from(real_cookie)),
+            screen: 0,
+            endpoint: LocalEndpoint::Tcp {
+                host: Arc::from("127.0.0.1"),
+                port: 6000,
+            },
+        };
+        let (mut header, mut auth) = fake_setup(&config, false);
+        let protocol_padded = padded_x11_len(config.protocol.len()).unwrap();
+
+        let auth_len = rewrite_x11_auth(&mut header, &mut auth, &config).unwrap();
+
+        assert_eq!(auth_len, auth.len());
+        assert_eq!(
+            &auth[protocol_padded..protocol_padded + X11_COOKIE_BYTES],
+            &real_cookie,
+        );
+    }
+
+    /// Windows 平台准备函数只使用设置地址，且固定采用无认证本地 setup。
+    #[cfg(windows)]
+    #[test]
+    fn windows_preparation_uses_configured_server_without_display() {
+        let (endpoint, local_auth, screen) = prepare_local_x11(Some("127.0.0.1:6000")).unwrap();
+
+        assert_eq!(screen, 0);
+        assert!(matches!(local_auth, LocalAuth::Disabled));
+        match endpoint {
+            LocalEndpoint::Tcp { host, port } => {
+                assert_eq!(host.as_ref(), "127.0.0.1");
+                assert_eq!(port, 6000);
+            }
+        }
     }
 }
