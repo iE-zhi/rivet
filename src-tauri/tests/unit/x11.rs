@@ -67,8 +67,30 @@ fn xquartz_display_resolves_launchd_socket() {
     assert_eq!(path, PathBuf::from(display));
 }
 
-/// Windows 无认证模式应保留远端假 cookie 校验，但向本地 X Server 清除认证字段。
-#[cfg(windows)]
+#[cfg(target_os = "macos")]
+#[test]
+fn xquartz_launchd_display_uses_no_local_cookie() {
+    let previous = std::env::var_os("DISPLAY");
+    std::env::set_var(
+        "DISPLAY",
+        "/private/tmp/com.apple.launchd.example/org.xquartz:0",
+    );
+
+    let result = x11::prepare_local_x11(None, Some("/opt/X11/bin/xauth"));
+
+    match previous {
+        Some(value) => std::env::set_var("DISPLAY", value),
+        None => std::env::remove_var("DISPLAY"),
+    }
+
+    let (endpoint, local_auth, screen) = result.unwrap();
+    assert_eq!(screen, 0);
+    assert!(matches!(local_auth, LocalAuth::Disabled));
+    assert!(matches!(endpoint, LocalEndpoint::Unix(_)));
+}
+
+/// 无认证模式应保留远端假 cookie 校验，但向本地 X Server 清除认证字段。
+#[cfg(any(windows, target_os = "macos"))]
 #[test]
 fn disabled_local_auth_strips_setup_authentication() {
     let fake_cookie = [0x5a_u8; 16];
@@ -121,7 +143,8 @@ fn cookie_local_auth_replaces_fake_cookie() {
 #[cfg(windows)]
 #[test]
 fn windows_preparation_uses_configured_server_without_display() {
-    let (endpoint, local_auth, screen) = x11::prepare_local_x11(Some("127.0.0.1:6000")).unwrap();
+    let (endpoint, local_auth, screen) =
+        x11::prepare_local_x11(Some("127.0.0.1:6000"), None).unwrap();
 
     assert_eq!(screen, 0);
     assert!(matches!(local_auth, LocalAuth::Disabled));

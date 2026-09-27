@@ -1,11 +1,21 @@
 /** X11 Server 地址在浏览器存储中的稳定键。 */
 export const X11_SERVER_ADDRESS_STORAGE_KEY = "rivet.ssh.x11ServerAddress";
+/** Linux xauth 可执行文件路径，仅保存在本机。 */
+export const LINUX_XAUTH_PATH_STORAGE_KEY = "rivet.ssh.linuxXauthPath";
+/** macOS xauth 可执行文件路径，仅保存在本机。 */
+export const MACOS_XAUTH_PATH_STORAGE_KEY = "rivet.ssh.macosXauthPath";
 
 /** 未配置时默认连接本机 display 0 的 TCP 端口。 */
 export const DEFAULT_X11_SERVER_ADDRESS = "127.0.0.1:6000";
+/** Linux 常见 xauth 安装路径。 */
+export const DEFAULT_LINUX_XAUTH_PATH = "/usr/bin/xauth";
+/** XQuartz 提供的 macOS xauth 安装路径。 */
+export const DEFAULT_MACOS_XAUTH_PATH = "/opt/X11/bin/xauth";
 
 /** 限制异常存储值和无界输入占用。 */
 export const MAX_X11_SERVER_ADDRESS_LENGTH = 255;
+/** 本机 xauth 路径最大长度。 */
+export const MAX_XAUTH_PATH_LENGTH = 4_096;
 
 /** 校验严格的点分十进制 IPv4 地址。 */
 function isValidIpv4(host: string): boolean {
@@ -62,6 +72,20 @@ export function isValidX11ServerAddress(value: string): boolean {
   if (!/^\d{1,5}$/.test(portText)) return false;
   const port = Number(portText);
   return port >= 1 && port <= 65535;
+}
+
+/** 校验本机 xauth 可执行文件的绝对 Unix 路径。 */
+export function isValidXauthPath(value: string): boolean {
+  const path = value.trim();
+  return path.length > 0
+    && path.length <= MAX_XAUTH_PATH_LENGTH
+    && path.startsWith("/")
+    && !Array.from(path).some((character) => character.charCodeAt(0) < 0x20 || character === "");
+}
+
+/** 从本机持久化文本恢复 xauth 路径；异常值回退到对应平台默认值。 */
+export function deserializeXauthPath(value: string | null, fallback: string): string {
+  return value !== null && isValidXauthPath(value) ? value.trim() : fallback;
 }
 
 /**

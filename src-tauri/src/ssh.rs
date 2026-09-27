@@ -71,6 +71,10 @@ pub struct SshConnectConfig {
     pub x11: bool,
     /// X11 转发连接的本机 X Server TCP 地址；仅在启用 X11 时使用。
     pub x11_server_address: Option<String>,
+    /// Linux 本机 xauth 可执行文件路径；仅在启用 X11 时使用。
+    pub x11_linux_xauth_path: Option<String>,
+    /// macOS 本机 xauth 可执行文件路径；仅在启用 X11 时使用。
+    pub x11_macos_xauth_path: Option<String>,
     /// 初始 PTY 列数。
     pub columns: u32,
     /// 初始 PTY 行数。
@@ -244,7 +248,14 @@ pub async fn open_ssh_session(
     let username = config.username.trim().to_string();
     let port = config.port;
     let x11_config = if config.x11 {
-        Some(x11::prepare_x11_forwarding(config.x11_server_address.clone()).await?)
+        #[cfg(target_os = "macos")]
+        let xauth_path = config.x11_macos_xauth_path.clone();
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let xauth_path = config.x11_linux_xauth_path.clone();
+        #[cfg(windows)]
+        let xauth_path = None;
+
+        Some(x11::prepare_x11_forwarding(config.x11_server_address.clone(), xauth_path).await?)
     } else {
         None
     };
@@ -595,6 +606,23 @@ fn validate_connect_config(config: &SshConnectConfig) -> Result<(), String> {
             .is_none_or(|value| value.trim().is_empty() || value.len() > 255)
     {
         return Err("X11 Server 地址为空或过长".to_string());
+    }
+    if config.x11 {
+        for path in [
+            config.x11_linux_xauth_path.as_deref(),
+            config.x11_macos_xauth_path.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if path.trim().is_empty()
+                || path.len() > MAX_CREDENTIAL_BYTES
+                || !path.trim().starts_with('/')
+                || path.chars().any(char::is_control)
+            {
+                return Err("xauth 路径必须是有效的绝对路径".to_string());
+            }
+        }
     }
     validate_terminal_size(config.columns, config.rows)
 }

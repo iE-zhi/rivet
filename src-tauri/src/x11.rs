@@ -20,6 +20,12 @@ use tokio::net::UnixStream;
 const X11_COOKIE_BYTES: usize = 16;
 /// X11 setup 中认证协议名称与数据的最大长度。
 const MAX_X11_AUTH_FIELD_BYTES: usize = 256;
+/// macOS 未提供配置时使用的 XQuartz xauth 路径。
+#[cfg(target_os = "macos")]
+const DEFAULT_XAUTH_EXECUTABLE: &str = "/opt/X11/bin/xauth";
+/// 其他 Unix 未提供配置时使用的 xauth 路径。
+#[cfg(all(unix, not(target_os = "macos")))]
+const DEFAULT_XAUTH_EXECUTABLE: &str = "/usr/bin/xauth";
 /// Unix DISPLAY 映射使用的 X11 TCP 基础端口。
 #[cfg(unix)]
 const X11_TCP_BASE_PORT: u16 = 6000;
@@ -54,8 +60,8 @@ pub(crate) enum LocalEndpoint {
 /// 本机 X Server setup 使用的认证方式。
 #[derive(Clone)]
 pub(crate) enum LocalAuth {
-    /// Windows 本机 X Server 不要求 X11 setup 认证数据。
-    #[cfg(windows)]
+    /// 本机 X Server 连接不要求 X11 setup 认证数据。
+    #[cfg(any(windows, target_os = "macos"))]
     Disabled,
     /// Unix 本机 X Server 使用 MIT-MAGIC-COOKIE-1。
     #[cfg(unix)]
@@ -69,9 +75,10 @@ impl<T> LocalX11Stream for T where T: AsyncRead + AsyncWrite + Unpin + Send {}
 /// 按当前平台准备本地 X Server 目标和认证，并生成仅提供给远端的随机假 cookie。
 pub(crate) async fn prepare_x11_forwarding(
     server_address: Option<String>,
+    xauth_path: Option<String>,
 ) -> Result<X11ForwardConfig, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        prepare_x11_forwarding_blocking(server_address.as_deref())
+        prepare_x11_forwarding_blocking(server_address.as_deref(), xauth_path.as_deref())
     })
     .await
     .map_err(|error| format!("准备 X11 转发任务失败：{error}"))?
@@ -80,8 +87,9 @@ pub(crate) async fn prepare_x11_forwarding(
 /// 在阻塞线程准备本地 X Server 连接参数，并生成远端使用的假 cookie。
 fn prepare_x11_forwarding_blocking(
     server_address: Option<&str>,
+    xauth_path: Option<&str>,
 ) -> Result<X11ForwardConfig, String> {
-    let (endpoint, local_auth, screen) = prepare_local_x11(server_address)?;
+    let (endpoint, local_auth, screen) = prepare_local_x11(server_address, xauth_path)?;
 
     let mut fake_cookie = [0_u8; X11_COOKIE_BYTES];
     getrandom::fill(&mut fake_cookie)
@@ -102,6 +110,7 @@ fn prepare_x11_forwarding_blocking(
 #[cfg(windows)]
 pub(crate) fn prepare_local_x11(
     server_address: Option<&str>,
+    _xauth_path: Option<&str>,
 ) -> Result<(LocalEndpoint, LocalAuth, u32), String> {
     let address = server_address
         .filter(|value| !value.trim().is_empty())
@@ -109,10 +118,11 @@ pub(crate) fn prepare_local_x11(
     Ok((parse_server_address(address)?, LocalAuth::Disabled, 0))
 }
 
-/// Unix 平台从 DISPLAY/xauth 获取本地 X Server 目标、screen 和真实 cookie。
+/// Unix 平台从 DISPLAY 获取本地 X Server；普通 Unix DISPLAY 使用 xauth cookie。
 #[cfg(unix)]
 fn prepare_local_x11(
     _server_address: Option<&str>,
+    xauth_path: Option<&str>,
 ) -> Result<(LocalEndpoint, LocalAuth, u32), String> {
     let display =
         env::var("DISPLAY").map_err(|_| "启用 X11 转发前必须设置 DISPLAY 环境变量".to_string())?;
@@ -123,7 +133,14 @@ fn prepare_local_x11(
 
     let (display_number, screen) = parse_display_numbers(display)?;
     let endpoint = parse_local_endpoint(display, display_number)?;
-    let real_cookie = read_xauth_cookie(display)?;
+
+    #[cfg(target_os = "macos")]
+    if display.starts_with('/') {
+        return Ok((endpoint, LocalAuth::Disabled, screen));
+    }
+
+    let executable = resolve_xauth_executable(xauth_path)?;
+    let real_cookie = read_xauth_cookie(display, &executable)?;
     Ok((endpoint, LocalAuth::Cookie(Arc::from(real_cookie)), screen))
 }
 
@@ -250,7 +267,7 @@ pub(crate) fn rewrite_x11_auth(
     }
 
     match &config.local_auth {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         LocalAuth::Disabled => {
             header[6..10].fill(0);
             Ok(0)
@@ -266,13 +283,31 @@ pub(crate) fn rewrite_x11_auth(
     }
 }
 
+/// 解析当前平台使用的 xauth 可执行文件路径。
+#[cfg(unix)]
+fn resolve_xauth_executable(configured: Option<&str>) -> Result<String, String> {
+    let executable = configured
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_XAUTH_EXECUTABLE);
+    if executable.len() > 4096
+        || !executable.starts_with('/')
+        || executable.chars().any(char::is_control)
+    {
+        return Err("xauth 路径必须是有效的绝对路径".to_string());
+    }
+    Ok(executable.to_string())
+}
+
 /// 从 xauth 输出中读取 DISPLAY 对应的 MIT-MAGIC-COOKIE-1。
 #[cfg(unix)]
-fn read_xauth_cookie(display: &str) -> Result<[u8; X11_COOKIE_BYTES], String> {
-    let output = Command::new("xauth")
+fn read_xauth_cookie(display: &str, executable: &str) -> Result<[u8; X11_COOKIE_BYTES], String> {
+    let output = Command::new(executable)
         .args(["list", display])
         .output()
-        .map_err(|error| format!("运行 xauth 失败，请确认已安装 xauth：{error}"))?;
+        .map_err(|error| {
+            format!("运行 xauth 失败（{executable}），请确认 X11 环境已正确安装：{error}")
+        })?;
     if !output.status.success() {
         return Err(format!(
             "xauth 查询 DISPLAY 失败：{}",
