@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { Button, Checkbox, Input, Select, SvgIcon, Switch, VerticalScrollbar, useNotification, type SelectOption } from "../components/ui";
 import { MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialDefaults, type SerialFlowControl, type SerialParity } from "./serialDefaults";
 import { SERIAL_RX_IDLE_MS_MAX, SERIAL_RX_IDLE_MS_MIN, SERIAL_RX_PACKET_BYTES_MAX, SERIAL_RX_PACKET_BYTES_MIN, type SerialRxSettings } from "./serialRxSettings";
@@ -12,6 +12,25 @@ import AboutPanel from "./AboutPanel";
 
 const VCXSRV_PROJECT_URL = "https://github.com/marchaesen/vcxsrv";
 const XQUARTZ_PROJECT_URL = "https://www.xquartz.org/";
+
+/** 关于页不创建自绘滚动容器，避免 Linux WebKitGTK 对隐藏滚动视口的异常绘制。 */
+function SettingsContentFrame({ about, label, children }: { about: boolean; label: string; children: ReactNode }) {
+  if (about) {
+    return (
+      <div className="settings-main-scroll settings-main-scroll-about">
+        <div className="settings-main-scroll-viewport settings-main-about-viewport" role="region" aria-label={label}>
+          <div>{children}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <VerticalScrollbar className="settings-main-scroll" viewportClassName="settings-main-scroll-viewport" height="100%" viewportLabel={label}>
+      {children}
+    </VerticalScrollbar>
+  );
+}
 
 /** 支持的主题模式；system 会随操作系统外观变化。 */
 export type ThemeMode = "system" | "light" | "dark";
@@ -1178,11 +1197,9 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
         </button>
       </nav>
       <main className={`settings-main${activeCategory === "about" ? " settings-main-about" : ""}`} id="settings-display" aria-labelledby={activeCategory === "about" ? "settings-about-title" : activeCategory === "sync" ? "settings-sync-group-title" : activeCategory === "ssh" ? "settings-ssh-group-title" : "settings-group-title"}>
-        <VerticalScrollbar
-          className={`settings-main-scroll${activeCategory === "about" ? " settings-main-scroll-about" : ""}`}
-          viewportClassName="settings-main-scroll-viewport"
-          height="100%"
-          viewportLabel={activeCategory === "display" ? copy.display : activeCategory === "serial" ? copy.serial : activeCategory === "ssh" ? copy.ssh : activeCategory === "sync" ? copy.sync : copy.about}
+        <SettingsContentFrame
+          about={activeCategory === "about"}
+          label={activeCategory === "display" ? copy.display : activeCategory === "serial" ? copy.serial : activeCategory === "ssh" ? copy.ssh : activeCategory === "sync" ? copy.sync : copy.about}
         >
           <div className={`settings-main-content${activeCategory === "about" ? " settings-main-content-about" : ""}`}>
           {activeCategory === "display" ? (
@@ -1569,7 +1586,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
           )}
 
           </div>
-        </VerticalScrollbar>
+        </SettingsContentFrame>
       </main>
     </div>
   );
