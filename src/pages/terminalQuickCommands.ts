@@ -7,6 +7,7 @@ export interface TerminalQuickCommand {
   name: string;
   group: string;
   command: string;
+  description: string;
 }
 
 const MAX_SERIALIZED_LENGTH = 262_144;
@@ -15,6 +16,7 @@ const MAX_ID_LENGTH = 96;
 const MAX_NAME_LENGTH = 128;
 const MAX_GROUP_LENGTH = 128;
 const MAX_COMMAND_LENGTH = 16_384;
+const MAX_DESCRIPTION_LENGTH = 4_096;
 
 /** 校验未知值是否为普通对象。 */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -26,14 +28,18 @@ function isBoundedString(value: unknown, min: number, max: number): value is str
   return typeof value === "string" && value.length >= min && value.length <= max;
 }
 
-/** 严格校验终端快捷命令数组。 */
-export function isTerminalQuickCommands(value: unknown): value is TerminalQuickCommand[] {
-  if (!Array.isArray(value) || value.length > MAX_COMMANDS) return false;
+/** 将当前或旧版终端快捷命令数组规范化为当前结构。 */
+export function normalizeTerminalQuickCommands(value: unknown): TerminalQuickCommand[] | null {
+  if (!Array.isArray(value) || value.length > MAX_COMMANDS) return null;
   const ids = new Set<string>();
+  const normalized: TerminalQuickCommand[] = [];
   for (const command of value) {
+    if (!isRecord(command)) return null;
+    const keys = Object.keys(command);
+    const legacy = keys.length === 4 && !Object.hasOwn(command, "description");
+    const current = keys.length === 5 && Object.hasOwn(command, "description");
     if (
-      !isRecord(command) ||
-      Object.keys(command).length !== 4 ||
+      (!legacy && !current) ||
       !Object.hasOwn(command, "id") ||
       !Object.hasOwn(command, "name") ||
       !Object.hasOwn(command, "group") ||
@@ -44,13 +50,32 @@ export function isTerminalQuickCommands(value: unknown): value is TerminalQuickC
       command.name.trim() !== command.name ||
       !isBoundedString(command.group, 1, MAX_GROUP_LENGTH) ||
       command.group.trim() !== command.group ||
-      !isBoundedString(command.command, 1, MAX_COMMAND_LENGTH)
+      !isBoundedString(command.command, 1, MAX_COMMAND_LENGTH) ||
+      (current && !isBoundedString(command.description, 0, MAX_DESCRIPTION_LENGTH))
     ) {
-      return false;
+      return null;
     }
     ids.add(command.id);
+    const description = current && typeof command.description === "string"
+      ? command.description
+      : "";
+    normalized.push({
+      id: command.id,
+      name: command.name,
+      group: command.group,
+      command: command.command,
+      description,
+    });
   }
-  return true;
+  return normalized;
+}
+
+/** 严格校验终端快捷命令数组是否已经使用当前结构。 */
+export function isTerminalQuickCommands(value: unknown): value is TerminalQuickCommand[] {
+  const normalized = normalizeTerminalQuickCommands(value);
+  return normalized !== null
+    && Array.isArray(value)
+    && value.every((command) => isRecord(command) && Object.hasOwn(command, "description"));
 }
 
 /** 从 localStorage 恢复快捷命令；损坏或越界内容安全回退为空数组。 */
@@ -58,9 +83,7 @@ export function deserializeTerminalQuickCommands(raw: string | null): TerminalQu
   if (!raw || raw.length > MAX_SERIALIZED_LENGTH) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    return isTerminalQuickCommands(parsed)
-      ? parsed.map((command) => ({ ...command }))
-      : [];
+    return normalizeTerminalQuickCommands(parsed) ?? [];
   } catch {
     return [];
   }

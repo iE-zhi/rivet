@@ -76,6 +76,20 @@
   line-height: 1.5;
 }
 
+.terminal-command-description-field {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+.terminal-command-description-field .rivet-textarea {
+  width: 100%;
+  min-height: 86px;
+  resize: vertical;
+  font-family: var(--rivet-font-family);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .terminal-command-item {
   position: relative;
 }
@@ -91,6 +105,17 @@
 
 .terminal-command-row:hover {
   background: var(--r-surface-2);
+}
+
+.terminal-command-detail {
+  padding: 8px 17px 9px;
+  border-top: 1px solid var(--r-border);
+  background: color-mix(in srgb, var(--r-surface-2) 45%, transparent);
+  color: var(--r-subtle);
+  font-size: 9px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .terminal-command-main {
@@ -147,6 +172,16 @@
 .terminal-command-action:disabled {
   opacity: .35;
   cursor: default;
+}
+
+.terminal-command-more-wrap .terminal-connection-menu button:disabled {
+  color: var(--r-muted);
+  opacity: .45;
+  cursor: default;
+}
+
+.terminal-command-more-wrap .terminal-connection-menu button:disabled:hover {
+  background: transparent;
 }
 
 .app-shell[data-theme="light"] .terminal-command-panel {

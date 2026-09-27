@@ -6,7 +6,7 @@ import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDe
 import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
 import { deserializeSerialQuickCommands, isSerialQuickCommandGroups, SERIAL_QUICK_COMMANDS_STORAGE_KEY, serializeSerialQuickCommands, type SerialQuickCommandGroup } from "./pages/serialQuickCommands";
 import { deserializeTerminalConnections, SSH_CONNECTIONS_STORAGE_KEY, TERMINAL_CONNECTIONS_STORAGE_KEY, serializeTerminalConnections, type SavedTerminalConnection } from "./pages/terminalConnections";
-import { deserializeTerminalQuickCommands, isTerminalQuickCommands, TERMINAL_QUICK_COMMANDS_STORAGE_KEY, serializeTerminalQuickCommands, type TerminalQuickCommand } from "./pages/terminalQuickCommands";
+import { deserializeTerminalQuickCommands, normalizeTerminalQuickCommands, TERMINAL_QUICK_COMMANDS_STORAGE_KEY, serializeTerminalQuickCommands, type TerminalQuickCommand } from "./pages/terminalQuickCommands";
 
 /** 应用设置页中参与跨设备同步的基础偏好键。 */
 export const APP_PREFERENCE_STORAGE_KEYS = {
@@ -440,6 +440,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
     ? deserializeNavigationSettings(null)
     : settings.navigationSettings;
   const terminalConnections = validateTerminalConnections(parsed.terminalConnections);
+  const terminalQuickCommands = normalizeTerminalQuickCommands(parsed.terminalQuickCommands);
   if (
     (settings.locale !== "zh" && settings.locale !== "en") ||
     (settings.theme !== "system" && settings.theme !== "light" && settings.theme !== "dark") ||
@@ -452,7 +453,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
     !isNavigationSettings(navigationSettings) ||
     !isSerialQuickCommandGroups(parsed.serialQuickCommands) ||
     terminalConnections === null ||
-    !isTerminalQuickCommands(parsed.terminalQuickCommands)
+    terminalQuickCommands === null
   ) {
     throw new Error("云端同步文件包含无效配置");
   }
@@ -475,7 +476,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
       commands: group.commands.map((command) => ({ ...command })),
     })),
     terminalConnections,
-    terminalQuickCommands: parsed.terminalQuickCommands.map((command) => ({ ...command })),
+    terminalQuickCommands,
   };
 }
 

@@ -23,6 +23,7 @@ interface CommandDraft {
   name: string;
   group: string;
   command: string;
+  description: string;
 }
 
 interface PanelPosition {
@@ -38,6 +39,7 @@ const EMPTY_DRAFT: CommandDraft = {
   name: "",
   group: "",
   command: "",
+  description: "",
 };
 
 const COPY = {
@@ -50,11 +52,15 @@ const COPY = {
     groupPlaceholder: "选择或输入分组",
     command: "命令",
     commandPlaceholder: "输入要发送到终端的命令",
+    description: "详情",
+    descriptionPlaceholder: "补充命令用途、注意事项或使用说明",
     empty: "暂无快捷命令",
     save: "保存",
     cancel: "取消",
     close: "关闭",
     editAction: "编辑",
+    detailAction: "详情",
+    closeDetailAction: "关闭详情",
     delete: "删除",
     deleteGroup: "删除分组",
     send: "发送",
@@ -74,11 +80,15 @@ const COPY = {
     groupPlaceholder: "Choose or enter a group",
     command: "Command",
     commandPlaceholder: "Enter a command to send to the terminal",
+    description: "Details",
+    descriptionPlaceholder: "Add usage notes, purpose, or other details",
     empty: "No quick commands",
     save: "Save",
     cancel: "Cancel",
     close: "Close",
     editAction: "Edit",
+    detailAction: "Details",
+    closeDetailAction: "Hide details",
     delete: "Delete",
     deleteGroup: "Delete group",
     send: "Send",
@@ -139,6 +149,7 @@ export default function TerminalQuickCommandPanel({
   const [groupPickerOpen, setGroupPickerOpen] = useState(false);
   const [menuKey, setMenuKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [expandedDetailIds, setExpandedDetailIds] = useState<Set<string>>(() => new Set());
   const groupPickerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const [panelPosition, setPanelPosition] = useState<PanelPosition | null>(null);
@@ -277,6 +288,7 @@ export default function TerminalQuickCommandPanel({
       name: command.name,
       group: command.group,
       command: command.command,
+      description: command.description,
     });
     setFormOpen(true);
     setGroupPickerOpen(false);
@@ -297,7 +309,7 @@ export default function TerminalQuickCommandPanel({
       setCommands((current) =>
         current.map((command) =>
           command.id === editingId
-            ? { ...command, name, group, command: draft.command }
+            ? { ...command, name, group, command: draft.command, description: draft.description }
             : command,
         ),
       );
@@ -309,8 +321,17 @@ export default function TerminalQuickCommandPanel({
           name,
           group,
           command: draft.command,
+          description: draft.description,
         },
       ]);
+    }
+    if (editingId && !draft.description.trim()) {
+      setExpandedDetailIds((current) => {
+        if (!current.has(editingId)) return current;
+        const next = new Set(current);
+        next.delete(editingId);
+        return next;
+      });
     }
     setCollapsedGroups((current) => {
       const next = new Set(current);
@@ -332,6 +353,11 @@ export default function TerminalQuickCommandPanel({
   const confirmDelete = () => {
     if (!deleteTarget) return;
     if (deleteTarget.kind === "group") {
+      const deletedIds = new Set(
+        commands
+          .filter((command) => command.group === deleteTarget.group)
+          .map((command) => command.id),
+      );
       setCommands((current) =>
         current.filter((command) => command.group !== deleteTarget.group),
       );
@@ -340,10 +366,19 @@ export default function TerminalQuickCommandPanel({
         next.delete(deleteTarget.group);
         return next;
       });
+      setExpandedDetailIds((current) =>
+        new Set(Array.from(current).filter((id) => !deletedIds.has(id))),
+      );
     } else {
       setCommands((current) =>
         current.filter((command) => command.id !== deleteTarget.id),
       );
+      setExpandedDetailIds((current) => {
+        if (!current.has(deleteTarget.id)) return current;
+        const next = new Set(current);
+        next.delete(deleteTarget.id);
+        return next;
+      });
     }
     setDeleteTarget(null);
     setMenuKey(null);
@@ -368,6 +403,18 @@ export default function TerminalQuickCommandPanel({
     } catch (error) {
       notify({ kind: "error", message: `${copy.copyFailed}${String(error)}` });
     }
+  };
+
+  /** 展开或收起指定命令的详情；空详情不会进入展开状态。 */
+  const toggleCommandDetail = (command: TerminalQuickCommand) => {
+    if (!command.description.trim()) return;
+    setExpandedDetailIds((current) => {
+      const next = new Set(current);
+      if (next.has(command.id)) next.delete(command.id);
+      else next.add(command.id);
+      return next;
+    });
+    setMenuKey(null);
   };
 
   return (
@@ -497,6 +544,19 @@ export default function TerminalQuickCommandPanel({
                 onChange={(event) => {
                   const value = event.currentTarget.value;
                   setDraft((current) => ({ ...current, command: value }));
+                }}
+              />
+            </label>
+
+            <label className="terminal-field terminal-command-description-field">
+              <span>{copy.description}</span>
+              <Textarea
+                value={draft.description}
+                maxLength={4_096}
+                placeholder={copy.descriptionPlaceholder}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setDraft((current) => ({ ...current, description: value }));
                 }}
               />
             </label>
@@ -636,6 +696,15 @@ export default function TerminalQuickCommandPanel({
                             </button>
                             <button
                               type="button"
+                              disabled={!command.description.trim()}
+                              onClick={() => toggleCommandDetail(command)}
+                            >
+                              {expandedDetailIds.has(command.id)
+                                ? copy.closeDetailAction
+                                : copy.detailAction}
+                            </button>
+                            <button
+                              type="button"
                               className="danger"
                               onClick={() => {
                                 setMenuKey(null);
@@ -648,6 +717,12 @@ export default function TerminalQuickCommandPanel({
                         )}
                       </div>
                     </div>
+
+                    {expandedDetailIds.has(command.id) && command.description.trim() && (
+                      <div className="terminal-command-detail">
+                        {command.description}
+                      </div>
+                    )}
 
                     {deleteTarget?.kind === "command" &&
                       deleteTarget.id === command.id && (

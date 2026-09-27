@@ -2367,7 +2367,7 @@ export default function TerminalPage({ locale, themeKey, x11ServerAddress, onReq
             className={`terminal-toolbar-button ${quickCommandOpen ? "active" : ""}`}
             title={copy.quickCommands}
             aria-label={copy.quickCommands}
-            onClick={() => setQuickCommandOpen(true)}
+            onClick={() => setQuickCommandOpen((open) => !open)}
           >
             <SvgIcon name="cmd" size={14} />
           </button>
