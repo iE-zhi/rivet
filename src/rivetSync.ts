@@ -13,6 +13,7 @@ export const APP_PREFERENCE_STORAGE_KEYS = {
   locale: "rivet.locale",
   theme: "rivet.theme",
   font: "rivet.font",
+  fontSize: "rivet.fontSize",
 } as const;
 
 /** 云端同步或本地恢复已将持久化配置应用到当前进程。 */
@@ -79,6 +80,7 @@ interface RivetSyncDocument {
     locale: "zh" | "en";
     theme: "system" | "light" | "dark";
     font: "builtin" | "system";
+    fontSize: "12" | "14" | "16" | "18";
     serialDefaults: SerialDefaults;
     useSerialDefaults: boolean;
     serialRxSettings: SerialRxSettings;
@@ -314,6 +316,12 @@ function readFont(): "builtin" | "system" {
   return readStorage(APP_PREFERENCE_STORAGE_KEYS.font) === "system" ? "system" : "builtin";
 }
 
+/** 读取受支持基础字号；旧配置或非法值回退到 14px。 */
+function readFontSize(): "12" | "14" | "16" | "18" {
+  const value = readStorage(APP_PREFERENCE_STORAGE_KEYS.fontSize);
+  return value === "12" || value === "16" || value === "18" ? value : "14";
+}
+
 function readTerminalConnectionsForSync(): SavedTerminalConnection[] {
   const currentConnections = readStorage(TERMINAL_CONNECTIONS_STORAGE_KEY);
   const legacyConnections = currentConnections === null ? readStorage(SSH_CONNECTIONS_STORAGE_KEY) : null;
@@ -329,6 +337,7 @@ function createSyncDocument(): RivetSyncDocument {
       locale: readLocale(),
       theme: readTheme(),
       font: readFont(),
+      fontSize: readFontSize(),
       serialDefaults: deserializeSerialDefaults(readStorage(SERIAL_DEFAULTS_STORAGE_KEY)),
       useSerialDefaults: deserializeSerialDefaultsEnabled(readStorage(SERIAL_DEFAULTS_ENABLED_STORAGE_KEY)),
       serialRxSettings: deserializeSerialRxSettings(readStorage(SERIAL_RX_SETTINGS_STORAGE_KEY)),
@@ -365,6 +374,7 @@ function createPristineSyncDocument(): RivetSyncDocument {
       locale: "zh",
       theme: "system",
       font: "builtin",
+      fontSize: "14",
       serialDefaults: deserializeSerialDefaults(null),
       useSerialDefaults: deserializeSerialDefaultsEnabled(null),
       serialRxSettings: deserializeSerialRxSettings(null),
@@ -428,6 +438,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
   }
 
   const settings = parsed.settings;
+  const fontSize = settings.fontSize === undefined ? "14" : settings.fontSize;
   const serialDefaults = settings.serialDefaults;
   const serialRxSettings = settings.serialRxSettings;
   const notificationSettings = settings.notificationSettings;
@@ -445,6 +456,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
     (settings.locale !== "zh" && settings.locale !== "en") ||
     (settings.theme !== "system" && settings.theme !== "light" && settings.theme !== "dark") ||
     (settings.font !== "builtin" && settings.font !== "system") ||
+    (fontSize !== "12" && fontSize !== "14" && fontSize !== "16" && fontSize !== "18") ||
     typeof settings.useSerialDefaults !== "boolean" ||
     !isSerialDefaults(serialDefaults) ||
     !isSerialRxSettings(serialRxSettings) ||
@@ -464,6 +476,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
       locale: settings.locale,
       theme: settings.theme,
       font: settings.font,
+      fontSize,
       serialDefaults: { ...serialDefaults },
       useSerialDefaults: settings.useSerialDefaults,
       serialRxSettings: { ...serialRxSettings },
@@ -497,6 +510,7 @@ function applySyncDocument(document: RivetSyncDocument, keyPaths: Record<string,
     [APP_PREFERENCE_STORAGE_KEYS.locale, document.settings.locale],
     [APP_PREFERENCE_STORAGE_KEYS.theme, document.settings.theme],
     [APP_PREFERENCE_STORAGE_KEYS.font, document.settings.font],
+    [APP_PREFERENCE_STORAGE_KEYS.fontSize, document.settings.fontSize],
     [SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults(document.settings.serialDefaults)],
     [SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, document.settings.useSerialDefaults ? "true" : "false"],
     [SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings(document.settings.serialRxSettings)],

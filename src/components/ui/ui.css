@@ -5,6 +5,13 @@
   box-sizing: border-box;
 }
 
+/* 全局字号基准：普通文字使用基础字号，次级文字比基础小 2px 且不低于 12px。 */
+.rivet-ui {
+  --r-font-size-base: 14px;
+  --r-font-size-secondary: max(12px, calc(var(--r-font-size-base) - 2px));
+  font-size: var(--r-font-size-base);
+}
+
 .rivet-button,
 .rivet-input,
 .rivet-textarea,
@@ -155,8 +162,8 @@
 .rivet-notification-warning .rivet-notification-icon { color: var(--r-warning); }
 .rivet-notification-error .rivet-notification-icon { color: var(--r-danger); }
 .rivet-notification-content { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
-.rivet-notification-title { min-width: 0; color: var(--r-text); font-size: 12px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
-.rivet-notification-message { color: var(--r-subtle); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
+.rivet-notification-title { min-width: 0; color: var(--r-text); font-size: var(--r-font-size-base); font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.rivet-notification-message { color: var(--r-subtle); font-size: var(--r-font-size-base); line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
 .rivet-notification-close {
   display: grid;
   width: 26px;
@@ -491,7 +498,7 @@
   background: var(--r-terminal-bg);
   color: var(--r-terminal-text);
   font-family: var(--rivet-font-family);
-  font-size: 13px;
+  font-size: var(--r-font-size-base);
   line-height: 1.7;
   overflow: auto;
 }

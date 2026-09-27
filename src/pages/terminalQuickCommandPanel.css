@@ -72,7 +72,7 @@
   min-height: 150px;
   resize: vertical;
   font-family: var(--rivet-font-family);
-  font-size: 11px;
+  font-size: var(--r-font-size-base);
   line-height: 1.5;
 }
 
@@ -86,7 +86,7 @@
   min-height: 86px;
   resize: vertical;
   font-family: var(--rivet-font-family);
-  font-size: 11px;
+  font-size: var(--r-font-size-base);
   line-height: 1.5;
 }
 
@@ -112,7 +112,7 @@
   border-top: 1px solid var(--r-border);
   background: color-mix(in srgb, var(--r-surface-2) 45%, transparent);
   color: var(--r-subtle);
-  font-size: 9px;
+  font-size: var(--r-font-size-secondary);
   line-height: 1.55;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -128,7 +128,7 @@
 .terminal-command-main strong {
   overflow: hidden;
   color: var(--r-text);
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -139,7 +139,7 @@
   overflow: hidden;
   color: var(--r-muted);
   font-family: var(--rivet-font-family);
-  font-size: 9px;
+  font-size: var(--r-font-size-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

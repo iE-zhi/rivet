@@ -39,7 +39,7 @@
 .sftp-title {
   min-width: 0;
   overflow: hidden;
-  font-size: 11px;
+  font-size: var(--r-font-size-base);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -51,7 +51,7 @@
   min-height: 96px;
   place-items: center;
   color: var(--r-muted);
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
   text-align: center;
 }
 
@@ -89,7 +89,7 @@
   gap: 6px;
   overflow: hidden;
   color: var(--r-subtle);
-  font-size: 9px;
+  font-size: var(--r-font-size-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -101,7 +101,7 @@
 .sftp-transfer-value {
   flex: 0 0 auto;
   color: var(--r-muted);
-  font-size: 8px;
+  font-size: var(--r-font-size-secondary);
   white-space: nowrap;
 }
 
@@ -176,7 +176,7 @@
   width: 100% !important;
   height: 32px !important;
   border-radius: 6px !important;
-  font-size: 10px !important;
+  font-size: var(--r-font-size-base) !important;
 }
 
 .sftp-file-header,
@@ -190,7 +190,7 @@
   height: 32px;
   flex: 0 0 32px;
   color: var(--r-muted);
-  font-size: 9px;
+  font-size: var(--r-font-size-secondary);
 }
 
 .sftp-file-header > div {
@@ -231,7 +231,7 @@
   color: var(--r-text);
   cursor: default;
   font: inherit;
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
   text-align: left;
 }
 
@@ -258,7 +258,7 @@
 .sftp-file-size {
   padding: 0 10px;
   color: var(--r-muted);
-  font-size: 9px;
+  font-size: var(--r-font-size-secondary);
   white-space: nowrap;
 }
 
@@ -299,7 +299,7 @@
   color: var(--r-text);
   cursor: pointer;
   font: inherit;
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
   text-align: left;
 }
 
@@ -325,7 +325,7 @@
 .sftp-inline-action .rivet-input {
   height: 29px;
   border-radius: 5px;
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
 }
 
 .sftp-inline-action button {
@@ -337,7 +337,7 @@
   color: var(--r-text);
   cursor: pointer;
   font: inherit;
-  font-size: 9px;
+  font-size: var(--r-font-size-secondary);
 }
 
 .sftp-inline-action button:hover:not(:disabled) {
@@ -364,7 +364,7 @@
 .sftp-delete-action {
   grid-template-columns: minmax(0, 1fr) auto auto;
   color: var(--r-danger);
-  font-size: 9px;
+  font-size: var(--r-font-size-secondary);
 }
 
 .sftp-delete-action > span {
@@ -398,7 +398,7 @@
   background: var(--r-surface);
   color: var(--r-primary-light);
   box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
   font-weight: 600;
   text-align: center;
 }

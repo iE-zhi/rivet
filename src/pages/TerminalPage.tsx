@@ -45,6 +45,8 @@ import TerminalQuickCommandPanel from "./TerminalQuickCommandPanel";
 interface TerminalPageProps {
   locale: Locale;
   themeKey: "light" | "dark";
+  /** 当前全局基础字号，直接用于 xterm。 */
+  fontSize: number;
   /** 当前本机 X Server TCP 地址，由设置页统一管理。 */
   x11ServerAddress: string;
   /** Linux 本机 xauth 可执行文件路径。 */
@@ -396,13 +398,14 @@ interface SessionTerminalProps {
   active: boolean;
   themeKey: "light" | "dark";
   locale: Locale;
+  fontSize: number;
   x11ServerAddress: string;
   linuxXauthPath: string;
   onStateChange: (sessionId: string, state: TerminalSessionState) => void;
 }
 
 /** 挂载 SSH xterm，并把字节流、键盘输入和尺寸变化桥接到对应 Rust worker。 */
-function SessionTerminal({ session, active, themeKey, locale, x11ServerAddress, linuxXauthPath, onStateChange }: SessionTerminalProps) {
+function SessionTerminal({ session, active, themeKey, locale, fontSize, x11ServerAddress, linuxXauthPath, onStateChange }: SessionTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -423,7 +426,7 @@ function SessionTerminal({ session, active, themeKey, locale, x11ServerAddress, 
       convertEol: false,
       scrollback: 10_000,
       fontFamily: getComputedStyle(container).fontFamily,
-      fontSize: 13,
+      fontSize: Number.parseFloat(getComputedStyle(container).fontSize) || 14,
       lineHeight: 1.2,
       theme: readTerminalTheme(container),
     });
@@ -548,9 +551,10 @@ function SessionTerminal({ session, active, themeKey, locale, x11ServerAddress, 
     if (!terminal || !container) return;
     terminal.options.theme = readTerminalTheme(container);
     terminal.options.fontFamily = getComputedStyle(container).fontFamily;
+    terminal.options.fontSize = fontSize;
     fitRef.current?.fit();
     syncScrollMetrics();
-  }, [syncScrollMetrics, themeKey]);
+  }, [fontSize, syncScrollMetrics, themeKey]);
 
   useEffect(() => {
     if (active) {
@@ -579,11 +583,12 @@ interface LocalSessionTerminalProps {
   active: boolean;
   themeKey: "light" | "dark";
   locale: Locale;
+  fontSize: number;
   onStateChange: (sessionId: string, state: TerminalSessionState) => void;
 }
 
 /** 本地 PTY 的 xterm 适配器；输入输出和 resize 通过 Tauri 命令/事件桥接。 */
-function LocalSessionTerminal({ session, active, themeKey, locale, onStateChange }: LocalSessionTerminalProps) {
+function LocalSessionTerminal({ session, active, themeKey, locale, fontSize, onStateChange }: LocalSessionTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -605,7 +610,7 @@ function LocalSessionTerminal({ session, active, themeKey, locale, onStateChange
       convertEol: false,
       scrollback: 10_000,
       fontFamily: getComputedStyle(container).fontFamily,
-      fontSize: 13,
+      fontSize: Number.parseFloat(getComputedStyle(container).fontSize) || 14,
       lineHeight: 1.2,
       theme: readTerminalTheme(container),
     });
@@ -713,9 +718,10 @@ function LocalSessionTerminal({ session, active, themeKey, locale, onStateChange
     if (!terminal || !container) return;
     terminal.options.theme = readTerminalTheme(container);
     terminal.options.fontFamily = getComputedStyle(container).fontFamily;
+    terminal.options.fontSize = fontSize;
     fitRef.current?.fit();
     syncScrollMetrics();
-  }, [syncScrollMetrics, themeKey]);
+  }, [fontSize, syncScrollMetrics, themeKey]);
 
   useEffect(() => {
     if (active) {
@@ -744,11 +750,12 @@ interface SerialSessionTerminalProps {
   active: boolean;
   themeKey: "light" | "dark";
   locale: Locale;
+  fontSize: number;
   onStateChange: (sessionId: string, state: TerminalSessionState) => void;
 }
 
 /** 串口终端 xterm 适配器；终端键盘输入按原始字节写入所选串口。 */
-function SerialSessionTerminal({ session, active, themeKey, locale, onStateChange }: SerialSessionTerminalProps) {
+function SerialSessionTerminal({ session, active, themeKey, locale, fontSize, onStateChange }: SerialSessionTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -768,7 +775,7 @@ function SerialSessionTerminal({ session, active, themeKey, locale, onStateChang
       convertEol: false,
       scrollback: 10_000,
       fontFamily: getComputedStyle(container).fontFamily,
-      fontSize: 13,
+      fontSize: Number.parseFloat(getComputedStyle(container).fontSize) || 14,
       lineHeight: 1.2,
       theme: readTerminalTheme(container),
     });
@@ -869,9 +876,10 @@ function SerialSessionTerminal({ session, active, themeKey, locale, onStateChang
     if (!terminal || !container) return;
     terminal.options.theme = readTerminalTheme(container);
     terminal.options.fontFamily = getComputedStyle(container).fontFamily;
+    terminal.options.fontSize = fontSize;
     fitRef.current?.fit();
     syncScrollMetrics();
-  }, [syncScrollMetrics, themeKey]);
+  }, [fontSize, syncScrollMetrics, themeKey]);
 
   useEffect(() => {
     if (active) {
@@ -896,7 +904,7 @@ function SerialSessionTerminal({ session, active, themeKey, locale, onStateChang
 }
 
 /** Rivet 终端页面：Tab 之内使用递归 pane 树管理本地、SSH 与串口终端。 */
-export default function TerminalPage({ locale, themeKey, x11ServerAddress, linuxXauthPath, onRequestActivate }: TerminalPageProps) {
+export default function TerminalPage({ locale, themeKey, fontSize, x11ServerAddress, linuxXauthPath, onRequestActivate }: TerminalPageProps) {
   const copy = COPY[locale];
   const { notify } = useNotification();
   const [initialWorkspace] = useState(() => createInitialTerminalWorkspace(copy.terminal));
@@ -1725,6 +1733,7 @@ export default function TerminalPage({ locale, themeKey, x11ServerAddress, linux
               active={active}
               themeKey={themeKey}
               locale={locale}
+              fontSize={fontSize}
               x11ServerAddress={x11ServerAddress}
               linuxXauthPath={linuxXauthPath}
               onStateChange={updateSessionState}
@@ -1735,6 +1744,7 @@ export default function TerminalPage({ locale, themeKey, x11ServerAddress, linux
               active={active}
               themeKey={themeKey}
               locale={locale}
+              fontSize={fontSize}
               onStateChange={updateSessionState}
             />
           ) : (
@@ -1743,6 +1753,7 @@ export default function TerminalPage({ locale, themeKey, x11ServerAddress, linux
               active={active}
               themeKey={themeKey}
               locale={locale}
+              fontSize={fontSize}
               onStateChange={updateSessionState}
 
             />

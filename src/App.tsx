@@ -3,7 +3,7 @@ import appIcon from "../src-tauri/icons/128x128.png";
 import { NotificationProvider, SvgIcon } from "./components/ui";
 import { APP_PREFERENCE_STORAGE_KEYS, persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT, useRivetSync } from "./rivetSync";
 import SerialPage, { type Locale } from "./pages/SerialPage";
-import SettingsPage, { type FontMode, type ThemeMode } from "./pages/SettingsPage";
+import SettingsPage, { type FontMode, type FontSizeMode, type ThemeMode } from "./pages/SettingsPage";
 
 import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
 import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
@@ -27,6 +27,9 @@ const THEME_MODE_VALUES = ["system", "light", "dark"] as const;
 
 /** 支持的字体模式；builtin 使用随应用打包的字体资源。 */
 const FONT_MODE_VALUES = ["builtin", "system"] as const;
+
+/** 支持的基础字号；次级字号由 CSS 自动取基础字号减 2px，最低 12px。 */
+const FONT_SIZE_VALUES = ["12", "14", "16", "18"] as const;
 
 /** 应用外壳当前展示的一级页面。 */
 type AppPage = "serial" | "terminal" | "settings";
@@ -56,6 +59,11 @@ function isThemeMode(value: string): value is ThemeMode {
  */
 function isFontMode(value: string): value is FontMode {
   return FONT_MODE_VALUES.some((font) => font === value);
+}
+
+/** 校验持久化的基础字号。 */
+function isFontSizeMode(value: string): value is FontSizeMode {
+  return FONT_SIZE_VALUES.some((fontSize) => fontSize === value);
 }
 
 /**
@@ -190,6 +198,8 @@ export default function App() {
   const [theme, setTheme] = useState<ThemeMode>(() => readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.theme, isThemeMode, "system"));
   /** 用户所选字体模式；默认使用随应用打包的 JetBrains Mono 与 LXGW WenKai。 */
   const [font, setFont] = useState<FontMode>(() => readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.font, isFontMode, "builtin"));
+  /** 全局基础字号；旧配置缺少该字段时使用 14px。 */
+  const [fontSize, setFontSize] = useState<FontSizeMode>(() => readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.fontSize, isFontSizeMode, "14"));
   /** 应用级串口默认通信参数；只有设置页能修改，串口会话持有自己的临时配置。 */
   const [serialDefaults, setSerialDefaults] = useState<SerialDefaults>(readSerialDefaultsPreference);
   /** 控制每次启动串口页时是否采用设置页中的默认通信参数。 */
@@ -252,6 +262,11 @@ export default function App() {
   }, [font]);
 
   useEffect(() => {
+    /** 保存全局基础字号；旧配置未设置时默认 14px。 */
+    persistPreference(APP_PREFERENCE_STORAGE_KEYS.fontSize, fontSize);
+  }, [fontSize]);
+
+  useEffect(() => {
     /** 串口默认参数仅在设置页更新后持久化，串口页临时配置不会写回。 */
     persistPreference(SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults(serialDefaults));
   }, [serialDefaults]);
@@ -300,6 +315,7 @@ export default function App() {
       setLocale(readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.locale, isLocale, "zh"));
       setTheme(readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.theme, isThemeMode, "system"));
       setFont(readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.font, isFontMode, "builtin"));
+      setFontSize(readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.fontSize, isFontSizeMode, "14"));
       setSerialDefaults(readSerialDefaultsPreference());
       setUseSerialDefaults(readSerialDefaultsEnabledPreference());
       setSerialRxSettings(readSerialRxSettingsPreference());
@@ -381,7 +397,7 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell rivet-ui" data-theme={resolvedTheme} data-font={font}>
+    <div className="app-shell rivet-ui" data-theme={resolvedTheme} data-font={font} data-font-size={fontSize}>
       <nav className="rail" aria-label={copy.navigation}>
         <a className="brand-mark" href="#serial-page" onClick={navigateToSerial} aria-label={copy.brand} title="Rivet">
           <img src={appIcon} alt="" aria-hidden="true" />
@@ -434,12 +450,12 @@ export default function App() {
           {terminalMounted && (
             <div className="app-view terminal-view" hidden={page !== "terminal"}>
               <Suspense fallback={null}>
-                <TerminalPage locale={locale} themeKey={resolvedTheme} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} onRequestActivate={activateTerminalPage} />
+                <TerminalPage locale={locale} themeKey={resolvedTheme} fontSize={Number(fontSize)} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} onRequestActivate={activateTerminalPage} />
               </Suspense>
             </div>
           )}
           <div className="app-view settings-view" hidden={page !== "settings"}>
-            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} sync={sync} />
+            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} fontSize={fontSize} onFontSizeChange={setFontSize} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} sync={sync} />
           </div>
         </NotificationProvider>
       </div>

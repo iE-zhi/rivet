@@ -19,6 +19,9 @@ export type ThemeMode = "system" | "light" | "dark";
 /** 字体显示模式；builtin 使用随应用打包的字体，system 使用平台界面字体。 */
 export type FontMode = "builtin" | "system";
 
+/** 全局基础字号；次级文字由 CSS 在此基础上减 2px，最低 12px。 */
+export type FontSizeMode = "12" | "14" | "16" | "18";
+
 /** 设置页在当前语言下展示的栏目、分组与下拉选项。 */
 interface SettingsPageCopy {
   /** 设置侧栏的可访问名称。 */
@@ -147,6 +150,8 @@ interface SettingsPageCopy {
   theme: string;
   /** 字体设置行标题。 */
   font: string;
+  /** 字体大小设置行标题。 */
+  fontSize: string;
   /** 串口默认通信参数的行标题。 */
   baud: string;
   /** 数据位设置行标题。 */
@@ -173,6 +178,8 @@ interface SettingsPageCopy {
   themeOptions: SelectOption[];
   /** 字体下拉选项。 */
   fontOptions: SelectOption[];
+  /** 字体大小下拉选项。 */
+  fontSizeOptions: SelectOption[];
   /** 串口数据位下拉选项。 */
   dataBitOptions: SelectOption[];
   /** 串口校验位下拉选项。 */
@@ -253,6 +260,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     language: "语言",
     theme: "主题",
     font: "字体",
+    fontSize: "字体大小",
     baud: "波特率",
     dataBits: "数据位",
     parity: "校验位",
@@ -275,6 +283,12 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     fontOptions: [
       { value: "builtin", label: "应用内置" },
       { value: "system", label: "系统" },
+    ],
+    fontSizeOptions: [
+      { value: "12", label: "12 px" },
+      { value: "14", label: "14 px" },
+      { value: "16", label: "16 px" },
+      { value: "18", label: "18 px" },
     ],
     dataBitOptions: SERIAL_DATA_BITS.map((value) => ({ value: String(value), label: `${value} 位` })),
     parityOptions: [
@@ -357,6 +371,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     language: "Language",
     theme: "Theme",
     font: "Font",
+    fontSize: "Font size",
     baud: "Baud rate",
     dataBits: "Data bits",
     parity: "Parity",
@@ -379,6 +394,12 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     fontOptions: [
       { value: "builtin", label: "Built-in" },
       { value: "system", label: "System" },
+    ],
+    fontSizeOptions: [
+      { value: "12", label: "12 px" },
+      { value: "14", label: "14 px" },
+      { value: "16", label: "16 px" },
+      { value: "18", label: "18 px" },
     ],
     dataBitOptions: SERIAL_DATA_BITS.map((value) => ({ value: String(value), label: `${value} bits` })),
     parityOptions: [
@@ -409,6 +430,10 @@ export interface SettingsPageProps {
   font: FontMode;
   /** 修改全局字体模式的回调。 */
   onFontChange: (font: FontMode) => void;
+  /** 当前全局基础字号。 */
+  fontSize: FontSizeMode;
+  /** 修改全局基础字号的回调。 */
+  onFontSizeChange: (fontSize: FontSizeMode) => void;
   /** 当前三类通知弹窗开关。 */
   notificationSettings: NotificationSettings;
   /** 更新三类通知弹窗开关。 */
@@ -483,6 +508,11 @@ function isFontMode(value: string): value is FontMode {
   return value === "builtin" || value === "system";
 }
 
+/** 校验设置页返回的基础字号。 */
+function isFontSizeMode(value: string): value is FontSizeMode {
+  return value === "12" || value === "14" || value === "16" || value === "18";
+}
+
 /**
  * 将十进制波特率草稿解析为受支持的 u32 值。
  * @param value 输入框中的原始字符串。
@@ -519,6 +549,8 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
  * @param onThemeChange 用户选择新主题后的回调。
  * @param font 当前字体模式。
  * @param onFontChange 用户选择新字体模式后的回调。
+ * @param fontSize 当前全局基础字号。
+ * @param onFontSizeChange 用户选择新基础字号后的回调。
  * @param notificationSettings 当前普通、警告、错误通知弹窗开关。
  * @param onNotificationSettingsChange 用户修改通知弹窗开关后的回调。
  * @param navigationSettings 当前主导航工具页顺序和可见状态。
@@ -533,7 +565,7 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
  * @param onX11ServerAddressChange 用户修改 X11 Server 地址后的回调。
  * @returns 设置侧栏和显示偏好分组。
  */
-export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, notificationSettings, onNotificationSettingsChange, navigationSettings, onNavigationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, x11ServerAddress, onX11ServerAddressChange, linuxXauthPath, onLinuxXauthPathChange, sync }: SettingsPageProps) {
+export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, fontSize, onFontSizeChange, notificationSettings, onNotificationSettingsChange, navigationSettings, onNavigationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, x11ServerAddress, onX11ServerAddressChange, linuxXauthPath, onLinuxXauthPathChange, sync }: SettingsPageProps) {
   /** 取当前界面语言的文案和选项列表。 */
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 当前页面所有短时反馈均通过应用外壳中的全局通知发送。 */
@@ -630,6 +662,13 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   const handleFontChange = (value: string) => {
     if (isFontMode(value)) {
       onFontChange(value);
+    }
+  };
+
+  /** 只把受支持的基础字号转交给外层状态。 */
+  const handleFontSizeChange = (value: string) => {
+    if (isFontSizeMode(value)) {
+      onFontSizeChange(value);
     }
   };
 
@@ -1162,6 +1201,10 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                   <div className="settings-row">
                     <span className="settings-row-label">{copy.font}</span>
                     <Select className="settings-select" ariaLabel={copy.font} options={copy.fontOptions} value={font} onChange={handleFontChange} />
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.fontSize}</span>
+                    <Select className="settings-select" ariaLabel={copy.fontSize} options={copy.fontSizeOptions} value={fontSize} onChange={handleFontSizeChange} />
                   </div>
                 </div>
               </section>

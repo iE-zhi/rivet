@@ -65,7 +65,7 @@
   border-right: 1px solid var(--r-border);
   background: transparent;
   color: var(--r-subtle);
-  font-size: 11px;
+  font-size: var(--r-font-size-base);
 }
 
 .terminal-tab-main {
@@ -114,7 +114,7 @@
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  font-size: 11px;
+  font-size: var(--r-font-size-base);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -225,14 +225,14 @@
 
 .terminal-close-confirm-content strong {
   color: var(--r-text);
-  font-size: 12px;
+  font-size: var(--r-font-size-base);
   font-weight: 600;
 }
 
 .terminal-close-confirm-content p {
   margin: 7px 0 0;
   color: var(--r-subtle);
-  font-size: 11px;
+  font-size: var(--r-font-size-base);
   line-height: 1.55;
 }
 
@@ -248,7 +248,7 @@
   height: 30px;
   padding: 0 11px;
   border-radius: 6px;
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
 }
 
 .terminal-session-picker-top {
@@ -276,7 +276,7 @@
   border-top: 1px solid var(--r-border);
   border-bottom: 1px solid var(--r-border);
   color: var(--r-muted);
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
   font-weight: 600;
 }
 
@@ -288,7 +288,7 @@
 .terminal-connection-empty {
   padding: 18px 12px;
   color: var(--r-muted);
-  font-size: 11px;
+  font-size: var(--r-font-size-base);
   text-align: center;
 }
 
@@ -332,7 +332,7 @@
 .terminal-picker-item strong,
 .terminal-connection-main strong {
   overflow: hidden;
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -343,7 +343,7 @@
   margin-top: 2px;
   overflow: hidden;
   color: var(--r-muted);
-  font-size: 9px;
+  font-size: var(--r-font-size-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -421,7 +421,7 @@
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -517,7 +517,7 @@
   background: transparent;
   color: var(--r-subtle);
   cursor: pointer;
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
 }
 
 .terminal-connection-handle:hover,
@@ -602,7 +602,7 @@
   border-bottom: 1px solid var(--r-border);
 }
 
-.terminal-connection-header strong { font-size: 11px; }
+.terminal-connection-header strong { font-size: var(--r-font-size-base); }
 
 .terminal-icon-button {
   display: grid;
@@ -665,7 +665,7 @@
 .terminal-group-header:hover { background: var(--r-surface-2); }
 .terminal-group-header .rivet-svg-icon { transition: transform .15s ease; }
 .terminal-connection-group.collapsed .terminal-group-header .rivet-svg-icon { transform: rotate(-90deg); }
-.terminal-group-header small { margin-left: auto; color: var(--r-muted); font-size: 9px; }
+.terminal-group-header small { margin-left: auto; color: var(--r-muted); font-size: var(--r-font-size-secondary); }
 .terminal-connection-group.collapsed .terminal-group-items { display: none; }
 
 .terminal-connection-item { position: relative; }
@@ -721,7 +721,7 @@
   background: transparent;
   color: var(--r-text);
   cursor: pointer;
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
   text-align: left;
 }
 
@@ -738,7 +738,7 @@
   border-top: 1px solid color-mix(in srgb, var(--r-danger) 20%, var(--r-border));
   background: color-mix(in srgb, var(--r-danger) 5%, var(--r-bg));
   color: var(--r-danger);
-  font-size: 9px;
+  font-size: var(--r-font-size-secondary);
 }
 
 .terminal-delete-confirm > span {
@@ -764,7 +764,7 @@
   background: var(--r-surface);
   color: var(--r-text);
   cursor: pointer;
-  font-size: 9px;
+  font-size: var(--r-font-size-secondary);
 }
 
 .terminal-delete-actions button:hover { background: var(--r-surface-2); }
@@ -789,7 +789,7 @@
   gap: 6px;
   margin-bottom: 11px;
   color: var(--r-subtle);
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
 }
 
 .terminal-field-grid {
@@ -803,7 +803,7 @@
   width: 100%;
   height: 34px;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: var(--r-font-size-base);
 }
 
 .terminal-field .rivet-select { width: 100%; }
@@ -812,7 +812,7 @@
   min-height: 30px;
   gap: 8px;
   color: var(--r-subtle);
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
 }
 
 .terminal-form-footer {
@@ -830,7 +830,7 @@
   height: 30px;
   padding: 0 11px;
   border-radius: 5px;
-  font-size: 10px;
+  font-size: var(--r-font-size-base);
 }
 
 .app-shell[data-theme="light"] .terminal-session-picker,
