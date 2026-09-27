@@ -154,7 +154,7 @@ pub fn apply_encrypted_backup_secrets(
     apply_secret_bundle(app, bundle)
 }
 
-/// 把云端秘密恢复到系统凭据库和 Rivet 管理的本机私钥目录。
+/// 把云端秘密恢复到 Rivet 自有凭据文件和 Rivet 管理的本机私钥目录。
 pub fn apply_encrypted_secrets(
     app: &AppHandle,
     provider: &str,
@@ -165,7 +165,7 @@ pub fn apply_encrypted_secrets(
     apply_secret_bundle(app, bundle)
 }
 
-/// 将已经解密并校验的秘密集合恢复到系统凭据库和 Rivet 管理的私钥目录。
+/// 将已经解密并校验的秘密集合恢复到 Rivet 自有凭据文件和 Rivet 管理的私钥目录。
 fn apply_secret_bundle(
     app: &AppHandle,
     bundle: SecretBundle,
@@ -212,7 +212,7 @@ fn apply_secret_bundle(
     Ok(managed_key_paths)
 }
 
-/// 从当前同步文档和系统凭据库构造稳定的秘密集合。
+/// 从当前同步文档和 Rivet 自有凭据文件构造稳定的秘密集合。
 fn build_local_bundle(document: &str) -> Result<SecretBundle, String> {
     let document: Value =
         serde_json::from_str(document).map_err(|error| format!("解析本机同步文档失败：{error}"))?;

@@ -13,6 +13,8 @@ mod sync_secrets;
 #[path = "../src/x11.rs"]
 mod x11;
 
+#[path = "unit/credential_store.rs"]
+mod credential_store_tests;
 #[path = "unit/external_links.rs"]
 mod external_links_tests;
 #[path = "unit/sync_secrets.rs"]

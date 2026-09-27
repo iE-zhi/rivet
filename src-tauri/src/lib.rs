@@ -75,6 +75,9 @@ pub fn run() -> tauri::Result<()> {
         ])
         // 应用启动回调：Windows 同步主窗口图标，失败时将错误返回给启动流程。
         .setup(|_app| {
+            credential_store::initialize(_app.handle()).map_err(|error| {
+                std::io::Error::other(format!("初始化 Rivet 本地凭据存储失败：{error}"))
+            })?;
             #[cfg(windows)]
             windows_icon::bind_main_window_icon(_app)?;
 

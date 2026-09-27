@@ -79,6 +79,8 @@ Unless explicitly required:
 - Preserve existing architecture and coding style.
 - Prefer existing utilities and patterns.
 - Production source directories must not contain test implementations. In Rust, do not add `#[cfg(test)] mod tests`, `#[test]` functions, test fixtures, or test-only helpers under `src-tauri/src/`; place all Rust test implementations under `src-tauri/tests/` and wire them through the test entrypoint.
+- Persistent credentials must use Rivet-owned cross-platform storage by default. Do not introduce or use macOS Keychain, Windows Credential Manager, Linux Secret Service/keyring, or similar platform-native credential stores unless the user explicitly requests that native integration.
+- Prefer platform-independent, application-owned implementations and cross-platform Rust/library abstractions over OS-native services, frameworks, APIs, or system integrations whenever the required behavior can be implemented reliably without them. Use platform-native functionality only when it is unavoidable for the capability itself or the user explicitly requires it; keep unavoidable platform-specific code isolated behind a small interface and preserve consistent behavior across Windows, macOS, and Linux.
 
 ## Verification
 

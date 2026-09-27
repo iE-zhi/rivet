@@ -1,4 +1,4 @@
-//! Rivet 配置同步：通过 GitHub Gist、Gitee 代码片段和 GitLab Personal Snippet 读写统一同步文件，并将访问令牌保存在系统凭据库。
+//! Rivet 配置同步：通过 GitHub Gist、Gitee 代码片段和 GitLab Personal Snippet 读写统一同步文件，并将访问令牌保存在 Rivet 自有本地凭据文件。
 
 use std::{
     error::Error as _,
@@ -15,12 +15,10 @@ use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{
-    external_links,
+    credential_store, external_links,
     sync_secrets::{self, EncryptedBackupSecrets, EncryptedSyncSecrets},
 };
 
-/// 同步访问令牌在系统凭据库中的服务名。
-const TOKEN_SERVICE_NAME: &str = "Rivet Sync";
 /// 三个平台片段中统一使用的同步文件名。
 const SYNC_FILE_NAME: &str = "rivet-sync.json";
 /// 自动创建的同步片段使用固定名称，便于同一账号的其他设备自动发现。
@@ -63,7 +61,7 @@ impl SyncProvider {
         }
     }
 
-    /// 返回系统凭据库中的稳定用户名。
+    /// 返回 Rivet 自有凭据文件和同步加密逻辑使用的稳定平台名。
     fn credential_user(self) -> &'static str {
         match self {
             Self::Github => "github",
@@ -222,14 +220,12 @@ impl ValidatedRemote {
     }
 }
 
-/// 检查当前平台访问令牌是否已保存。
+/// 检查当前平台访问令牌是否已保存在 Rivet 自有凭据文件。
 #[tauri::command]
 pub async fn sync_token_exists(provider: String) -> Result<bool, String> {
     let provider = SyncProvider::parse(provider.trim())?;
-    tauri::async_runtime::spawn_blocking(move || match token_entry(provider)?.get_password() {
-        Ok(secret) => Ok(!secret.is_empty()),
-        Err(keyring::Error::NoEntry) => Ok(false),
-        Err(error) => Err(format!("读取同步 Token 失败：{error}")),
+    tauri::async_runtime::spawn_blocking(move || {
+        credential_store::sync_token_exists(provider.credential_user())
     })
     .await
     .map_err(|error| format!("读取同步 Token 任务失败：{error}"))?
@@ -244,18 +240,16 @@ pub(crate) fn validate_sync_token(token: String) -> Result<String, String> {
     Ok(token)
 }
 
-/// 将已校验的 Token 写入当前平台的系统凭据库。
+/// 将已校验的 Token 写入 Rivet 自有凭据文件。
 async fn store_sync_token(provider: SyncProvider, token: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        token_entry(provider)?
-            .set_password(&token)
-            .map_err(|error| format!("保存同步 Token 失败：{error}"))
+        credential_store::save_sync_token(provider.credential_user(), &token)
     })
     .await
     .map_err(|error| format!("保存同步 Token 任务失败：{error}"))?
 }
 
-/// 将当前平台访问令牌保存到操作系统凭据库。
+/// 将当前平台访问令牌保存到 Rivet 自有凭据文件。
 #[tauri::command]
 pub async fn save_sync_token(provider: String, token: String) -> Result<(), String> {
     let provider = SyncProvider::parse(provider.trim())?;
@@ -265,7 +259,7 @@ pub async fn save_sync_token(provider: String, token: String) -> Result<(), Stri
 
 /// 使用新 Token 重新加密本机 SSH 凭据并覆盖当前账号的远端同步数据。
 ///
-/// 远端写入成功后才替换系统凭据库中的 Token；不会读取或解密旧的云端 SSH 密文。
+/// 远端写入成功后才替换 Rivet 自有凭据文件中的 Token；不会读取或解密旧的云端 SSH 密文。
 #[tauri::command]
 pub async fn replace_sync_token(
     provider: String,
@@ -299,9 +293,8 @@ pub async fn replace_sync_token(
 #[tauri::command]
 pub async fn delete_sync_token(provider: String) -> Result<(), String> {
     let provider = SyncProvider::parse(provider.trim())?;
-    tauri::async_runtime::spawn_blocking(move || match token_entry(provider)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(error) => Err(format!("删除同步 Token 失败：{error}")),
+    tauri::async_runtime::spawn_blocking(move || {
+        credential_store::delete_sync_token(provider.credential_user())
     })
     .await
     .map_err(|error| format!("删除同步 Token 任务失败：{error}"))?
@@ -639,21 +632,11 @@ fn write_sync_backup_file(path: &Path, content: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 构造系统凭据库中的 Token 条目。
-fn token_entry(provider: SyncProvider) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(TOKEN_SERVICE_NAME, provider.credential_user())
-        .map_err(|error| format!("访问同步 Token 凭据库失败：{error}"))
-}
-
-/// 异步读取平台 Token，避免系统凭据库阻塞 Tauri 运行时工作线程。
+/// 异步读取平台 Token，避免本地文件 I/O 阻塞 Tauri 运行时工作线程。
 async fn load_token(provider: SyncProvider) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        token_entry(provider)?
-            .get_password()
-            .map_err(|error| match error {
-                keyring::Error::NoEntry => "尚未保存同步 Token".to_string(),
-                other => format!("读取同步 Token 失败：{other}"),
-            })
+        credential_store::load_sync_token(provider.credential_user())?
+            .ok_or_else(|| "尚未保存同步 Token".to_string())
     })
     .await
     .map_err(|error| format!("读取同步 Token 任务失败：{error}"))?
