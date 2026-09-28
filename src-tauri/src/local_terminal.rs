@@ -84,7 +84,7 @@ pub async fn open_local_terminal(
     session_id: String,
     columns: u16,
     rows: u16,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     validate_session_id(&session_id)?;
     validate_terminal_size(columns, rows)?;
 
@@ -98,7 +98,7 @@ pub async fn open_local_terminal(
     let sessions = Arc::clone(&service.sessions);
     let worker_sessions = Arc::clone(&sessions);
     let worker_session_id = session_id.clone();
-    let (sender, shell_pid) = tauri::async_runtime::spawn_blocking(move || {
+    let (sender, shell_pid, shell_kind) = tauri::async_runtime::spawn_blocking(move || {
         start_local_worker(app, worker_session_id, columns, rows, worker_sessions)
     })
     .await
@@ -125,7 +125,7 @@ pub async fn open_local_terminal(
             TrySendError::Disconnected(_) => "本地终端 Shell 启动后立即退出".to_string(),
         });
     }
-    Ok(())
+    Ok(shell_kind)
 }
 
 /// 向本地 PTY 写入键盘字节。
@@ -217,7 +217,7 @@ fn start_local_worker(
     columns: u16,
     rows: u16,
     sessions: Arc<RwLock<HashMap<String, LocalSessionEntry>>>,
-) -> Result<(SyncSender<LocalCommand>, u32), String> {
+) -> Result<(SyncSender<LocalCommand>, u32, Option<String>), String> {
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -228,6 +228,7 @@ fn start_local_worker(
         })
         .map_err(|error| format!("创建本地 PTY 失败：{error}"))?;
 
+    let shell_kind = default_shell_integration_kind();
     let mut command = default_shell_command()?;
     command.env("TERM", "xterm-256color");
     if let Some(home) = user_home_directory() {
@@ -276,7 +277,7 @@ fn start_local_worker(
         })
         .map_err(|error| format!("启动本地终端 worker 失败：{error}"))?;
 
-    Ok((sender, shell_pid))
+    Ok((sender, shell_pid, shell_kind))
 }
 
 /// 循环读取 PTY 输出并发送给前端；EOF 正常结束。
@@ -428,6 +429,23 @@ fn default_shell_command() -> Result<CommandBuilder, String> {
 
     #[allow(unreachable_code)]
     Err("当前平台不支持本地 PTY 终端".to_string())
+}
+
+/// 仅对白名单内的交互 shell 启用临时 Shell Integration。
+fn default_shell_integration_kind() -> Option<String> {
+    #[cfg(unix)]
+    {
+        let shell = env::var_os("SHELL")?;
+        let shell = PathBuf::from(shell);
+        let name = shell.file_name()?.to_str()?.to_ascii_lowercase();
+        return match name.as_str() {
+            "bash" | "zsh" => Some(name),
+            _ => None,
+        };
+    }
+
+    #[allow(unreachable_code)]
+    None
 }
 
 /// 枚举当前进程树，只要 shell 仍有任意直接或间接子进程就返回 true。

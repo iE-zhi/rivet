@@ -35,6 +35,7 @@ export interface PopupMenuProps {
   maxHeight?: number;
   ariaLabel?: string;
   className?: string;
+  preferredPlacement?: PopupMenuPlacement;
 }
 
 /**
@@ -49,6 +50,7 @@ export function PopupMenu({
   maxHeight = DEFAULT_MAX_HEIGHT,
   ariaLabel,
   className = "",
+  preferredPlacement,
 }: PopupMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<PopupMenuPlacement>("down");
@@ -68,8 +70,12 @@ export function PopupMenu({
       const desiredHeight = Math.min(maxHeight, menu.scrollHeight);
       const spaceAbove = Math.max(0, anchorRect.top - MENU_GAP - visibleBounds.top);
       const spaceBelow = Math.max(0, visibleBounds.bottom - anchorRect.bottom - MENU_GAP);
-      const nextPlacement: PopupMenuPlacement =
+      const automaticPlacement: PopupMenuPlacement =
         spaceBelow >= desiredHeight || spaceBelow >= spaceAbove ? "down" : "up";
+      const preferredSpace = preferredPlacement === "up" ? spaceAbove : spaceBelow;
+      const nextPlacement: PopupMenuPlacement = preferredPlacement && preferredSpace >= 34
+        ? preferredPlacement
+        : automaticPlacement;
       const selectedSpace = nextPlacement === "down" ? spaceBelow : spaceAbove;
 
       setPlacement((current) => current === nextPlacement ? current : nextPlacement);
@@ -87,7 +93,7 @@ export function PopupMenu({
       window.removeEventListener("resize", updatePlacement);
       window.removeEventListener("scroll", updatePlacement, true);
     };
-  }, [maxHeight, open]);
+  }, [maxHeight, open, preferredPlacement]);
 
   if (!open) return null;
 

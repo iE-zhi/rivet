@@ -27,6 +27,8 @@ use tokio::{
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// SSH 用户认证的最大等待时间，单位为秒。
 const AUTH_TIMEOUT: Duration = Duration::from_secs(15);
+/// 探测远端登录 shell 的最大等待时间。
+const SHELL_PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 /// 单个会话等待处理的前端命令上限，防止输入洪泛无限占用内存。
 const COMMAND_QUEUE_CAPACITY: usize = 256;
 /// 单次前端输入允许的最大字节数。
@@ -256,7 +258,7 @@ pub async fn open_ssh_session(
     app: AppHandle,
     service: State<'_, SshService>,
     config: SshConnectConfig,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     validate_connect_config(&config)?;
 
     {
@@ -349,6 +351,8 @@ pub async fn open_ssh_session(
         return Err("SSH 认证被服务器拒绝".to_string());
     }
 
+    let shell_kind = detect_remote_shell(&session).await;
+
     let mut channel = session
         .channel_open_session()
         .await
@@ -415,7 +419,7 @@ pub async fn open_ssh_session(
         sessions.write().await.remove(&session_id);
     });
 
-    Ok(())
+    Ok(shell_kind)
 }
 
 /// 向已连接 SSH PTY 写入字节；输入为空时直接忽略。
@@ -478,6 +482,43 @@ pub(crate) async fn request_sftp_sender(
     result_receiver
         .await
         .map_err(|_| "SSH worker 未返回 SFTP 会话结果".to_string())?
+}
+
+/// 使用独立 exec channel 探测登录 shell；失败或未知 shell 时关闭自动命令记录。
+async fn detect_remote_shell(session: &client::Handle<ClientHandler>) -> Option<String> {
+    let probe = async {
+        let mut channel = session.channel_open_session().await.ok()?;
+        channel.exec(true, "printf '%s' \"$SHELL\"").await.ok()?;
+
+        let mut output = Vec::with_capacity(64);
+        while let Some(message) = channel.wait().await {
+            match message {
+                ChannelMsg::Data { data } => {
+                    if output.len() + data.len() > 512 {
+                        return None;
+                    }
+                    output.extend_from_slice(&data);
+                }
+                ChannelMsg::ExitStatus { .. } | ChannelMsg::Eof | ChannelMsg::Close => break,
+                _ => {}
+            }
+        }
+        let _ = channel.close().await;
+
+        let shell = String::from_utf8(output).ok()?;
+        shell_integration_kind(shell.trim())
+    };
+
+    timeout(SHELL_PROBE_TIMEOUT, probe).await.ok().flatten()
+}
+
+/// 仅对白名单内的 Bourne 风格 shell 启用临时 Shell Integration。
+fn shell_integration_kind(shell: &str) -> Option<String> {
+    let name = shell.rsplit('/').next()?.trim().to_ascii_lowercase();
+    match name.as_str() {
+        "bash" | "zsh" => Some(name),
+        _ => None,
+    }
 }
 
 /// 获取活动会话发送端并提交命令，避免持有共享表锁跨越 await。

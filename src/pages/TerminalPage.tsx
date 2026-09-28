@@ -10,6 +10,7 @@ import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
 import { Button, Checkbox, GroupManager, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
+import { TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, findTerminalCommandHistoryMatches, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, recordTerminalCommand } from "../preferences/terminalHistory";
 import {
   deserializeRecentConnectionIds,
   deserializeTerminalConnections,
@@ -252,6 +253,7 @@ const COPY = {
     desktopOnly: "SSH 终端仅在 Rivet 桌面应用中可用。",
     localDesktopOnly: "本地终端仅在 Rivet 桌面应用中可用。",
     serialDesktopOnly: "串口终端仅在 Rivet 桌面应用中可用。",
+    historySuggestions: "历史命令候选",
     terminalConnections: "终端连接",
     occupied: "已占用",
   },
@@ -337,6 +339,7 @@ const COPY = {
     desktopOnly: "SSH terminals are available in the Rivet desktop app.",
     localDesktopOnly: "Local terminals are available in the Rivet desktop app.",
     serialDesktopOnly: "Serial terminals are available in the Rivet desktop app.",
+    historySuggestions: "Command history suggestions",
     terminalConnections: "Terminal connections",
     occupied: "In use",
   },
@@ -448,6 +451,542 @@ function useXtermScrollbar(terminalRef: React.RefObject<XtermTerminal | null>) {
   return { scrollMetrics, syncScrollMetrics, scrollTo };
 }
 
+interface TerminalCommandHistoryMenuState {
+  commands: string[];
+  selectedIndex: number;
+  left: number;
+  top: number;
+  width: number;
+  anchorHeight: number;
+}
+
+interface TerminalCommandInputStart {
+  row: number;
+  column: number;
+}
+
+const EMPTY_TERMINAL_COMMAND_HISTORY_MENU: TerminalCommandHistoryMenuState = {
+  commands: [],
+  selectedIndex: 0,
+  left: 12,
+  top: 12,
+  width: 180,
+  anchorHeight: 20,
+};
+
+/** 根据 xterm 光标和候选文本计算候选框位置与宽度，并保证留在当前终端区域内。 */
+function terminalCommandHistoryMenuLayout(
+  terminal: XtermTerminal,
+  container: HTMLDivElement,
+  commands: readonly string[],
+): Pick<TerminalCommandHistoryMenuState, "left" | "top" | "width" | "anchorHeight"> {
+  const host = container.parentElement;
+  if (!host) return { left: 12, top: 12, width: 180, anchorHeight: 20 };
+
+  const hostRect = host.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+  const cellWidth = container.clientWidth / Math.max(1, terminal.cols);
+  const cellHeight = container.clientHeight / Math.max(1, terminal.rows);
+  const buffer = terminal.buffer.active;
+  const viewportRow = buffer.baseY + buffer.cursorY - buffer.viewportY;
+  const cursorLeft = containerRect.left - hostRect.left + buffer.cursorX * cellWidth;
+  const cursorRowTop = containerRect.top - hostRect.top + viewportRow * cellHeight;
+  const anchorHeight = Math.max(1, cellHeight);
+
+  const maximumWidth = Math.max(96, host.clientWidth - 24);
+  const minimumWidth = Math.min(180, maximumWidth);
+  const longestLength = commands.reduce((length, command) => Math.max(length, Array.from(command).length), 0);
+  const desiredWidth = Math.ceil(longestLength * Math.max(cellWidth, 7) + 28);
+  const width = Math.min(maximumWidth, Math.max(minimumWidth, desiredWidth));
+  const left = Math.max(12, Math.min(cursorLeft, Math.max(12, host.clientWidth - width - 12)));
+  const top = Math.max(8, Math.min(cursorRowTop, Math.max(8, host.clientHeight - anchorHeight - 8)));
+
+  return { left, top, width, anchorHeight };
+}
+
+const RIVET_SHELL_INTEGRATION_OSC = 633;
+const MAX_SHELL_INTEGRATION_BOOTSTRAP_OUTPUT_BYTES = 256 * 1024;
+
+function findByteSequence(haystack: Uint8Array, needle: Uint8Array): number {
+  if (needle.length === 0 || haystack.length < needle.length) return -1;
+  outer: for (let index = 0; index <= haystack.length - needle.length; index += 1) {
+    for (let offset = 0; offset < needle.length; offset += 1) {
+      if (haystack[index + offset] !== needle[offset]) continue outer;
+    }
+    return index;
+  }
+  return -1;
+}
+
+function concatBytes(first: Uint8Array, second: Uint8Array): Uint8Array<ArrayBuffer> {
+  const combined = new Uint8Array(first.length + second.length);
+  combined.set(first);
+  combined.set(second, first.length);
+  return combined;
+}
+
+type TerminalShellKind = "bash" | "zsh";
+
+/** 生成只作用于当前 shell 进程的集成脚本，不修改用户的持久化 shell 配置。 */
+function terminalShellIntegrationBootstrap(shellKind: TerminalShellKind, token: string): string {
+  const readyMarker = `RivetReady:${token}`;
+  const promptMarker = `RivetPrompt:${token}`;
+  const executeMarker = `RivetExecute:${token}`;
+
+  if (shellKind === "bash") {
+    return ` if [ -z "\${__RIVET_SHELL_INTEGRATION-}" ]; then __RIVET_SHELL_INTEGRATION=1; if [ "\${BASH_VERSINFO[0]:-0}" -gt 4 ] || { [ "\${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "\${BASH_VERSINFO[1]:-0}" -ge 4 ]; }; then __rivet_ready_marker=$'\\033]633;${readyMarker}\\007'; __rivet_prompt_marker=$'\\033]633;${promptMarker}\\007'; __rivet_execute_marker=$'\\033]633;${executeMarker}\\007'; PS1="\\[\${__rivet_ready_marker}\\]\${PS1}\\[\${__rivet_prompt_marker}\\]"; PS0="\${PS0-}\${__rivet_execute_marker}"; fi; fi; printf '\\r\\033[2K'\r`;
+  }
+
+  return ` if [[ -z \${__RIVET_SHELL_INTEGRATION-} ]]; then typeset -g __RIVET_SHELL_INTEGRATION=1; typeset -g __rivet_ready_marker=$'\\033]633;${readyMarker}\\007'; typeset -g __rivet_prompt_marker=$'\\033]633;${promptMarker}\\007'; function __rivet_preexec() { printf '\\033]633;${executeMarker}\\007'; }; autoload -Uz add-zsh-hook; add-zsh-hook preexec __rivet_preexec; PROMPT="%{\${__rivet_ready_marker}%}\${PROMPT}%{\${__rivet_prompt_marker}%}"; fi; printf '\\r\\033[2K'\r`;
+}
+
+/** 从 shell 明确标记的输入起点读取单行命令；多行编辑无法确定时拒绝记录。 */
+function readTerminalCommandFromBuffer(
+  terminal: XtermTerminal,
+  start: TerminalCommandInputStart | null,
+): string | null {
+  if (!start) return null;
+  const buffer = terminal.buffer.active;
+  const cursorRow = buffer.baseY + buffer.cursorY;
+  if (start.row < 0 || start.row > cursorRow || start.row >= buffer.length) return null;
+
+  const parts: string[] = [];
+  for (let row = start.row; row <= cursorRow; row += 1) {
+    const line = buffer.getLine(row);
+    if (!line) return null;
+
+    if (row > start.row && !line.isWrapped) {
+      const visible = line.translateToString(true);
+      if (row === cursorRow && visible.length === 0) break;
+      return null;
+    }
+    parts.push(line.translateToString(true, row === start.row ? start.column : 0));
+  }
+
+  const command = parts.join("").trimEnd();
+  return command.length > 0 ? command : null;
+}
+
+/** 仅在 Shell Integration 明确标记的 shell 输入阶段提供候选并记录命令。 */
+function useTerminalCommandHistoryInput(
+  terminalRef: React.RefObject<XtermTerminal | null>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  sendInput: (data: string) => void,
+) {
+  const [menu, setMenu] = useState<TerminalCommandHistoryMenuState>(EMPTY_TERMINAL_COMMAND_HISTORY_MENU);
+  const menuRef = useRef(menu);
+  const historyRef = useRef(readTerminalCommandHistory());
+  const enabledRef = useRef(readTerminalCommandHistoryEnabled());
+  const promptActiveRef = useRef(false);
+  const inputRef = useRef<string[]>([]);
+  const cursorRef = useRef(0);
+  const trackingReliableRef = useRef(true);
+  const inputStartRef = useRef<TerminalCommandInputStart | null>(null);
+  const suppressCandidateEnterRef = useRef(false);
+  const integrationInstalledRef = useRef<TerminalShellKind | null>(null);
+  const integrationOutputSuppressedRef = useRef(false);
+  const integrationOutputBufferRef = useRef(new Uint8Array(0));
+  const integrationOutputTimeoutRef = useRef<number | null>(null);
+  const integrationTokenRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().replaceAll("-", "")
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`,
+  );
+  const sendInputRef = useRef(sendInput);
+  sendInputRef.current = sendInput;
+
+  const updateMenu = useCallback((update: (current: TerminalCommandHistoryMenuState) => TerminalCommandHistoryMenuState) => {
+    setMenu((current) => {
+      const next = update(current);
+      menuRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const hideMenu = useCallback(() => {
+    updateMenu((current) => current.commands.length === 0 ? current : { ...current, commands: [], selectedIndex: 0 });
+  }, [updateMenu]);
+
+  const resetInputTracking = useCallback(() => {
+    inputRef.current = [];
+    cursorRef.current = 0;
+    trackingReliableRef.current = true;
+    inputStartRef.current = null;
+    hideMenu();
+  }, [hideMenu]);
+
+  const refreshMenuLayout = useCallback(() => {
+    const current = menuRef.current;
+    const terminal = terminalRef.current;
+    const container = containerRef.current;
+    if (current.commands.length === 0 || !terminal || !container) return;
+    const layout = terminalCommandHistoryMenuLayout(terminal, container, current.commands);
+    updateMenu((state) => ({ ...state, ...layout }));
+  }, [containerRef, terminalRef, updateMenu]);
+
+  const refreshSuggestions = useCallback(() => {
+    if (
+      !enabledRef.current
+      || !promptActiveRef.current
+      || !trackingReliableRef.current
+      || cursorRef.current !== inputRef.current.length
+    ) {
+      hideMenu();
+      return;
+    }
+
+    const query = inputRef.current.join("");
+    const commands = findTerminalCommandHistoryMatches(historyRef.current, query);
+    if (commands.length === 0) {
+      hideMenu();
+      return;
+    }
+
+    const terminal = terminalRef.current;
+    const container = containerRef.current;
+    const layout = terminal && container
+      ? terminalCommandHistoryMenuLayout(terminal, container, commands)
+      : { left: 12, top: 12, width: 180, anchorHeight: 20 };
+    updateMenu(() => ({ commands, selectedIndex: 0, ...layout }));
+  }, [containerRef, hideMenu, terminalRef, updateMenu]);
+
+  const acceptCandidate = useCallback((index: number) => {
+    if (!promptActiveRef.current) return;
+    const candidate = menuRef.current.commands[index];
+    const query = inputRef.current.join("");
+    if (!candidate || !candidate.includes(query)) return;
+
+    if (candidate.startsWith(query)) {
+      const suffix = candidate.slice(query.length);
+      if (suffix.length > 0) sendInputRef.current(suffix);
+    } else {
+      sendInputRef.current("\x15");
+      sendInputRef.current(candidate);
+    }
+
+    inputRef.current = Array.from(candidate);
+    cursorRef.current = inputRef.current.length;
+    trackingReliableRef.current = true;
+    hideMenu();
+    terminalRef.current?.focus();
+  }, [hideMenu, terminalRef]);
+
+  const handleShellIntegrationOsc = useCallback((data: string): boolean => {
+    const token = integrationTokenRef.current;
+    if (data === `RivetReady:${token}`) {
+      return true;
+    }
+    if (data === `RivetPrompt:${token}`) {
+      const terminal = terminalRef.current;
+      promptActiveRef.current = true;
+      inputRef.current = [];
+      cursorRef.current = 0;
+      trackingReliableRef.current = true;
+      if (terminal) {
+        const buffer = terminal.buffer.active;
+        inputStartRef.current = {
+          row: buffer.baseY + buffer.cursorY,
+          column: buffer.cursorX,
+        };
+      } else {
+        inputStartRef.current = null;
+      }
+      hideMenu();
+      return true;
+    }
+
+    if (data === `RivetExecute:${token}`) {
+      if (enabledRef.current && promptActiveRef.current) {
+        const terminal = terminalRef.current;
+        const command = terminal ? readTerminalCommandFromBuffer(terminal, inputStartRef.current) : null;
+        if (command) recordTerminalCommand(command);
+      }
+      promptActiveRef.current = false;
+      resetInputTracking();
+      return true;
+    }
+
+    return false;
+  }, [hideMenu, resetInputTracking, terminalRef]);
+
+  const stopIntegrationOutputSuppression = useCallback(() => {
+    integrationOutputSuppressedRef.current = false;
+    integrationOutputBufferRef.current = new Uint8Array(0);
+    if (integrationOutputTimeoutRef.current !== null) {
+      window.clearTimeout(integrationOutputTimeoutRef.current);
+      integrationOutputTimeoutRef.current = null;
+    }
+  }, []);
+
+  /** 注入期间丢弃脚本回显，只从就绪标记后的真实 shell prompt 开始交给 xterm 渲染。 */
+  const filterShellIntegrationOutput = useCallback((data: Uint8Array): Uint8Array | null => {
+    if (!integrationOutputSuppressedRef.current) return data;
+
+    const combined = concatBytes(integrationOutputBufferRef.current, data);
+    const marker = new TextEncoder().encode(
+      `\x1b]${RIVET_SHELL_INTEGRATION_OSC};RivetReady:${integrationTokenRef.current}\x07`,
+    );
+    const markerIndex = findByteSequence(combined, marker);
+    if (markerIndex >= 0) {
+      stopIntegrationOutputSuppression();
+      return combined.slice(markerIndex + marker.length);
+    }
+
+    if (combined.length > MAX_SHELL_INTEGRATION_BOOTSTRAP_OUTPUT_BYTES) {
+      stopIntegrationOutputSuppression();
+      promptActiveRef.current = false;
+      return null;
+    }
+
+    integrationOutputBufferRef.current = combined;
+    return null;
+  }, [stopIntegrationOutputSuppression]);
+
+  const installShellIntegration = useCallback((shellKind: string | null) => {
+    if (shellKind !== "bash" && shellKind !== "zsh") return;
+    if (integrationInstalledRef.current === shellKind) return;
+
+    integrationInstalledRef.current = shellKind;
+    integrationOutputSuppressedRef.current = true;
+    integrationOutputBufferRef.current = new Uint8Array(0);
+    if (integrationOutputTimeoutRef.current !== null) {
+      window.clearTimeout(integrationOutputTimeoutRef.current);
+    }
+    integrationOutputTimeoutRef.current = window.setTimeout(() => {
+      integrationOutputSuppressedRef.current = false;
+      integrationOutputBufferRef.current = new Uint8Array(0);
+      integrationOutputTimeoutRef.current = null;
+      integrationInstalledRef.current = null;
+      promptActiveRef.current = false;
+    }, 2_000);
+
+    sendInputRef.current(terminalShellIntegrationBootstrap(shellKind, integrationTokenRef.current));
+  }, []);
+
+  /** 候选框使用自己的按键状态机；非 shell prompt 输入完全交还给终端。 */
+  const handleKeyEvent = useCallback((event: KeyboardEvent): boolean => {
+    if (suppressCandidateEnterRef.current && event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      return false;
+    }
+    if (event.type !== "keydown") return true;
+    if (!enabledRef.current || !promptActiveRef.current) return true;
+
+    const count = menuRef.current.commands.length;
+    if (count > 0) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        event.stopPropagation();
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        updateMenu((current) => ({
+          ...current,
+          selectedIndex: (current.selectedIndex + direction + count) % count,
+        }));
+        return false;
+      }
+      if (event.key === "Tab" || event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.key === "Enter") {
+          suppressCandidateEnterRef.current = true;
+          window.setTimeout(() => {
+            suppressCandidateEnterRef.current = false;
+          }, 0);
+        }
+        acceptCandidate(menuRef.current.selectedIndex);
+        return false;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        hideMenu();
+        return false;
+      }
+    }
+
+    const isBackspaceKey = event.key === "Backspace" || event.code === "Backspace";
+    const isDeleteKey = !isBackspaceKey && (event.key === "Delete" || event.code === "Delete");
+
+    if (isBackspaceKey) {
+      if (event.altKey || event.ctrlKey) {
+        trackingReliableRef.current = false;
+        hideMenu();
+      } else {
+        if (cursorRef.current > 0) inputRef.current.splice(--cursorRef.current, 1);
+        refreshSuggestions();
+      }
+      return true;
+    }
+    if (isDeleteKey) {
+      if (cursorRef.current < inputRef.current.length) inputRef.current.splice(cursorRef.current, 1);
+      refreshSuggestions();
+      return true;
+    }
+    if (event.key === "ArrowLeft") {
+      cursorRef.current = Math.max(0, cursorRef.current - 1);
+      refreshSuggestions();
+      return true;
+    }
+    if (event.key === "ArrowRight") {
+      cursorRef.current = Math.min(inputRef.current.length, cursorRef.current + 1);
+      refreshSuggestions();
+      return true;
+    }
+    if (event.key === "Home") {
+      cursorRef.current = 0;
+      refreshSuggestions();
+      return true;
+    }
+    if (event.key === "End") {
+      cursorRef.current = inputRef.current.length;
+      refreshSuggestions();
+      return true;
+    }
+    if (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "Tab") {
+      trackingReliableRef.current = false;
+      hideMenu();
+      return true;
+    }
+
+    if (event.ctrlKey && !event.metaKey) {
+      const key = event.key.toLowerCase();
+      if (key === "a") {
+        cursorRef.current = 0;
+        refreshSuggestions();
+      } else if (key === "e") {
+        cursorRef.current = inputRef.current.length;
+        refreshSuggestions();
+      } else if (key === "c") {
+        promptActiveRef.current = false;
+        resetInputTracking();
+      } else if (key === "u") {
+        inputRef.current = [];
+        cursorRef.current = 0;
+        trackingReliableRef.current = true;
+        hideMenu();
+      } else if (key === "w") {
+        while (cursorRef.current > 0 && /\s/.test(inputRef.current[cursorRef.current - 1] ?? "")) {
+          inputRef.current.splice(--cursorRef.current, 1);
+        }
+        while (cursorRef.current > 0 && !/\s/.test(inputRef.current[cursorRef.current - 1] ?? "")) {
+          inputRef.current.splice(--cursorRef.current, 1);
+        }
+        refreshSuggestions();
+      } else {
+        trackingReliableRef.current = false;
+        hideMenu();
+      }
+      return true;
+    }
+
+    if (event.key === "Enter") {
+      hideMenu();
+      return true;
+    }
+
+    if (!event.metaKey && event.key.length === 1 && !event.isComposing) {
+      inputRef.current.splice(cursorRef.current, 0, event.key);
+      cursorRef.current += 1;
+      refreshSuggestions();
+    }
+    return true;
+  }, [acceptCandidate, hideMenu, refreshSuggestions, resetInputTracking, updateMenu]);
+
+  /** 仅处理不会稳定经过 keydown 的粘贴和输入法文本；命令是否执行由 shell 标记决定。 */
+  const handleInput = useCallback((data: string) => {
+    if (!enabledRef.current || !promptActiveRef.current || data.length === 0) return;
+    if (data.includes("\r") || data.includes("\n") || data.includes("\x1b")) {
+      trackingReliableRef.current = false;
+      hideMenu();
+      return;
+    }
+
+    for (const character of Array.from(data)) {
+      if (character.charCodeAt(0) < 0x20) {
+        trackingReliableRef.current = false;
+        hideMenu();
+        return;
+      }
+      inputRef.current.splice(cursorRef.current, 0, character);
+      cursorRef.current += 1;
+    }
+    refreshSuggestions();
+  }, [hideMenu, refreshSuggestions]);
+
+  useEffect(() => {
+    const syncHistory = () => {
+      enabledRef.current = readTerminalCommandHistoryEnabled();
+      historyRef.current = readTerminalCommandHistory();
+      if (!enabledRef.current) {
+        hideMenu();
+        return;
+      }
+      refreshSuggestions();
+    };
+    window.addEventListener(TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, syncHistory);
+    return () => window.removeEventListener(TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, syncHistory);
+  }, [hideMenu, refreshSuggestions]);
+
+  useEffect(() => () => {
+    if (integrationOutputTimeoutRef.current !== null) {
+      window.clearTimeout(integrationOutputTimeoutRef.current);
+    }
+  }, []);
+
+  return {
+    menu,
+    handleInput,
+    handleKeyEvent,
+    handleShellIntegrationOsc,
+    filterShellIntegrationOutput,
+    installShellIntegration,
+    refreshMenuLayout,
+    acceptCandidate,
+  };
+}
+/** 复用通用工具弹窗展示当前输入行的历史命令候选。 */
+function TerminalCommandHistoryMenu({
+  menu,
+  ariaLabel,
+  onSelect,
+}: {
+  menu: TerminalCommandHistoryMenuState;
+  ariaLabel: string;
+  onSelect: (index: number) => void;
+}) {
+  if (menu.commands.length === 0) return null;
+  return (
+    <div
+      className="terminal-history-anchor"
+      style={{ left: menu.left, top: menu.top, width: menu.width, height: menu.anchorHeight }}
+    >
+      <PopupMenu
+        open
+        align="start"
+        width="100%"
+        maxHeight={248}
+        ariaLabel={ariaLabel}
+        className="terminal-history-menu"
+        preferredPlacement="up"
+      >
+        {menu.commands.map((command, index) => (
+          <PopupMenuItem
+            key={command}
+            className={`terminal-history-menu-item ${index === menu.selectedIndex ? "is-selected" : ""}`}
+            title={command}
+            tabIndex={-1}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => onSelect(index)}
+          >
+            {command}
+          </PopupMenuItem>
+        ))}
+      </PopupMenu>
+    </div>
+  );
+}
+
 interface SessionTerminalProps {
   session: SshSession;
   active: boolean;
@@ -473,6 +1012,15 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
   const notifyRef = useRef(notify);
   notifyRef.current = notify;
 
+  const sendInput = useCallback((data: string) => {
+    if (!connectedRef.current) return;
+    const bytes = Array.from(new TextEncoder().encode(data));
+    void invoke("ssh_send_input", { sessionId: session.id, data: bytes }).catch((error) => {
+      terminalRef.current?.writeln(`\r\n[SSH] ${String(error)}`);
+    });
+  }, [session.id]);
+  const commandHistory = useTerminalCommandHistoryInput(terminalRef, containerRef, sendInput);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -496,20 +1044,36 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
 
     let cancelled = false;
     let unlisteners: UnlistenFn[] = [];
+    terminal.attachCustomKeyEventHandler(commandHistory.handleKeyEvent);
+    const shellIntegrationDisposable = terminal.parser.registerOscHandler(
+      RIVET_SHELL_INTEGRATION_OSC,
+      commandHistory.handleShellIntegrationOsc,
+    );
+    const handlePaste = (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (text) commandHistory.handleInput(text);
+    };
+    const handleCompositionEnd = (event: CompositionEvent) => {
+      if (event.data) commandHistory.handleInput(event.data);
+    };
+    terminal.textarea?.addEventListener("paste", handlePaste);
+    terminal.textarea?.addEventListener("compositionend", handleCompositionEnd);
     const resizeObserver = new ResizeObserver(() => {
       if (!container.isConnected) return;
       fit.fit();
       syncScrollMetrics();
+      commandHistory.refreshMenuLayout();
     });
     resizeObserver.observe(container);
-    const scrollDisposable = terminal.onScroll(syncScrollMetrics);
+    const scrollDisposable = terminal.onScroll(() => {
+      syncScrollMetrics();
+      commandHistory.refreshMenuLayout();
+    });
+    const cursorDisposable = terminal.onCursorMove(commandHistory.refreshMenuLayout);
 
     const inputDisposable = terminal.onData((data) => {
       if (!connectedRef.current) return;
-      const bytes = Array.from(new TextEncoder().encode(data));
-      void invoke("ssh_send_input", { sessionId: session.id, data: bytes }).catch((error) => {
-        terminal.writeln(`\r\n[SSH] ${String(error)}`);
-      });
+      sendInput(data);
     });
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
       if (!connectedRef.current) return;
@@ -520,7 +1084,8 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       try {
         const dataUnlisten = await listen<SshDataEvent>("ssh:data", (event) => {
           if (event.payload.sessionId === session.id) {
-            terminal.write(Uint8Array.from(event.payload.data), syncScrollMetrics);
+            const output = commandHistory.filterShellIntegrationOutput(Uint8Array.from(event.payload.data));
+            if (output && output.length > 0) terminal.write(output, syncScrollMetrics);
           }
         });
         const errorUnlisten = await listen<SshErrorEvent>("ssh:error", (event) => {
@@ -552,7 +1117,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
         }
         fit.fit();
         syncScrollMetrics();
-        await invoke("open_ssh_session", {
+        const shellKind = await invoke<TerminalShellKind | null>("open_ssh_session", {
           config: {
             sessionId: session.id,
             host: session.connection.host,
@@ -574,6 +1139,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
           return;
         }
         connectedRef.current = true;
+        commandHistory.installShellIntegration(shellKind);
         onStateChange(session.id, "connected");
         terminal.focus();
       } catch (error) {
@@ -591,15 +1157,19 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       connectedRef.current = false;
       resizeObserver.disconnect();
       inputDisposable.dispose();
+      shellIntegrationDisposable.dispose();
+      terminal.textarea?.removeEventListener("paste", handlePaste);
+      terminal.textarea?.removeEventListener("compositionend", handleCompositionEnd);
       resizeDisposable.dispose();
       scrollDisposable.dispose();
+      cursorDisposable.dispose();
       unlisteners.forEach((unlisten) => unlisten());
       void invoke("close_ssh_session", { sessionId: session.id }).catch(() => undefined);
       terminal.dispose();
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [linuxXauthPath, onStateChange, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
+  }, [commandHistory.filterShellIntegrationOutput, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.installShellIntegration, commandHistory.refreshMenuLayout, linuxXauthPath, onStateChange, sendInput, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -623,6 +1193,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
   return (
     <div className="terminal-emulator rivet-vertical-scrollbar">
       <div ref={containerRef} className="terminal-emulator-xterm" />
+      <TerminalCommandHistoryMenu menu={commandHistory.menu} ariaLabel={COPY[locale].historySuggestions} onSelect={commandHistory.acceptCandidate} />
       <VerticalScrollbarTrack
         className="terminal-emulator-scrollbar"
         scrollTop={scrollMetrics.scrollTop}
@@ -658,6 +1229,15 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
   const notifyRef = useRef(notify);
   notifyRef.current = notify;
 
+  const sendInput = useCallback((data: string) => {
+    if (!connectedRef.current) return;
+    const bytes = Array.from(new TextEncoder().encode(data));
+    void invoke("local_terminal_send_input", { sessionId: session.id, data: bytes }).catch((error) => {
+      terminalRef.current?.writeln(`\r\n[LOCAL] ${String(error)}`);
+    });
+  }, [session.id]);
+  const commandHistory = useTerminalCommandHistoryInput(terminalRef, containerRef, sendInput);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -681,20 +1261,36 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
 
     let cancelled = false;
     let unlisteners: UnlistenFn[] = [];
+    terminal.attachCustomKeyEventHandler(commandHistory.handleKeyEvent);
+    const shellIntegrationDisposable = terminal.parser.registerOscHandler(
+      RIVET_SHELL_INTEGRATION_OSC,
+      commandHistory.handleShellIntegrationOsc,
+    );
+    const handlePaste = (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (text) commandHistory.handleInput(text);
+    };
+    const handleCompositionEnd = (event: CompositionEvent) => {
+      if (event.data) commandHistory.handleInput(event.data);
+    };
+    terminal.textarea?.addEventListener("paste", handlePaste);
+    terminal.textarea?.addEventListener("compositionend", handleCompositionEnd);
     const resizeObserver = new ResizeObserver(() => {
       if (!container.isConnected) return;
       fit.fit();
       syncScrollMetrics();
+      commandHistory.refreshMenuLayout();
     });
     resizeObserver.observe(container);
-    const scrollDisposable = terminal.onScroll(syncScrollMetrics);
+    const scrollDisposable = terminal.onScroll(() => {
+      syncScrollMetrics();
+      commandHistory.refreshMenuLayout();
+    });
+    const cursorDisposable = terminal.onCursorMove(commandHistory.refreshMenuLayout);
 
     const inputDisposable = terminal.onData((data) => {
       if (!connectedRef.current) return;
-      const bytes = Array.from(new TextEncoder().encode(data));
-      void invoke("local_terminal_send_input", { sessionId: session.id, data: bytes }).catch((error) => {
-        terminal.writeln(`\r\n[LOCAL] ${String(error)}`);
-      });
+      sendInput(data);
     });
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
       if (!connectedRef.current) return;
@@ -705,7 +1301,8 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
       try {
         const dataUnlisten = await listen<SshDataEvent>("local:data", (event) => {
           if (event.payload.sessionId === session.id) {
-            terminal.write(Uint8Array.from(event.payload.data), syncScrollMetrics);
+            const output = commandHistory.filterShellIntegrationOutput(Uint8Array.from(event.payload.data));
+            if (output && output.length > 0) terminal.write(output, syncScrollMetrics);
           }
         });
         const errorUnlisten = await listen<SshErrorEvent>("local:error", (event) => {
@@ -732,7 +1329,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
         }
         fit.fit();
         syncScrollMetrics();
-        await invoke("open_local_terminal", {
+        const shellKind = await invoke<TerminalShellKind | null>("open_local_terminal", {
           sessionId: session.id,
           columns: Math.max(1, terminal.cols),
           rows: Math.max(1, terminal.rows),
@@ -742,6 +1339,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
           return;
         }
         connectedRef.current = true;
+        commandHistory.installShellIntegration(shellKind);
         onStateChange(session.id, "connected");
         terminal.focus();
       } catch (error) {
@@ -759,15 +1357,19 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
       connectedRef.current = false;
       resizeObserver.disconnect();
       inputDisposable.dispose();
+      shellIntegrationDisposable.dispose();
+      terminal.textarea?.removeEventListener("paste", handlePaste);
+      terminal.textarea?.removeEventListener("compositionend", handleCompositionEnd);
       resizeDisposable.dispose();
       scrollDisposable.dispose();
+      cursorDisposable.dispose();
       unlisteners.forEach((unlisten) => unlisten());
       void invoke("close_local_terminal", { sessionId: session.id }).catch(() => undefined);
       terminal.dispose();
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [onStateChange, session.id, syncScrollMetrics]);
+  }, [commandHistory.filterShellIntegrationOutput, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.installShellIntegration, commandHistory.refreshMenuLayout, onStateChange, sendInput, session.id, syncScrollMetrics]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -791,6 +1393,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
   return (
     <div className="terminal-emulator rivet-vertical-scrollbar">
       <div ref={containerRef} className="terminal-emulator-xterm" />
+      <TerminalCommandHistoryMenu menu={commandHistory.menu} ariaLabel={COPY[locale].historySuggestions} onSelect={commandHistory.acceptCandidate} />
       <VerticalScrollbarTrack
         className="terminal-emulator-scrollbar"
         scrollTop={scrollMetrics.scrollTop}
@@ -825,6 +1428,15 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
   const notifyRef = useRef(notify);
   notifyRef.current = notify;
 
+  const sendInput = useCallback((data: string) => {
+    if (!connectedRef.current) return;
+    const bytes = Array.from(new TextEncoder().encode(data));
+    void invoke("terminal_serial_send_input", { sessionId: session.id, data: bytes }).catch((error) => {
+      terminalRef.current?.writeln(`\r\n[SERIAL] ${String(error)}`);
+    });
+  }, [session.id]);
+  const commandHistory = useTerminalCommandHistoryInput(terminalRef, containerRef, sendInput);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -847,19 +1459,35 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
 
     let cancelled = false;
     let unlisteners: UnlistenFn[] = [];
+    terminal.attachCustomKeyEventHandler(commandHistory.handleKeyEvent);
+    const shellIntegrationDisposable = terminal.parser.registerOscHandler(
+      RIVET_SHELL_INTEGRATION_OSC,
+      commandHistory.handleShellIntegrationOsc,
+    );
+    const handlePaste = (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (text) commandHistory.handleInput(text);
+    };
+    const handleCompositionEnd = (event: CompositionEvent) => {
+      if (event.data) commandHistory.handleInput(event.data);
+    };
+    terminal.textarea?.addEventListener("paste", handlePaste);
+    terminal.textarea?.addEventListener("compositionend", handleCompositionEnd);
     const resizeObserver = new ResizeObserver(() => {
       if (!container.isConnected) return;
       fit.fit();
       syncScrollMetrics();
+      commandHistory.refreshMenuLayout();
     });
     resizeObserver.observe(container);
-    const scrollDisposable = terminal.onScroll(syncScrollMetrics);
+    const scrollDisposable = terminal.onScroll(() => {
+      syncScrollMetrics();
+      commandHistory.refreshMenuLayout();
+    });
+    const cursorDisposable = terminal.onCursorMove(commandHistory.refreshMenuLayout);
     const inputDisposable = terminal.onData((data) => {
       if (!connectedRef.current) return;
-      const bytes = Array.from(new TextEncoder().encode(data));
-      void invoke("terminal_serial_send_input", { sessionId: session.id, data: bytes }).catch((error) => {
-        terminal.writeln(`\r\n[SERIAL] ${String(error)}`);
-      });
+      sendInput(data);
     });
 
     const start = async () => {
@@ -923,14 +1551,18 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
       connectedRef.current = false;
       resizeObserver.disconnect();
       inputDisposable.dispose();
+      shellIntegrationDisposable.dispose();
+      terminal.textarea?.removeEventListener("paste", handlePaste);
+      terminal.textarea?.removeEventListener("compositionend", handleCompositionEnd);
       scrollDisposable.dispose();
+      cursorDisposable.dispose();
       unlisteners.forEach((unlisten) => unlisten());
       void invoke("close_terminal_serial_session", { sessionId: session.id }).catch(() => undefined);
       terminal.dispose();
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [onStateChange, session.connection, session.id, syncScrollMetrics]);
+  }, [commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.refreshMenuLayout, onStateChange, sendInput, session.connection, session.id, syncScrollMetrics]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -954,6 +1586,7 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
   return (
     <div className="terminal-emulator rivet-vertical-scrollbar">
       <div ref={containerRef} className="terminal-emulator-xterm" />
+      <TerminalCommandHistoryMenu menu={commandHistory.menu} ariaLabel={COPY[locale].historySuggestions} onSelect={commandHistory.acceptCandidate} />
       <VerticalScrollbarTrack
         className="terminal-emulator-scrollbar"
         scrollTop={scrollMetrics.scrollTop}

@@ -508,8 +508,8 @@ button, input, textarea { font: inherit; }
 .settings-sync-token-link:focus-visible { outline: 2px solid var(--r-primary-light); outline-offset: 2px; border-radius: 2px; }
 .settings-sync-hint { color: var(--r-muted); font-size: var(--r-font-size-secondary); line-height: 1.35; }
 .settings-sync-status { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; }
-.settings-sync-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; }
-.settings-sync-actions .rivet-button, .settings-sync-backup-actions .rivet-button, .settings-sync-backup-editor-actions .rivet-button { display: inline-flex; height: 24px; padding: 0 10px; align-items: center; gap: 6px; border-radius: 6px; }
+.settings-sync-actions, .settings-history-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; }
+.settings-sync-actions .rivet-button, .settings-history-actions .rivet-button, .settings-sync-backup-actions .rivet-button, .settings-sync-backup-editor-actions .rivet-button { display: inline-flex; height: 24px; padding: 0 10px; align-items: center; gap: 6px; border-radius: 6px; }
 .settings-sync-action-row { align-items: center; }
 .settings-sync-backup-area { display: flex; align-items: flex-end; flex-direction: column; gap: 8px; margin-top: 8px; padding-right: 16px; }
 .settings-sync-backup-actions { display: flex; justify-content: flex-end; gap: 8px; }

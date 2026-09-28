@@ -7,6 +7,7 @@ import type { Locale } from "./SerialPage";
 import type { NotificationSettings } from "../preferences/notificationSettings";
 import type { NavigationItemId, NavigationSettings } from "../preferences/navigationSettings";
 import { isValidX11ServerAddress, isValidXauthPath, MAX_X11_SERVER_ADDRESS_LENGTH, MAX_XAUTH_PATH_LENGTH } from "../preferences/sshSettings";
+import { TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, clearTerminalCommandHistory, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, setTerminalCommandHistoryEnabled } from "../preferences/terminalHistory";
 import { DEFAULT_BACKUP_SELECTION, type BackupSelection, type RivetSyncController, type SyncProvider } from "../rivetSync";
 import AboutPanel from "./AboutPanel";
 
@@ -153,6 +154,24 @@ interface SettingsPageCopy {
   receiveGroupTitle: string;
   /** SSH 设置组标题。 */
   sshGroupTitle: string;
+  /** 历史命令设置组标题。 */
+  historyGroupTitle: string;
+  /** 是否启用历史命令。 */
+  historyEnabled: string;
+  /** 删除历史命令设置项。 */
+  historyDelete: string;
+  /** 删除按钮。 */
+  deleteHistory: string;
+  /** 删除确认按钮。 */
+  confirmDeleteHistory: string;
+  /** 取消删除按钮。 */
+  cancelDeleteHistory: string;
+  /** 删除成功通知。 */
+  historyDeleted: string;
+  /** 历史命令设置保存失败通知。 */
+  historySettingsFailed: string;
+  /** 历史命令删除失败通知。 */
+  historyDeleteFailed: string;
   /** 本机 X Server 连接地址。 */
   x11ServerAddress: string;
   /** X11 Server 地址格式错误提示。 */
@@ -271,6 +290,15 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serialGroupTitle: "默认通信参数",
     receiveGroupTitle: "接收分包",
     sshGroupTitle: "X11",
+    historyGroupTitle: "历史命令",
+    historyEnabled: "是否启用历史命令",
+    historyDelete: "删除历史命令",
+    deleteHistory: "删除",
+    confirmDeleteHistory: "确认删除",
+    cancelDeleteHistory: "取消",
+    historyDeleted: "历史命令已删除。",
+    historySettingsFailed: "保存历史命令设置失败。",
+    historyDeleteFailed: "删除历史命令失败。",
     x11ServerAddress: "X11 Server 地址",
     invalidX11ServerAddress: "请输入有效的 IP/主机名:端口，端口范围 1~65535。",
     xauthPath: "xauth 路径",
@@ -382,6 +410,15 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serialGroupTitle: "Default communication parameters",
     receiveGroupTitle: "Receive grouping",
     sshGroupTitle: "X11",
+    historyGroupTitle: "Command history",
+    historyEnabled: "Enable command history",
+    historyDelete: "Delete command history",
+    deleteHistory: "Delete",
+    confirmDeleteHistory: "Confirm delete",
+    cancelDeleteHistory: "Cancel",
+    historyDeleted: "Command history deleted.",
+    historySettingsFailed: "Failed to save command history settings.",
+    historyDeleteFailed: "Failed to delete command history.",
     x11ServerAddress: "X11 Server address",
     invalidX11ServerAddress: "Enter a valid IP/hostname:port with a port from 1 to 65535.",
     xauthPath: "xauth path",
@@ -622,6 +659,21 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   /** Linux xauth 路径仅在校验通过后提交到父级本机持久化状态。 */
   const [linuxXauthPathDraft, setLinuxXauthPathDraft] = useState(linuxXauthPath);
   const [linuxXauthPathInvalid, setLinuxXauthPathInvalid] = useState(false);
+  /** 历史命令只使用当前设备 localStorage，不进入同步文档。 */
+  const [terminalHistoryEnabled, setTerminalHistoryEnabledState] = useState(readTerminalCommandHistoryEnabled);
+  const [terminalHistoryCount, setTerminalHistoryCount] = useState(() => readTerminalCommandHistory().length);
+  const [terminalHistoryDeletePending, setTerminalHistoryDeletePending] = useState(false);
+  useEffect(() => {
+    const syncTerminalHistoryState = () => {
+      const commands = readTerminalCommandHistory();
+      setTerminalHistoryEnabledState(readTerminalCommandHistoryEnabled());
+      setTerminalHistoryCount(commands.length);
+      if (commands.length === 0) setTerminalHistoryDeletePending(false);
+    };
+    window.addEventListener(TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, syncTerminalHistoryState);
+    return () => window.removeEventListener(TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, syncTerminalHistoryState);
+  }, []);
+
   /** 开关指针激活造成输入框失焦时，阻止草稿提交到默认通信参数。 */
   const suppressBaudBlurCommitRef = useRef(false);
 
@@ -770,6 +822,23 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
 
   /** 显示关于页。 */
   const showAboutSettings = () => setActiveCategory("about");
+
+  /** 更新仅保存在当前设备的历史命令开关。 */
+  const handleTerminalHistoryEnabledChange = (enabled: boolean) => {
+    if (!setTerminalCommandHistoryEnabled(enabled)) {
+      notify({ kind: "error", message: copy.historySettingsFailed });
+    }
+  };
+
+  /** 删除确认后清空当前设备全部历史命令。 */
+  const handleDeleteTerminalHistory = () => {
+    if (!clearTerminalCommandHistory()) {
+      notify({ kind: "error", message: copy.historyDeleteFailed });
+      return;
+    }
+    setTerminalHistoryDeletePending(false);
+    notify({ kind: "success", message: copy.historyDeleted });
+  };
 
   /** 返回当前语言下的主导航项目名称。 */
   const navigationItemLabel = (id: NavigationItemId) => id === "serial" ? copy.serial : copy.ssh;
@@ -1363,74 +1432,113 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
               </section>
             </>
           ) : activeCategory === "ssh" ? (
-            <section className="settings-section" aria-labelledby="settings-ssh-group-title">
-              <h1 className="settings-section-title" id="settings-ssh-group-title">{copy.sshGroupTitle}</h1>
-              <div className="settings-list">
-                <div className="settings-row">
-                  <span className="settings-row-label settings-x11-address-label">
-                    {copy.x11ServerAddress}
-                    <span className="settings-x11-platform-note">Windows</span>
-                  </span>
-                  <div className="settings-row-control">
-                    <Input
-                      aria-label={copy.x11ServerAddress}
-                      aria-invalid={x11ServerAddressInvalid}
-                      className="settings-input settings-address-input"
-                      maxLength={MAX_X11_SERVER_ADDRESS_LENGTH}
-                      placeholder="127.0.0.1:6000"
-                      value={x11ServerAddressDraft}
-                      onChange={handleX11ServerAddressChange}
-                      onBlur={handleX11ServerAddressBlur}
+            <>
+              <section className="settings-section" aria-labelledby="settings-ssh-group-title">
+                <h1 className="settings-section-title" id="settings-ssh-group-title">{copy.sshGroupTitle}</h1>
+                <div className="settings-list">
+                  <div className="settings-row">
+                    <span className="settings-row-label settings-x11-address-label">
+                      {copy.x11ServerAddress}
+                      <span className="settings-x11-platform-note">Windows</span>
+                    </span>
+                    <div className="settings-row-control">
+                      <Input
+                        aria-label={copy.x11ServerAddress}
+                        aria-invalid={x11ServerAddressInvalid}
+                        className="settings-input settings-address-input"
+                        maxLength={MAX_X11_SERVER_ADDRESS_LENGTH}
+                        placeholder="127.0.0.1:6000"
+                        value={x11ServerAddressDraft}
+                        onChange={handleX11ServerAddressChange}
+                        onBlur={handleX11ServerAddressBlur}
+                      />
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label settings-x11-address-label">
+                      {copy.xauthPath}
+                      <span className="settings-x11-platform-note">Linux</span>
+                    </span>
+                    <div className="settings-row-control">
+                      <Input
+                        aria-label={`${copy.xauthPath} Linux`}
+                        aria-invalid={linuxXauthPathInvalid}
+                        className="settings-input settings-address-input"
+                        maxLength={MAX_XAUTH_PATH_LENGTH}
+                        placeholder="/usr/bin/xauth"
+                        value={linuxXauthPathDraft}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setLinuxXauthPathDraft(value);
+                          if (linuxXauthPathInvalid && isValidXauthPath(value)) setLinuxXauthPathInvalid(false);
+                        }}
+                        onBlur={() => commitXauthPath(linuxXauthPathDraft, linuxXauthPath, setLinuxXauthPathDraft, setLinuxXauthPathInvalid, onLinuxXauthPathChange)}
+                      />
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label">X11 Server 下载</span>
+                    <div className="settings-x11-server-links">
+                      <a
+                        className="settings-x11-server-link"
+                        href={VCXSRV_PROJECT_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(event) => handleX11ServerLinkClick(event, "vcxsrv", VCXSRV_PROJECT_URL)}
+                      >
+                        Windows
+                      </a>
+                      <a
+                        className="settings-x11-server-link"
+                        href={XQUARTZ_PROJECT_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(event) => handleX11ServerLinkClick(event, "xquartz", XQUARTZ_PROJECT_URL)}
+                      >
+                        Mac
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <section className="settings-section" aria-labelledby="settings-terminal-history-group-title">
+                <h1 className="settings-section-title" id="settings-terminal-history-group-title">{copy.historyGroupTitle}</h1>
+                <div className="settings-list">
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.historyEnabled}</span>
+                    <Switch
+                      checked={terminalHistoryEnabled}
+                      onCheckedChange={handleTerminalHistoryEnabledChange}
+                      ariaLabel={copy.historyEnabled}
                     />
                   </div>
-                </div>
-                <div className="settings-row">
-                  <span className="settings-row-label settings-x11-address-label">
-                    {copy.xauthPath}
-                    <span className="settings-x11-platform-note">Linux</span>
-                  </span>
-                  <div className="settings-row-control">
-                    <Input
-                      aria-label={`${copy.xauthPath} Linux`}
-                      aria-invalid={linuxXauthPathInvalid}
-                      className="settings-input settings-address-input"
-                      maxLength={MAX_XAUTH_PATH_LENGTH}
-                      placeholder="/usr/bin/xauth"
-                      value={linuxXauthPathDraft}
-                      onChange={(event) => {
-                        const value = event.currentTarget.value;
-                        setLinuxXauthPathDraft(value);
-                        if (linuxXauthPathInvalid && isValidXauthPath(value)) setLinuxXauthPathInvalid(false);
-                      }}
-                      onBlur={() => commitXauthPath(linuxXauthPathDraft, linuxXauthPath, setLinuxXauthPathDraft, setLinuxXauthPathInvalid, onLinuxXauthPathChange)}
-                    />
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.historyDelete}</span>
+                    <div className="settings-history-actions">
+                      {terminalHistoryDeletePending ? (
+                        <>
+                          <Button type="button" variant="secondary" onClick={() => setTerminalHistoryDeletePending(false)}>
+                            {copy.cancelDeleteHistory}
+                          </Button>
+                          <Button type="button" variant="danger" onClick={handleDeleteTerminalHistory}>
+                            {copy.confirmDeleteHistory}
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={terminalHistoryCount === 0}
+                          onClick={() => setTerminalHistoryDeletePending(true)}
+                        >
+                          {copy.deleteHistory}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="settings-row">
-                  <span className="settings-row-label">X11 Server 下载</span>
-                  <div className="settings-x11-server-links">
-                    <a
-                      className="settings-x11-server-link"
-                      href={VCXSRV_PROJECT_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(event) => handleX11ServerLinkClick(event, "vcxsrv", VCXSRV_PROJECT_URL)}
-                    >
-                      Windows
-                    </a>
-                    <a
-                      className="settings-x11-server-link"
-                      href={XQUARTZ_PROJECT_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(event) => handleX11ServerLinkClick(event, "xquartz", XQUARTZ_PROJECT_URL)}
-                    >
-                      Mac
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </section>
+              </section>
+            </>
           ) : activeCategory === "sync" ? (
             <>
             <section className="settings-section" aria-labelledby="settings-sync-group-title">

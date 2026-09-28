@@ -485,6 +485,29 @@
   display: none !important;
 }
 
+.terminal-history-anchor {
+  position: absolute;
+  z-index: 230;
+  height: 1px;
+  pointer-events: none;
+}
+
+.terminal-history-menu {
+  max-width: 100%;
+  font-family: var(--rivet-font-family);
+  pointer-events: auto;
+}
+
+.terminal-history-menu-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-history-menu-item.is-selected {
+  background: var(--r-surface-2);
+  color: var(--r-text);
+}
+
 .terminal-emulator > .terminal-emulator-scrollbar {
   top: 0;
   right: 0;
