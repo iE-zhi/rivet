@@ -80,6 +80,21 @@ const icoFields = {
   defaultPlanes: 1, // 新增帧的默认颜色平面数。
   defaultBitCount: 32, // 新增 PNG 帧的默认颜色位深。
 };
+/** Tauri 可从该 1024px 母版重采样生成 ICNS 小尺寸帧。 */
+const macosMasterIconSize = 1024;
+/** ICNS 现代 PNG chunk 标识与规范边长的对应关系。 */
+const icnsPngFrameSizes = new Map([
+  ['ic07', 128], // 1x 128px 图标帧。
+  ['ic08', 256], // 1x 256px 图标帧。
+  ['ic09', 512], // 1x 512px 图标帧。
+  ['ic10', 1024], // 1x 1024px 图标帧。
+  ['ic11', 32], // 2x 16px 图标帧。
+  ['ic12', 64], // 2x 32px 图标帧。
+  ['ic13', 256], // 2x 128px 图标帧。
+  ['ic14', 512], // 2x 256px 图标帧。
+]);
+/** Tauri 同时生成的旧式 RGB 与 alpha mask chunk，规范化时原样保留。 */
+const icnsLegacyFrameTypes = new Set(['il32', 'is32', 'l8mk', 's8mk']);
 /** PNG 签名、IHDR 首块及其尺寸字段偏移均以字节计。 */
 const pngFields = {
   signatureLength: 8, // PNG 固定签名长度。
@@ -95,14 +110,14 @@ const pngFields = {
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 /**
- * 调用仓库锁定的 Tauri CLI 从指定 SVG 生成图标；CLI 非零退出时抛出错误。
- * @param {string} svgPath 传入图稿的绝对路径。
+ * 调用仓库锁定的 Tauri CLI 从指定 SVG 或 PNG 生成图标；CLI 非零退出时抛出错误。
+ * @param {string} inputPath 输入图稿的绝对路径。
  * @param {string} outputDirectory 生成文件的临时目录。
- * @param {number[]} [pngSizes] 仅生成指定 PNG 边长；省略时生成 Tauri 默认平台图标。
+ * @param {number[]} [pngSizes] 仅生成指定 PNG 边长（1 到 1024）；省略时生成 Tauri 默认平台图标。
  */
-function generateWithTauri(svgPath, outputDirectory, pngSizes) {
+function generateWithTauri(inputPath, outputDirectory, pngSizes) {
   // CLI 参数分开传递，避免路径或自定义尺寸被 shell 重新解释。
-  const args = ['icon', svgPath, '--output', outputDirectory];
+  const args = ['icon', inputPath, '--output', outputDirectory];
   if (pngSizes) {
     if (
       pngSizes.length === 0 ||
@@ -110,10 +125,10 @@ function generateWithTauri(svgPath, outputDirectory, pngSizes) {
         (size) =>
           !Number.isInteger(size) ||
           size < icoFields.minDimension ||
-          size > icoFields.maxDimension,
+          size > macosMasterIconSize,
       )
     ) {
-      throw new Error('自定义 PNG 边长必须是 1 到 256 之间的正整数。');
+      throw new Error(`自定义 PNG 边长必须是 1 到 ${macosMasterIconSize} 之间的正整数。`);
     }
     args.push('--png', pngSizes.join(','));
   }
@@ -161,10 +176,11 @@ function writeOpticalSvg(svgPath, outputPath) {
  * 校验 PNG 签名、IHDR 头及方形边长，返回已验证的图像帧数据。
  * @param {Buffer} png PNG 图像数据。
  * @param {number} [expectedSize] 期望边长；未提供时采用 PNG 自身尺寸。
- * @returns {{width: number, height: number, png: Buffer}} 已验证的方形 ICO 帧。
+ * @param {number} [maximumSize=256] 允许的最大边长；ICO 调用保留 256px 上限，ICNS 可用 1024px。
+ * @returns {{width: number, height: number, png: Buffer}} 已验证的方形 PNG 帧。
  * @throws {Error} PNG 损坏、不是方形或尺寸与预期不符时抛出错误。
  */
-function readPngFrame(png, expectedSize) {
+function readPngFrame(png, expectedSize, maximumSize = icoFields.maxDimension) {
   const minimumPngLength = pngFields.minimumFileLength;
   if (
     png.length < minimumPngLength ||
@@ -183,7 +199,7 @@ function readPngFrame(png, expectedSize) {
   const height = png.readUInt32BE(pngFields.ihdrDataOffset + pngFields.dimensionFieldLength);
   if (
     width < icoFields.minDimension ||
-    width > icoFields.maxDimension ||
+    width > maximumSize ||
     width !== height ||
     (expectedSize !== undefined && width !== expectedSize)
   ) {
@@ -356,9 +372,9 @@ function createWindowsOpticalIco(canonicalIcoPath, opticalPngDirectory, outputIc
 }
 
 /**
- * 按 ICNS chunk 类型排序 macOS 图标数据，消除 Tauri CLI 每次生成时的随机排列。
+ * 校验并按 ICNS chunk 类型排序 macOS 图标，保留旧式帧并消除 Tauri CLI 的随机排列。
  * @param {string} icnsPath 待规范化的 ICNS 文件路径，会原位覆盖。
- * @throws {Error} ICNS 头、chunk 边界或 chunk 类型无效或重复时抛出错误。
+ * @throws {Error} ICNS 头、chunk 类型/长度、PNG 帧尺寸或必需帧缺失时抛出错误。
  */
 function normalizeIcns(icnsPath) {
   const icnsData = readFileSync(icnsPath);
@@ -373,6 +389,9 @@ function normalizeIcns(icnsPath) {
 
   const chunks = [];
   const chunkTypes = new Set();
+  // 分别跟踪现代 PNG 帧与旧式兼容帧，以拒绝缺帧或不支持的 chunk。
+  const pngFrameTypes = new Set();
+  const legacyFrameTypes = new Set();
   let offset = headerLength;
   while (offset < icnsData.length) {
     const chunkHeaderLength = 8; // 每个 chunk 由 4 字节类型和 4 字节长度组成。
@@ -389,12 +408,38 @@ function normalizeIcns(icnsPath) {
     ) {
       throw new Error(`ICNS chunk 格式无效或重复：${chunkType}`);
     }
+    const chunkBody = icnsData.subarray(offset + chunkHeaderLength, offset + chunkLength);
+    if (icnsPngFrameSizes.has(chunkType)) {
+      // PNG 帧的 chunk 类型必须与 IHDR 中的宽高一致。
+      readPngFrame(
+        chunkBody,
+        icnsPngFrameSizes.get(chunkType),
+        macosMasterIconSize,
+      );
+      pngFrameTypes.add(chunkType);
+    } else if (icnsLegacyFrameTypes.has(chunkType) && chunkBody.length > 0) {
+      legacyFrameTypes.add(chunkType);
+    } else {
+      throw new Error(`ICNS chunk 类型未知或 legacy 数据为空：${chunkType}`);
+    }
     chunkTypes.add(chunkType);
     chunks.push({
       type: chunkType,
       data: icnsData.subarray(offset, offset + chunkLength),
     });
     offset += chunkLength;
+  }
+
+  const missingPngFrameTypes = [...icnsPngFrameSizes.keys()].filter(
+    (chunkType) => !pngFrameTypes.has(chunkType),
+  );
+  const missingLegacyFrameTypes = [...icnsLegacyFrameTypes].filter(
+    (chunkType) => !legacyFrameTypes.has(chunkType),
+  );
+  if (missingPngFrameTypes.length > 0 || missingLegacyFrameTypes.length > 0) {
+    throw new Error(
+      `ICNS 缺少图标帧：${[...missingPngFrameTypes, ...missingLegacyFrameTypes].join(', ')}`,
+    );
   }
 
   // 稳定按 ASCII chunk 类型排序；ICNS 读取器按类型识别图像，与排列顺序无关。
@@ -438,7 +483,7 @@ function replaceIcons(copyPlan) {
 }
 
 /**
- * 生成并校验平台图标后事务式替换文件；Windows 小图标采用光学放大帧。
+ * 生成并校验平台图标后事务式替换文件；macOS ICNS 从 1024px PNG 重采样，Windows ICO 使用光学帧。
  * @param {boolean} [windowsOnly=false] 为 true 时只替换 Windows 使用的 PNG 和 ICO 文件。
  * @throws {Error} 源文件、生成文件或目标文件缺失，或 Tauri CLI 失败时抛出错误。
  */
@@ -449,9 +494,21 @@ function generateIcons(windowsOnly = false) {
     const opticalDirectory = join(temporaryDirectory, 'optical-png');
     const opticalSvgPath = join(temporaryDirectory, 'app-icon-optical.svg');
     const opticalIcoPath = join(temporaryDirectory, 'icon-optical.ico');
+    /** Tauri 以 1024px SVG 渲染得到的临时母版目录。 */
+    const macosMasterDirectory = join(temporaryDirectory, 'macos-master');
+    /** Tauri 从母版派生 ICNS 的临时输出目录。 */
+    const macosDerivedDirectory = join(temporaryDirectory, 'macos-derived');
+    /** 由唯一 SVG 渲染得到的 1024px PNG 母版路径。 */
+    const macosMasterPngPath = join(
+      macosMasterDirectory,
+      `${macosMasterIconSize}x${macosMasterIconSize}.png`,
+    );
     generateWithTauri(sourceSvgPath, outputDirectory);
     if (!windowsOnly) {
-      normalizeIcns(join(outputDirectory, 'icon.icns'));
+      // 先从同一 SVG 栅格化 1024px 母版，再由 Tauri CLI 统一缩小 ICNS 各帧。
+      generateWithTauri(sourceSvgPath, macosMasterDirectory, [macosMasterIconSize]);
+      generateWithTauri(macosMasterPngPath, macosDerivedDirectory);
+      normalizeIcns(join(macosDerivedDirectory, 'icon.icns'));
     }
     writeOpticalSvg(sourceSvgPath, opticalSvgPath);
     generateWithTauri(opticalSvgPath, opticalDirectory, windowsOpticalIconSizes);
@@ -460,7 +517,12 @@ function generateIcons(windowsOnly = false) {
     // 先验证全部源产物和目标文件，再复制，避免生成失败时留下半套图标。
     const outputNames = windowsOnly ? windowsIconNames : desktopIconNames;
     const copyPlan = outputNames.map((fileName) => ({
-      sourcePath: fileName === 'icon.ico' ? opticalIcoPath : join(outputDirectory, fileName),
+      sourcePath:
+        fileName === 'icon.ico'
+          ? opticalIcoPath
+          : fileName === 'icon.icns'
+            ? join(macosDerivedDirectory, fileName)
+            : join(outputDirectory, fileName),
       targetPath: join(iconDirectory, fileName),
     }));
     for (const { sourcePath, targetPath } of copyPlan) {
