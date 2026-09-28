@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Button, Input, SvgIcon, Textarea, VerticalScrollbar, useNotification } from "../components/ui";
+import { Button, Input, PopupMenu, PopupMenuItem, SvgIcon, Textarea, VerticalScrollbar, useNotification } from "../components/ui";
 import { persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT } from "../rivetSync";
 import type { Locale } from "./SerialPage";
 import {
@@ -609,20 +609,17 @@ export default function TerminalQuickCommandPanel({
                   >
                     <SvgIcon name="more" size={16} />
                   </button>
-                  {menuKey === `group:${group}` && (
-                    <div className="terminal-connection-menu">
-                      <button
-                        type="button"
-                        className="danger"
-                        onClick={() => {
-                          setMenuKey(null);
-                          setDeleteTarget({ kind: "group", group });
-                        }}
-                      >
-                        {copy.deleteGroup}
-                      </button>
-                    </div>
-                  )}
+                  <PopupMenu open={menuKey === `group:${group}`} width={96} ariaLabel={copy.deleteGroup}>
+                    <PopupMenuItem
+                      danger
+                      onClick={() => {
+                        setMenuKey(null);
+                        setDeleteTarget({ kind: "group", group });
+                      }}
+                    >
+                      {copy.deleteGroup}
+                    </PopupMenuItem>
+                  </PopupMenu>
                 </div>
               </div>
 
@@ -689,32 +686,32 @@ export default function TerminalQuickCommandPanel({
                         >
                           <SvgIcon name="more" size={16} />
                         </button>
-                        {menuKey === `command:${command.id}` && (
-                          <div className="terminal-connection-menu">
-                            <button type="button" onClick={() => openEdit(command)}>
-                              {copy.editAction}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!command.description.trim()}
-                              onClick={() => toggleCommandDetail(command)}
-                            >
-                              {expandedDetailIds.has(command.id)
-                                ? copy.closeDetailAction
-                                : copy.detailAction}
-                            </button>
-                            <button
-                              type="button"
-                              className="danger"
-                              onClick={() => {
-                                setMenuKey(null);
-                                setDeleteTarget({ kind: "command", id: command.id });
-                              }}
-                            >
-                              {copy.delete}
-                            </button>
-                          </div>
-                        )}
+                        <PopupMenu
+                          open={menuKey === `command:${command.id}`}
+                          width={96}
+                          ariaLabel={locale === "zh" ? "更多操作" : "More actions"}
+                        >
+                          <PopupMenuItem onClick={() => openEdit(command)}>
+                            {copy.editAction}
+                          </PopupMenuItem>
+                          <PopupMenuItem
+                            disabled={!command.description.trim()}
+                            onClick={() => toggleCommandDetail(command)}
+                          >
+                            {expandedDetailIds.has(command.id)
+                              ? copy.closeDetailAction
+                              : copy.detailAction}
+                          </PopupMenuItem>
+                          <PopupMenuItem
+                            danger
+                            onClick={() => {
+                              setMenuKey(null);
+                              setDeleteTarget({ kind: "command", id: command.id });
+                            }}
+                          >
+                            {copy.delete}
+                          </PopupMenuItem>
+                        </PopupMenu>
                       </div>
                     </div>
 

@@ -273,42 +273,14 @@
   height: 26px;
 }
 
-.sftp-row-menu {
-  position: absolute;
-  z-index: 110;
-  top: 28px;
+.sftp-row-popup-menu {
   right: 5px;
-  min-width: 104px;
-  padding: 4px;
-  border: 1px solid var(--r-border);
-  border-radius: 7px;
-  background: var(--r-surface);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .15);
 }
 
-.sftp-row-menu button {
+.sftp-row-popup-menu .rivet-popup-menu-item {
   display: flex;
-  width: 100%;
-  height: 30px;
   align-items: center;
   gap: 7px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--r-text);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--r-font-size-base);
-  text-align: left;
-}
-
-.sftp-row-menu button:hover {
-  background: var(--r-surface-2);
-}
-
-.sftp-row-menu button.danger {
-  color: var(--r-danger);
 }
 
 .sftp-inline-action {
@@ -405,7 +377,6 @@
 
 .app-shell[data-theme="light"] .sftp-header,
 .app-shell[data-theme="light"] .sftp-transfer,
-.app-shell[data-theme="light"] .sftp-row-menu,
 .app-shell[data-theme="light"] .sftp-inline-action,
 .app-shell[data-theme="light"] .sftp-drop-card {
   background: var(--r-bg);

@@ -6,6 +6,8 @@ import {
   HorizontalScrollbar,
   Input,
   NotificationProvider,
+  PopupMenu,
+  PopupMenuItem,
   Radio,
   SearchInput,
   Select,
@@ -106,6 +108,19 @@ function ComponentPreview({ id, dark }: { id: string; dark: boolean }) {
             />
           </Row>
         </>
+      );
+    case "popup-menu":
+      return (
+        <Row label="Open" open>
+          <div className="preview-popup-menu-anchor">
+            <Button variant="secondary">更多</Button>
+            <PopupMenu open minWidth={104} ariaLabel="更多操作">
+              <PopupMenuItem>编辑</PopupMenuItem>
+              <PopupMenuItem disabled>详情</PopupMenuItem>
+              <PopupMenuItem danger>删除</PopupMenuItem>
+            </PopupMenu>
+          </div>
+        </Row>
       );
     case "checkbox":
       return (

@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
-import { Button, Checkbox, HorizontalScrollbar, Input, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
+import { Button, Checkbox, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
 import {
   deserializeRecentConnectionIds,
   deserializeTerminalConnections,
@@ -2401,13 +2401,11 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
                       >
                         <SvgIcon name="more" size={16} />
                       </button>
-                      {groupMenuId === group && (
-                        <div className="terminal-connection-menu">
-                          <button type="button" className="danger" onClick={() => requestDeleteGroup(group)}>
-                            {copy.deleteGroup}
-                          </button>
-                        </div>
-                      )}
+                      <PopupMenu open={groupMenuId === group} width={96} ariaLabel={copy.deleteGroup}>
+                        <PopupMenuItem danger onClick={() => requestDeleteGroup(group)}>
+                          {copy.deleteGroup}
+                        </PopupMenuItem>
+                      </PopupMenu>
                     </div>
                   </div>
 
@@ -2463,12 +2461,14 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
                             >
                               <SvgIcon name="more" size={16} />
                             </button>
-                            {menuId === connection.id && (
-                              <div className="terminal-connection-menu">
-                                <button type="button" onClick={() => void openEditForm(connection)}>{copy.edit}</button>
-                                <button type="button" className="danger" onClick={() => requestDeleteConnection(connection.id)}>{copy.delete}</button>
-                              </div>
-                            )}
+                            <PopupMenu
+                              open={menuId === connection.id}
+                              width={96}
+                              ariaLabel={locale === "zh" ? "更多操作" : "More actions"}
+                            >
+                              <PopupMenuItem onClick={() => void openEditForm(connection)}>{copy.edit}</PopupMenuItem>
+                              <PopupMenuItem danger onClick={() => requestDeleteConnection(connection.id)}>{copy.delete}</PopupMenuItem>
+                            </PopupMenu>
                           </div>
                         </div>
 

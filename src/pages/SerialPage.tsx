@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Button, Checkbox, Input, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, useNotification, type TerminalLine } from "../components/ui";
+import { Button, Checkbox, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, useNotification, type TerminalLine } from "../components/ui";
 import { persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT } from "../rivetSync";
 import { buildSerialBytes, type HexInputError } from "./serialBytes";
 import { appendSerialLogEntry, appendSerialRxBurst, createSerialLogBuffer, flattenSerialRxBurst, getSerialLogLines, isSerialRxBurstIdle, serializeSerialLogLines, splitSerialRxBytes, type SerialLogEntry, type SerialRxBurst } from "./serialLog";
@@ -1164,13 +1164,11 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
                         >
                           <SvgIcon name="more" size={17} />
                         </button>
-                        {quickMenuKey === groupMenuKey && (
-                          <div className="quick-command-menu">
-                            <button type="button" className="quick-command-menu-item is-danger" onClick={() => requestDeleteQuickGroup(group.id)}>
-                              {quickCopy.deleteGroup}
-                            </button>
-                          </div>
-                        )}
+                        <PopupMenu open={quickMenuKey === groupMenuKey} minWidth={104} ariaLabel={quickCopy.moreActions}>
+                          <PopupMenuItem danger onClick={() => requestDeleteQuickGroup(group.id)}>
+                            {quickCopy.deleteGroup}
+                          </PopupMenuItem>
+                        </PopupMenu>
                       </div>
                     </div>
 
@@ -1219,16 +1217,14 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
                                   >
                                     <SvgIcon name="more" size={17} />
                                   </button>
-                                  {quickMenuKey === commandMenuKey && (
-                                    <div className="quick-command-menu">
-                                      <button type="button" className="quick-command-menu-item" onClick={() => editQuickCommand(group.id, command.id)}>
-                                        {quickCopy.edit}
-                                      </button>
-                                      <button type="button" className="quick-command-menu-item is-danger" onClick={() => requestDeleteQuickCommand(group.id, command.id)}>
-                                        {quickCopy.delete}
-                                      </button>
-                                    </div>
-                                  )}
+                                  <PopupMenu open={quickMenuKey === commandMenuKey} minWidth={104} ariaLabel={quickCopy.moreActions}>
+                                    <PopupMenuItem onClick={() => editQuickCommand(group.id, command.id)}>
+                                      {quickCopy.edit}
+                                    </PopupMenuItem>
+                                    <PopupMenuItem danger onClick={() => requestDeleteQuickCommand(group.id, command.id)}>
+                                      {quickCopy.delete}
+                                    </PopupMenuItem>
+                                  </PopupMenu>
                                 </div>
                               </div>
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { Input, SvgIcon, VerticalScrollbar, useNotification } from "../components/ui";
+import { Input, PopupMenu, PopupMenuItem, SvgIcon, VerticalScrollbar, useNotification } from "../components/ui";
 import type { Locale } from "./SerialPage";
 import "./sftpPanel.css";
 
@@ -639,36 +639,37 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
                       >
                         <SvgIcon name="more" size={15} />
                       </button>
-                      {menuPath === entry.path && (
-                        <div className="sftp-row-menu">
-                          {entry.kind !== "directory" && (
-                            <button type="button" onClick={() => void downloadFile(entry)}>
-                              <SvgIcon name="download" size={13} />
-                              {copy.download}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuPath(null);
-                              setRenamePath(entry.path);
-                              setRenameName(entry.name);
-                            }}
-                          >
-                            {copy.rename}
-                          </button>
-                          <button
-                            type="button"
-                            className="danger"
-                            onClick={() => {
-                              setMenuPath(null);
-                              setDeletePath(entry.path);
-                            }}
-                          >
-                            {copy.delete}
-                          </button>
-                        </div>
-                      )}
+                      <PopupMenu
+                        open={menuPath === entry.path}
+                        minWidth={104}
+                        ariaLabel={locale === "zh" ? "文件操作" : "File actions"}
+                        className="sftp-row-popup-menu"
+                      >
+                        {entry.kind !== "directory" && (
+                          <PopupMenuItem onClick={() => void downloadFile(entry)}>
+                            <SvgIcon name="download" size={13} />
+                            {copy.download}
+                          </PopupMenuItem>
+                        )}
+                        <PopupMenuItem
+                          onClick={() => {
+                            setMenuPath(null);
+                            setRenamePath(entry.path);
+                            setRenameName(entry.name);
+                          }}
+                        >
+                          {copy.rename}
+                        </PopupMenuItem>
+                        <PopupMenuItem
+                          danger
+                          onClick={() => {
+                            setMenuPath(null);
+                            setDeletePath(entry.path);
+                          }}
+                        >
+                          {copy.delete}
+                        </PopupMenuItem>
+                      </PopupMenu>
                     </div>
                   </div>
 

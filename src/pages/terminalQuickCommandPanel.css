@@ -174,16 +174,6 @@
   cursor: default;
 }
 
-.terminal-command-more-wrap .terminal-connection-menu button:disabled {
-  color: var(--r-muted);
-  opacity: .45;
-  cursor: default;
-}
-
-.terminal-command-more-wrap .terminal-connection-menu button:disabled:hover {
-  background: transparent;
-}
-
 .app-shell[data-theme="light"] .terminal-command-panel {
   background: var(--r-bg);
 }

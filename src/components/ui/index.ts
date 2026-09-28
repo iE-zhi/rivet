@@ -3,6 +3,7 @@ export * from "./Input";
 export * from "./SearchInput";
 export * from "./Textarea";
 export * from "./Select";
+export * from "./PopupMenu";
 export * from "./SvgIcon";
 export * from "./Checkbox";
 export * from "./Radio";

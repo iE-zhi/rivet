@@ -46,7 +46,6 @@
 .terminal-icon-button,
 .terminal-group-header,
 .terminal-connection-main,
-.terminal-connection-menu button,
 .terminal-delete-actions button,
 .terminal-picker-item,
 .terminal-toolbar-button {
@@ -700,34 +699,6 @@
   flex: 0 0 auto;
 }
 
-.terminal-connection-menu {
-  position: absolute;
-  z-index: 210;
-  top: 30px;
-  right: 0;
-  width: 96px;
-  overflow: hidden;
-  border: 1px solid var(--r-border);
-  border-radius: 7px;
-  background: var(--r-surface);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .15);
-}
-
-.terminal-connection-menu button {
-  width: 100%;
-  height: 30px;
-  padding: 0 10px;
-  border: 0;
-  background: transparent;
-  color: var(--r-text);
-  cursor: pointer;
-  font-size: var(--r-font-size-base);
-  text-align: left;
-}
-
-.terminal-connection-menu button:hover { background: var(--r-surface-2); }
-.terminal-connection-menu button.danger { color: var(--r-danger); }
-
 .terminal-delete-confirm {
   display: flex;
   min-height: 38px;
@@ -895,7 +866,6 @@
 .app-shell[data-theme="light"] .terminal-picker-scroll,
 .app-shell[data-theme="light"] .terminal-close-confirm-dialog,
 .app-shell[data-theme="light"] .terminal-connection-panel,
-.app-shell[data-theme="light"] .terminal-connection-menu,
 .app-shell[data-theme="light"] .terminal-connection-panel .rivet-select-menu {
   background: var(--r-bg);
 }
