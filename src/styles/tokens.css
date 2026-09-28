@@ -13,6 +13,8 @@
 
   --r-primary: #2563EB;
   --r-primary-light: #3B82F6;
+  --r-primary-hover: color-mix(in srgb, var(--r-primary) 80%, #000);
+  --r-primary-light-hover: color-mix(in srgb, var(--r-primary-light) 80%, #000);
   --r-primary-deep: #1D4ED8;
   --r-accent: #22C5C7;
   --r-secondary: #8B5CF6;

@@ -322,6 +322,12 @@
   color: #fff;
 }
 
+.sftp-inline-action button.primary:hover:not(:disabled) {
+  border-color: var(--r-primary-hover);
+  background: var(--r-primary-hover);
+  color: #fff;
+}
+
 .sftp-inline-action button.danger {
   border-color: var(--r-danger);
   background: var(--r-danger);
