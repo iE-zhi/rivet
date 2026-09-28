@@ -1,5 +1,5 @@
 pkgname=rivet
-pkgver=0.1.8
+pkgver=0.1.9
 pkgrel=1
 pkgdesc="Cross-platform toolbox for development, debugging, serial, SSH and device connectivity"
 arch=('x86_64')

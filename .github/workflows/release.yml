@@ -75,7 +75,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: Rivet v__VERSION__
           releaseBody: |
-            ## v0.1.8 更新内容
+            ## v0.1.9 更新内容
 
             - 统一快捷命令、SFTP、终端连接等浮层的淡入淡出动画，交互节奏更一致。
             - 修复终端光标闪烁被全局动画兼容规则抑制的问题，恢复正常光标闪烁。
