@@ -501,6 +501,7 @@
 .terminal-history-menu-item {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: pre;
 }
 
 .terminal-history-menu-item.is-selected {

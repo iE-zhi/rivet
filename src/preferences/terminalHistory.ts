@@ -13,6 +13,57 @@ function normalizeTerminalCommand(command: string): string | null {
   return normalized.length > 0 && normalized.length <= MAX_TERMINAL_COMMAND_LENGTH ? normalized : null;
 }
 
+/** 生成历史检索键：仅压缩参数分隔空白，引号中的内容保持不变。 */
+export function terminalCommandHistoryIndex(command: string): string {
+  let result = "";
+  let quote: "'" | '"' | null = null;
+  let pendingWhitespace = false;
+
+  const appendPendingWhitespace = () => {
+    if (pendingWhitespace && result.length > 0) result += " ";
+    pendingWhitespace = false;
+  };
+
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+
+    if (quote !== null) {
+      result += character;
+      if (
+        quote === '"' &&
+        (character === "\\" || character === "`") &&
+        index + 1 < command.length
+      ) {
+        index += 1;
+        result += command[index];
+        continue;
+      }
+      if (character === quote) quote = null;
+      continue;
+    }
+
+    if (character === " " || character === "\t") {
+      pendingWhitespace = true;
+      continue;
+    }
+
+    appendPendingWhitespace();
+    result += character;
+
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+
+    if ((character === "\\" || character === "`") && index + 1 < command.length) {
+      index += 1;
+      result += command[index];
+    }
+  }
+
+  return result;
+}
+
 /** 从未知值恢复按最近优先排列且去重的历史命令。 */
 function sanitizeTerminalCommandHistory(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -105,7 +156,7 @@ export function deleteTerminalCommandHistory(command: string): boolean {
   }
 }
 
-/** 将刚提交的命令移到历史首位，保持精确去重并最多保存 500 条。 */
+/** 将刚提交的命令移到历史首位，仅对完全一致的命令去重并最多保存 500 条。 */
 export function recordTerminalCommand(command: string): boolean {
   if (!readTerminalCommandHistoryEnabled()) return false;
   const normalized = normalizeTerminalCommand(command);
@@ -131,9 +182,12 @@ export function findTerminalCommandHistoryMatches(
   limit = 8,
 ): string[] {
   if (query.length === 0 || limit <= 0) return [];
+  const queryIndex = terminalCommandHistoryIndex(query);
+  if (queryIndex.length === 0) return [];
+
   const matches: string[] = [];
   for (const command of history) {
-    if (command.includes(query)) {
+    if (terminalCommandHistoryIndex(command).includes(queryIndex)) {
       matches.push(command);
       if (matches.length >= limit) break;
     }

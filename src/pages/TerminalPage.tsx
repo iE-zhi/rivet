@@ -10,7 +10,7 @@ import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
 import { Button, Checkbox, GroupManager, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
-import { TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, deleteTerminalCommandHistory, findTerminalCommandHistoryMatches, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, recordTerminalCommand } from "../preferences/terminalHistory";
+import { TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, deleteTerminalCommandHistory, findTerminalCommandHistoryMatches, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, recordTerminalCommand, terminalCommandHistoryIndex } from "../preferences/terminalHistory";
 import {
   deserializeRecentConnectionIds,
   deserializeTerminalConnections,
@@ -593,6 +593,7 @@ function useTerminalCommandHistoryInput(
   const inputRef = useRef<string[]>([]);
   const cursorRef = useRef(0);
   const trackingReliableRef = useRef(true);
+  const shellLineResyncPendingRef = useRef(false);
   const inputStartRef = useRef<TerminalCommandInputStart | null>(null);
   const suppressCandidateEnterRef = useRef(false);
   const integrationInstalledRef = useRef<TerminalShellKind | null>(null);
@@ -623,9 +624,25 @@ function useTerminalCommandHistoryInput(
     inputRef.current = [];
     cursorRef.current = 0;
     trackingReliableRef.current = true;
+    shellLineResyncPendingRef.current = false;
     inputStartRef.current = null;
     hideMenu();
   }, [hideMenu]);
+
+  /** Shell 原生编辑改过当前行后，从 xterm 缓冲区恢复历史候选的输入状态。 */
+  const resyncInputTrackingFromTerminal = useCallback((): boolean => {
+    const terminal = terminalRef.current;
+    if (!terminal || !promptActiveRef.current) return false;
+
+    const command = readTerminalCommandFromBuffer(terminal, inputStartRef.current);
+    if (command === null) return false;
+
+    inputRef.current = Array.from(command);
+    cursorRef.current = inputRef.current.length;
+    trackingReliableRef.current = true;
+    shellLineResyncPendingRef.current = false;
+    return true;
+  }, [terminalRef]);
 
   const refreshMenuLayout = useCallback(() => {
     const current = menuRef.current;
@@ -666,14 +683,27 @@ function useTerminalCommandHistoryInput(
     if (!promptActiveRef.current) return;
     const candidate = menuRef.current.commands[index];
     const query = inputRef.current.join("");
-    if (!candidate || !candidate.includes(query)) return;
+    if (!candidate || !terminalCommandHistoryIndex(candidate).includes(terminalCommandHistoryIndex(query))) return;
 
     if (candidate.startsWith(query)) {
       const suffix = candidate.slice(query.length);
       if (suffix.length > 0) sendInputRef.current(suffix);
     } else {
-      sendInputRef.current("\x15");
-      sendInputRef.current(candidate);
+      const queryCharacters = Array.from(query);
+      const candidateCharacters = Array.from(candidate);
+      let commonPrefixLength = 0;
+      while (
+        commonPrefixLength < queryCharacters.length
+        && commonPrefixLength < candidateCharacters.length
+        && queryCharacters[commonPrefixLength] === candidateCharacters[commonPrefixLength]
+      ) {
+        commonPrefixLength += 1;
+      }
+
+      const deleteCount = queryCharacters.length - commonPrefixLength;
+      const suffix = candidateCharacters.slice(commonPrefixLength).join("");
+      const replacementInput = "\x7f".repeat(deleteCount) + suffix;
+      if (replacementInput.length > 0) sendInputRef.current(replacementInput);
     }
 
     inputRef.current = Array.from(candidate);
@@ -797,6 +827,10 @@ function useTerminalCommandHistoryInput(
     if (event.type !== "keydown") return true;
     if (!enabledRef.current || !promptActiveRef.current) return true;
 
+    if (shellLineResyncPendingRef.current && event.key !== "Tab") {
+      resyncInputTrackingFromTerminal();
+    }
+
     const count = menuRef.current.commands.length;
     if (count > 0) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -810,14 +844,20 @@ function useTerminalCommandHistoryInput(
         return false;
       }
       if (event.key === "Enter") {
-        event.preventDefault();
-        event.stopPropagation();
-        suppressCandidateEnterRef.current = true;
-        window.setTimeout(() => {
-          suppressCandidateEnterRef.current = false;
-        }, 0);
-        acceptCandidate(menuRef.current.selectedIndex);
-        return false;
+        const selectedCandidate = menuRef.current.commands[menuRef.current.selectedIndex];
+        const query = inputRef.current.join("");
+        if (selectedCandidate === query) {
+          hideMenu();
+        } else {
+          event.preventDefault();
+          event.stopPropagation();
+          suppressCandidateEnterRef.current = true;
+          window.setTimeout(() => {
+            suppressCandidateEnterRef.current = false;
+          }, 0);
+          acceptCandidate(menuRef.current.selectedIndex);
+          return false;
+        }
       }
       if (event.key === "Delete" || event.code === "Delete") {
         event.preventDefault();
@@ -892,8 +932,15 @@ function useTerminalCommandHistoryInput(
       refreshSuggestions();
       return true;
     }
-    if (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "Tab") {
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       trackingReliableRef.current = false;
+      shellLineResyncPendingRef.current = true;
+      hideMenu();
+      return true;
+    }
+    if (event.key === "Tab") {
+      trackingReliableRef.current = false;
+      shellLineResyncPendingRef.current = true;
       hideMenu();
       return true;
     }
@@ -945,11 +992,14 @@ function useTerminalCommandHistoryInput(
       refreshSuggestions();
     }
     return true;
-  }, [acceptCandidate, hideMenu, refreshSuggestions, resetInputTracking, updateMenu]);
+  }, [acceptCandidate, hideMenu, refreshSuggestions, resetInputTracking, resyncInputTrackingFromTerminal, updateMenu]);
 
   /** 仅处理不会稳定经过 keydown 的粘贴和输入法文本；命令是否执行由 shell 标记决定。 */
   const handleInput = useCallback((data: string) => {
     if (!enabledRef.current || !promptActiveRef.current || data.length === 0) return;
+    if (shellLineResyncPendingRef.current) {
+      resyncInputTrackingFromTerminal();
+    }
     if (data.includes("\r") || data.includes("\n") || data.includes("\x1b")) {
       trackingReliableRef.current = false;
       hideMenu();
@@ -966,7 +1016,7 @@ function useTerminalCommandHistoryInput(
       cursorRef.current += 1;
     }
     refreshSuggestions();
-  }, [hideMenu, refreshSuggestions]);
+  }, [hideMenu, refreshSuggestions, resyncInputTrackingFromTerminal]);
 
   useEffect(() => {
     const syncHistory = () => {
