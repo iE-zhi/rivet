@@ -2,8 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeE
 import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Button, Checkbox, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, useNotification, type TerminalLine } from "../components/ui";
+import { Button, Checkbox, GroupManager, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, useNotification, type TerminalLine } from "../components/ui";
 import { persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT } from "../rivetSync";
+import { reorderGroupedCollection } from "../groupOrder";
 import { buildSerialBytes, type HexInputError } from "./serialBytes";
 import { appendSerialLogEntry, appendSerialRxBurst, createSerialLogBuffer, flattenSerialRxBurst, getSerialLogLines, isSerialRxBurstIdle, serializeSerialLogLines, splitSerialRxBytes, type SerialLogEntry, type SerialRxBurst } from "./serialLog";
 import { isSerialDefaults, LAST_USED_SERIAL_CONFIG_STORAGE_KEY, selectSerialStartupDefaults, serialDefaultsEqual, serializeSerialDefaults, type SerialDefaults } from "./serialDefaults";
@@ -55,6 +56,10 @@ const SERIAL_QUICK_COMMAND_COPY = {
     title: "快捷命令",
     empty: "暂无快捷命令",
     newCommand: "新建快捷命令",
+    manageGroups: "分组管理",
+    backToCommands: "返回快捷命令",
+    reorderGroups: "调整分组顺序",
+    noGroups: "暂无分组",
     name: "名称",
     namePlaceholder: "输入名称",
     group: "分组",
@@ -82,6 +87,10 @@ const SERIAL_QUICK_COMMAND_COPY = {
     title: "Quick commands",
     empty: "No quick commands",
     newCommand: "New quick command",
+    manageGroups: "Manage groups",
+    backToCommands: "Back to quick commands",
+    reorderGroups: "Reorder groups",
+    noGroups: "No groups",
     name: "Name",
     namePlaceholder: "Enter a name",
     group: "Group",
@@ -228,6 +237,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   const [quickGroups, setQuickGroups] = useState<SerialQuickCommandGroup[]>(readInitialSerialQuickCommands);
   const [quickPanelOpen, setQuickPanelOpen] = useState(false);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [quickGroupManageOpen, setQuickGroupManageOpen] = useState(false);
   const [quickName, setQuickName] = useState("");
   const [quickGroupName, setQuickGroupName] = useState("");
   const [quickPayload, setQuickPayload] = useState("");
@@ -675,6 +685,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
       closeQuickCreate();
       setQuickMenuKey(null);
       setQuickDeleteTarget(null);
+      setQuickGroupManageOpen(false);
     }
     setQuickPanelOpen((current) => !current);
   }, [closeQuickCreate, quickPanelOpen]);
@@ -685,7 +696,17 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
       closeQuickCreate();
       return;
     }
+    setQuickGroupManageOpen(false);
     setQuickCreateOpen(true);
+    setQuickGroupPickerOpen(false);
+    setQuickMenuKey(null);
+    setQuickDeleteTarget(null);
+  }, [closeQuickCreate, quickCreateOpen]);
+
+  /** 切换分组管理模式；进入时关闭编辑区和临时菜单，避免两种管理状态重叠。 */
+  const toggleQuickGroupManage = useCallback(() => {
+    if (quickCreateOpen) closeQuickCreate();
+    setQuickGroupManageOpen((current) => !current);
     setQuickGroupPickerOpen(false);
     setQuickMenuKey(null);
     setQuickDeleteTarget(null);
@@ -1051,17 +1072,29 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
 
         <section className={"quick-command-panel" + (quickPanelOpen ? " is-open" : "")} aria-label={quickCopy.title} aria-hidden={!quickPanelOpen}>
           <header className="quick-command-header">
-            <strong>{quickCopy.title}</strong>
-            <button
-              type="button"
-              className={"quick-command-add-button" + (quickCreateOpen ? " is-active" : "")}
-              aria-label={quickCopy.newCommand}
-              aria-expanded={quickCreateOpen}
-              title={quickCopy.newCommand}
-              onClick={toggleQuickCreate}
-            >
-              <SvgIcon name="plus" size={18} />
-            </button>
+            <strong>{quickGroupManageOpen ? quickCopy.manageGroups : quickCopy.title}</strong>
+            <div className="quick-command-header-actions">
+              <button
+                type="button"
+                className={"quick-command-add-button" + (quickGroupManageOpen ? " is-active" : "")}
+                aria-label={quickGroupManageOpen ? quickCopy.backToCommands : quickCopy.manageGroups}
+                aria-pressed={quickGroupManageOpen}
+                title={quickGroupManageOpen ? quickCopy.backToCommands : quickCopy.manageGroups}
+                onClick={toggleQuickGroupManage}
+              >
+                <SvgIcon name="group" size={17} />
+              </button>
+              <button
+                type="button"
+                className={"quick-command-add-button" + (quickCreateOpen ? " is-active" : "")}
+                aria-label={quickCopy.newCommand}
+                aria-expanded={quickCreateOpen}
+                title={quickCopy.newCommand}
+                onClick={toggleQuickCreate}
+              >
+                <SvgIcon name="plus" size={18} />
+              </button>
+            </div>
           </header>
 
           <form className={"quick-command-create" + (quickCreateOpen ? " is-open" : "")} onSubmit={saveQuickCommand} aria-hidden={!quickCreateOpen}>
@@ -1149,6 +1182,21 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
             </div>
           </form>
 
+          {quickGroupManageOpen ? (
+            <VerticalScrollbar className="quick-command-scroll" viewportClassName="quick-command-scroll-viewport" height="100%" viewportLabel={quickCopy.manageGroups}>
+              <div className="quick-command-content">
+                <GroupManager
+                  items={quickGroups.map((group) => ({ id: group.id, name: group.name, count: group.commands.length }))}
+                  ariaLabel={quickCopy.manageGroups}
+                  emptyText={quickCopy.noGroups}
+                  reorderLabel={quickCopy.reorderGroups}
+                  onOrderChange={(orderedIds) => {
+                    setQuickGroups((current) => reorderGroupedCollection(current, orderedIds, (group) => group.id));
+                  }}
+                />
+              </div>
+            </VerticalScrollbar>
+          ) : (
           <VerticalScrollbar className="quick-command-scroll" viewportClassName="quick-command-scroll-viewport" height="100%" viewportLabel={quickCopy.title}>
             <div className="quick-command-content">
               {quickGroups.length === 0 ? (
@@ -1259,6 +1307,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
               })}
             </div>
           </VerticalScrollbar>
+          )}
         </section>
       </aside>
       </main>

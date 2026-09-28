@@ -46,6 +46,7 @@ body {
 .preview-search { width: 368px; }
 .preview-select { width: 180px; }
 .preview-popup-menu-anchor { position: relative; width: 104px; }
+.preview-group-manager { width: 340px; }
 .preview-terminal { width: min(720px, 100%); }
 .preview-scroll {
   width: 360px;

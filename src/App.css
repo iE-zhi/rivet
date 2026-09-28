@@ -166,6 +166,7 @@ button, input, textarea { font: inherit; }
   background: var(--r-surface);
 }
 .quick-command-header strong { font-size: var(--r-font-size-base); font-weight: 700; }
+.quick-command-header-actions { display: flex; align-items: center; gap: 3px; }
 .quick-command-add-button,
 .quick-command-more-button,
 .quick-command-send {

@@ -12,6 +12,7 @@ export * from "./Slider";
 export * from "./Terminal";
 export * from "./VerticalScrollbar";
 export * from "./HorizontalScrollbar";
+export * from "./GroupManager";
 export { NotificationProvider } from "./Notification";
 export { useNotification } from "./NotificationContext";
 export type { NotificationKind, NotificationOptions, NotificationProviderProps } from "./NotificationContext";

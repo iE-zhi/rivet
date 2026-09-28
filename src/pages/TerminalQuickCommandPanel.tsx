@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Button, Input, PopupMenu, PopupMenuItem, SvgIcon, Textarea, VerticalScrollbar, useNotification } from "../components/ui";
+import { Button, GroupManager, Input, PopupMenu, PopupMenuItem, SvgIcon, Textarea, VerticalScrollbar, useNotification } from "../components/ui";
 import { persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT } from "../rivetSync";
+import { reorderGroupedCollection } from "../groupOrder";
 import type { Locale } from "./SerialPage";
 import {
   createTerminalQuickCommandId,
@@ -46,6 +47,10 @@ const COPY = {
   zh: {
     title: "快捷命令",
     add: "添加命令",
+    manageGroups: "分组管理",
+    backToCommands: "返回快捷命令",
+    reorderGroups: "调整分组顺序",
+    noGroups: "暂无分组",
     edit: "编辑命令",
     name: "命令名称",
     group: "分组",
@@ -74,6 +79,10 @@ const COPY = {
   en: {
     title: "Quick commands",
     add: "Add command",
+    manageGroups: "Manage groups",
+    backToCommands: "Back to quick commands",
+    reorderGroups: "Reorder groups",
+    noGroups: "No groups",
     edit: "Edit command",
     name: "Name",
     group: "Group",
@@ -143,6 +152,7 @@ export default function TerminalQuickCommandPanel({
   const { notify } = useNotification();
   const [commands, setCommands] = useState<TerminalQuickCommand[]>(readCommands);
   const [formOpen, setFormOpen] = useState(false);
+  const [groupManageOpen, setGroupManageOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<CommandDraft>(EMPTY_DRAFT);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
@@ -184,6 +194,10 @@ export default function TerminalQuickCommandPanel({
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, []);
 
+  /** 面板关闭后退出分组管理，下一次打开仍从正常命令列表开始。 */
+  useEffect(() => {
+    if (!open) setGroupManageOpen(false);
+  }, [open]);
   /** 窗口尺寸变化或表单高度变化时，将已拖动窗口限制在终端工作区可见范围内。 */
   useEffect(() => {
     if (!open || panelPosition === null) return;
@@ -276,6 +290,7 @@ export default function TerminalQuickCommandPanel({
   const openCreate = () => {
     setEditingId(null);
     setDraft(EMPTY_DRAFT);
+    setGroupManageOpen(false);
     setFormOpen(true);
     setGroupPickerOpen(false);
     setMenuKey(null);
@@ -290,6 +305,7 @@ export default function TerminalQuickCommandPanel({
       command: command.command,
       description: command.description,
     });
+    setGroupManageOpen(false);
     setFormOpen(true);
     setGroupPickerOpen(false);
     setMenuKey(null);
@@ -348,6 +364,14 @@ export default function TerminalQuickCommandPanel({
       else next.add(group);
       return next;
     });
+  };
+
+  /** 切换快捷命令分组排序模式，并关闭可能遮挡排序界面的临时状态。 */
+  const toggleGroupManage = () => {
+    setGroupManageOpen((current) => !current);
+    setMenuKey(null);
+    setDeleteTarget(null);
+    setGroupPickerOpen(false);
   };
 
   const confirmDelete = () => {
@@ -433,18 +457,30 @@ export default function TerminalQuickCommandPanel({
         className="terminal-connection-header terminal-command-header"
         onPointerDown={handleHeaderPointerDown}
       >
-        <strong>{formOpen ? (editingId ? copy.editAction : copy.add) : copy.title}</strong>
+        <strong>{formOpen ? (editingId ? copy.editAction : copy.add) : groupManageOpen ? copy.manageGroups : copy.title}</strong>
         <div className="terminal-command-header-actions">
           {!formOpen && (
-            <button
-              type="button"
-              className="terminal-icon-button"
-              title={copy.add}
-              aria-label={copy.add}
-              onClick={openCreate}
-            >
-              <SvgIcon name="plus" size={16} />
-            </button>
+            <>
+              <button
+                type="button"
+                className={`terminal-icon-button${groupManageOpen ? " active" : ""}`}
+                title={groupManageOpen ? copy.backToCommands : copy.manageGroups}
+                aria-label={groupManageOpen ? copy.backToCommands : copy.manageGroups}
+                aria-pressed={groupManageOpen}
+                onClick={toggleGroupManage}
+              >
+                <SvgIcon name="group" size={16} />
+              </button>
+              <button
+                type="button"
+                className="terminal-icon-button"
+                title={copy.add}
+                aria-label={copy.add}
+                onClick={openCreate}
+              >
+                <SvgIcon name="plus" size={16} />
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -570,6 +606,24 @@ export default function TerminalQuickCommandPanel({
           </footer>
         </form>
       ) : (
+        groupManageOpen ? (
+          <VerticalScrollbar
+            className="terminal-command-groups"
+            viewportClassName="terminal-command-groups-viewport"
+            height="100%"
+            viewportLabel={copy.manageGroups}
+          >
+            <GroupManager
+              items={Array.from(groups.entries()).map(([group, items]) => ({ id: group, name: group, count: items.length }))}
+              ariaLabel={copy.manageGroups}
+              emptyText={copy.noGroups}
+              reorderLabel={copy.reorderGroups}
+              onOrderChange={(orderedGroups) => {
+                setCommands((current) => reorderGroupedCollection(current, orderedGroups, (command) => command.group));
+              }}
+            />
+          </VerticalScrollbar>
+        ) : (
         <VerticalScrollbar
           className="terminal-command-groups"
           viewportClassName="terminal-command-groups-viewport"
@@ -749,6 +803,7 @@ export default function TerminalQuickCommandPanel({
             </section>
           ))}
         </VerticalScrollbar>
+        )
       )}
     </aside>
   );

@@ -32,7 +32,7 @@
 - 禁止为参考页面复制一套独立 HTML/CSS 组件实现；参考页面必须渲染正式组件本身，确保预览效果与实际应用完全一致。
 - `design/components/` 仅作为组件预览入口目录，不作为运行时依赖，也不保存另一套组件样式实现。
 - 每个基础组件保留一个独立 HTML 预览入口；该 HTML 只负责加载 Vite/React 预览入口并挂载对应的 `src/components/ui/` 正式组件。
-- 当前组件包括：Button、Input、SearchInput、Textarea、Select、PopupMenu、Checkbox、Radio、Switch、Slider、Terminal、VerticalScrollbar；正式实现分别放入 `src/components/ui/`。
+- 当前组件包括：Button、Input、SearchInput、Textarea、Select、PopupMenu、GroupManager、Checkbox、Radio、Switch、Slider、Terminal、VerticalScrollbar；正式实现分别放入 `src/components/ui/`。
 - 每个组件应提供统一的浅色、深色以及 Hover、Active、Focus、Disabled 等状态；预览页调用同一组件展示这些状态。
 - 新增通用组件时，先在 `src/components/ui/` 实现正式组件，再增加对应预览入口；禁止先做一套孤立 HTML 再人工照抄到正式组件。
 - 修改组件样式时只修改正式组件及共享 design token；预览页面应自动反映变化，不允许双份维护。

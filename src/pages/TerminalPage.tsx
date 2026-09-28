@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { notifySyncedSecretsChanged, persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT } from "../rivetSync";
+import { reorderGroupedCollection } from "../groupOrder";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
-import { Button, Checkbox, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
+import { Button, Checkbox, GroupManager, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
 import {
   deserializeRecentConnectionIds,
   deserializeTerminalConnections,
@@ -184,6 +185,10 @@ const COPY = {
     quickCommands: "快捷命令",
     closePane: "关闭 pane",
     addConnection: "添加连接",
+    manageGroups: "分组管理",
+    backToConnections: "返回终端连接",
+    reorderGroups: "调整分组顺序",
+    noGroups: "暂无分组",
     editConnection: "编辑连接",
     connectionType: "类型",
     ssh: "SSH",
@@ -265,6 +270,10 @@ const COPY = {
     quickCommands: "Quick commands",
     closePane: "Close pane",
     addConnection: "Add connection",
+    manageGroups: "Manage groups",
+    backToConnections: "Back to terminal connections",
+    reorderGroups: "Reorder groups",
+    noGroups: "No groups",
     editConnection: "Edit connection",
     connectionType: "Type",
     ssh: "SSH",
@@ -971,6 +980,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
   const [sftpOpen, setSftpOpen] = useState(false);
   const [quickCommandOpen, setQuickCommandOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [connectionGroupManageOpen, setConnectionGroupManageOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ConnectionFormState>(EMPTY_FORM);
   const [serialPorts, setSerialPorts] = useState<PortInfo[]>([]);
@@ -1051,6 +1061,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
       if (!target.closest(".terminal-connection-panel") && !target.closest(".terminal-connection-handle")) {
         setConnectionPanelOpen(false);
         setFormOpen(false);
+        setConnectionGroupManageOpen(false);
         setEditingId(null);
         pendingOpenRef.current = null;
       }
@@ -1559,6 +1570,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
     pendingOpenRef.current = null;
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setConnectionGroupManageOpen(false);
     setConnectionGroupPickerOpen(false);
     setFormOpen(true);
     setMenuId(null);
@@ -1570,6 +1582,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
   const openEditForm = async (connection: SavedTerminalConnection) => {
     pendingOpenRef.current = null;
     setEditingId(connection.id);
+    setConnectionGroupManageOpen(false);
     if (connection.kind === "serial") {
       setForm({
         ...EMPTY_FORM,
@@ -1811,6 +1824,19 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
       else next.add(group);
       return next;
     });
+  };
+
+  /** 进入或退出连接分组管理；排序模式与连接编辑互斥。 */
+  const toggleConnectionGroupManage = () => {
+    pendingOpenRef.current = null;
+    setConnectionGroupManageOpen((current) => !current);
+    setFormOpen(false);
+    setConnectionGroupPickerOpen(false);
+    setEditingId(null);
+    setMenuId(null);
+    setGroupMenuId(null);
+    setDeleteId(null);
+    setDeleteGroupName(null);
   };
 
   /** 扁平渲染 pane，避免分屏时改变已有 xterm 的 React 父节点并触发会话重建。 */
@@ -2062,11 +2088,29 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
 
         <aside className={`terminal-connection-panel ${connectionPanelOpen ? "open" : ""}`}>
           <header className="terminal-connection-header">
-            <strong>{formOpen ? (editingId ? copy.editConnection : copy.addConnection) : copy.terminalConnections}</strong>
+            <strong>
+              {formOpen
+                ? (editingId ? copy.editConnection : copy.addConnection)
+                : connectionGroupManageOpen
+                  ? copy.manageGroups
+                  : copy.terminalConnections}
+            </strong>
             {!formOpen && (
-              <button type="button" className="terminal-icon-button" title={copy.addConnection} onClick={openCreateForm}>
-                <SvgIcon name="plus" size={16} />
-              </button>
+              <div className="terminal-connection-header-actions">
+                <button
+                  type="button"
+                  className={`terminal-icon-button${connectionGroupManageOpen ? " active" : ""}`}
+                  title={connectionGroupManageOpen ? copy.backToConnections : copy.manageGroups}
+                  aria-label={connectionGroupManageOpen ? copy.backToConnections : copy.manageGroups}
+                  aria-pressed={connectionGroupManageOpen}
+                  onClick={toggleConnectionGroupManage}
+                >
+                  <SvgIcon name="group" size={16} />
+                </button>
+                <button type="button" className="terminal-icon-button" title={copy.addConnection} aria-label={copy.addConnection} onClick={openCreateForm}>
+                  <SvgIcon name="plus" size={16} />
+                </button>
+              </div>
             )}
           </header>
 
@@ -2373,6 +2417,24 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
               </footer>
             </form>
           ) : (
+            connectionGroupManageOpen ? (
+              <VerticalScrollbar
+                className="terminal-connection-groups"
+                viewportClassName="terminal-connection-groups-viewport"
+                height="100%"
+                viewportLabel={copy.manageGroups}
+              >
+                <GroupManager
+                  items={Array.from(groups.entries()).map(([group, items]) => ({ id: group, name: group, count: items.length }))}
+                  ariaLabel={copy.manageGroups}
+                  emptyText={copy.noGroups}
+                  reorderLabel={copy.reorderGroups}
+                  onOrderChange={(orderedGroups) => {
+                    setConnections((current) => reorderGroupedCollection(current, orderedGroups, (connection) => connection.group));
+                  }}
+                />
+              </VerticalScrollbar>
+            ) : (
             <VerticalScrollbar
               className="terminal-connection-groups"
               viewportClassName="terminal-connection-groups-viewport"
@@ -2498,6 +2560,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
                 </section>
               ))}
             </VerticalScrollbar>
+            )
           )}
         </aside>
 
@@ -2575,6 +2638,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
           onClick={() => {
             setConnectionPanelOpen((open) => !open);
             setFormOpen(false);
+            setConnectionGroupManageOpen(false);
             setConnectionGroupPickerOpen(false);
           }}
         >

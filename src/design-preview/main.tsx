@@ -1,8 +1,9 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Button,
   Checkbox,
+  GroupManager,
   HorizontalScrollbar,
   Input,
   NotificationProvider,
@@ -49,6 +50,30 @@ function NotificationPreviewSamples() {
   }, [notify]);
 
   return <div className="preview-notification-note">成功、信息与警告通知示例；卡片可手动关闭。</div>;
+}
+
+/** 展示正式分组管理器，并让预览中的拖拽和键盘排序真实可用。 */
+function GroupManagerPreviewSamples() {
+  const [items, setItems] = useState([
+    { id: "x11", name: "X11", count: 4 },
+    { id: "ssh", name: "ssh", count: 2 },
+    { id: "pnpm", name: "pnpm", count: 1 },
+  ]);
+
+  return (
+    <div className="preview-group-manager">
+      <GroupManager
+        items={items}
+        ariaLabel="分组管理预览"
+        emptyText="暂无分组"
+        reorderLabel="调整分组顺序"
+        onOrderChange={(orderedIds) => {
+          const byId = new Map(items.map((item) => [item.id, item]));
+          setItems(orderedIds.map((id) => byId.get(id)).filter((item): item is (typeof items)[number] => item !== undefined));
+        }}
+      />
+    </div>
+  );
 }
 
 /** 根据组件标识渲染带可访问名称的交互预览控件。 */
@@ -122,6 +147,8 @@ function ComponentPreview({ id, dark }: { id: string; dark: boolean }) {
           </div>
         </Row>
       );
+    case "group-manager":
+      return <GroupManagerPreviewSamples />;
     case "checkbox":
       return (
         <>

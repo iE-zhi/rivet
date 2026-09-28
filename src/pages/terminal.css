@@ -602,6 +602,8 @@
 
 .terminal-connection-header strong { font-size: var(--r-font-size-base); }
 
+.terminal-connection-header-actions { display: flex; align-items: center; gap: 3px; }
+
 .terminal-icon-button {
   display: grid;
   width: 28px;
@@ -619,6 +621,8 @@
   background: var(--r-surface-2);
   color: var(--r-text);
 }
+
+.terminal-icon-button.active { background: var(--r-surface-2); color: var(--r-primary-light); }
 
 .terminal-icon-button:disabled { opacity: .4; cursor: default; }
 
