@@ -84,6 +84,7 @@ pub async fn open_local_terminal(
     session_id: String,
     columns: u16,
     rows: u16,
+    shell_integration_token: Option<String>,
 ) -> Result<Option<String>, String> {
     validate_session_id(&session_id)?;
     validate_terminal_size(columns, rows)?;
@@ -99,7 +100,14 @@ pub async fn open_local_terminal(
     let worker_sessions = Arc::clone(&sessions);
     let worker_session_id = session_id.clone();
     let (sender, shell_pid, shell_kind) = tauri::async_runtime::spawn_blocking(move || {
-        start_local_worker(app, worker_session_id, columns, rows, worker_sessions)
+        start_local_worker(
+            app,
+            worker_session_id,
+            columns,
+            rows,
+            shell_integration_token,
+            worker_sessions,
+        )
     })
     .await
     .map_err(|error| format!("启动本地终端任务失败：{error}"))??;
@@ -216,6 +224,7 @@ fn start_local_worker(
     session_id: String,
     columns: u16,
     rows: u16,
+    shell_integration_token: Option<String>,
     sessions: Arc<RwLock<HashMap<String, LocalSessionEntry>>>,
 ) -> Result<(SyncSender<LocalCommand>, u32, Option<String>), String> {
     let pty_system = native_pty_system();
@@ -228,8 +237,8 @@ fn start_local_worker(
         })
         .map_err(|error| format!("创建本地 PTY 失败：{error}"))?;
 
-    let shell_kind = default_shell_integration_kind();
-    let mut command = default_shell_command()?;
+    let shell_kind = default_shell_integration_kind(shell_integration_token.as_deref());
+    let mut command = default_shell_command(shell_integration_token.as_deref())?;
     command.env("TERM", "xterm-256color");
     if let Some(home) = user_home_directory() {
         command.cwd(home);
@@ -410,16 +419,23 @@ fn run_worker(
 }
 
 /// 平台默认交互 shell。
-fn default_shell_command() -> Result<CommandBuilder, String> {
+fn default_shell_command(shell_integration_token: Option<&str>) -> Result<CommandBuilder, String> {
     #[cfg(windows)]
     {
-        let mut command = CommandBuilder::new("powershell.exe");
+        let mut command = CommandBuilder::new(preferred_windows_powershell());
         command.arg("-NoLogo");
+        if let Some(token) = shell_integration_token {
+            validate_shell_integration_token(token)?;
+            command.arg("-NoExit");
+            command.arg("-Command");
+            command.arg(powershell_shell_integration_bootstrap(token));
+        }
         return Ok(command);
     }
 
     #[cfg(unix)]
     {
+        let _ = shell_integration_token;
         let shell = env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
         if shell.is_empty() {
             return Err("SHELL 环境变量为空".to_string());
@@ -432,10 +448,10 @@ fn default_shell_command() -> Result<CommandBuilder, String> {
 }
 
 /// 仅对白名单内的交互 shell 启用临时 Shell Integration。
-fn default_shell_integration_kind() -> Option<String> {
+fn default_shell_integration_kind(shell_integration_token: Option<&str>) -> Option<String> {
     #[cfg(windows)]
     {
-        return Some("powershell".to_string());
+        return shell_integration_token.map(|_| "powershell".to_string());
     }
 
     #[cfg(unix)]
@@ -451,6 +467,51 @@ fn default_shell_integration_kind() -> Option<String> {
 
     #[allow(unreachable_code)]
     None
+}
+
+#[cfg(windows)]
+/// 每次打开终端重新探测 PowerShell 7；不可用时回退系统自带 Windows PowerShell 5.1。
+fn preferred_windows_powershell() -> PathBuf {
+    for variable in ["ProgramW6432", "ProgramFiles"] {
+        if let Some(root) = env::var_os(variable) {
+            let candidate = PathBuf::from(root)
+                .join("PowerShell")
+                .join("7")
+                .join("pwsh.exe");
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+
+    if let Some(path) = env::var_os("PATH") {
+        for directory in env::split_paths(&path) {
+            let candidate = directory.join("pwsh.exe");
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+
+    PathBuf::from("powershell.exe")
+}
+
+#[cfg(windows)]
+/// 校验前端生成的 Shell Integration 会话标识。
+fn validate_shell_integration_token(token: &str) -> Result<(), String> {
+    if !(16..=128).contains(&token.len()) || !token.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    {
+        return Err("Shell Integration 会话标识无效".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+/// 生成仅作用于当前 PowerShell 进程的 Shell Integration 初始化脚本。
+fn powershell_shell_integration_bootstrap(token: &str) -> String {
+    format!(
+        r#"if (-not $global:__RIVET_SHELL_INTEGRATION) {{ $global:__RIVET_SHELL_INTEGRATION=$true; $global:__rivetReadyMarker=([char]27)+']633;RivetReady:{token}'+([char]7); $global:__rivetPromptMarker=([char]27)+']633;RivetPrompt:{token}'+([char]7); $global:__rivetCommandPrefix=([char]27)+']633;RivetCommand:{token}:'; $global:__rivetOriginalPrompt=(Get-Item Function:prompt).ScriptBlock; $global:__rivetSkipHistory=$true; $global:__rivetLastHistoryId=$null; function global:prompt {{ $commandMarker=''; $historyItem=Get-History -Count 1 -ErrorAction SilentlyContinue; if ($global:__rivetSkipHistory) {{ if ($null -ne $historyItem) {{ $global:__rivetLastHistoryId=$historyItem.Id }}; $global:__rivetSkipHistory=$false }} elseif ($null -ne $historyItem -and $historyItem.Id -ne $global:__rivetLastHistoryId) {{ $global:__rivetLastHistoryId=$historyItem.Id; $line=[string]$historyItem.CommandLine; if (-not [string]::IsNullOrWhiteSpace($line) -and $line.IndexOf([char]10) -lt 0 -and $line.IndexOf([char]13) -lt 0) {{ $encoded=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($line)); $commandMarker=$global:__rivetCommandPrefix+$encoded+([char]7) }} }}; [Console]::Write($commandMarker+$global:__rivetReadyMarker); $promptText=& $global:__rivetOriginalPrompt; (@($promptText) -join '')+$global:__rivetPromptMarker }} }}"#
+    )
 }
 
 /// 枚举当前进程树，只要 shell 仍有任意直接或间接子进程就返回 true。
