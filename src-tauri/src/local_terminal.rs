@@ -466,6 +466,7 @@ fn default_shell_integration_kind(shell_integration_token: Option<&str>) -> Opti
 
     #[cfg(unix)]
     {
+        let _ = shell_integration_token;
         let shell = env::var_os("SHELL")?;
         let shell = PathBuf::from(shell);
         let name = shell.file_name()?.to_str()?.to_ascii_lowercase();
