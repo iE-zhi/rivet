@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SvgIcon } from "./SvgIcon";
 import "./ui.css";
 
@@ -41,7 +41,9 @@ export function Select({
   disabled = false,
 }: SelectProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(defaultOpen);
+  const [placement, setPlacement] = useState<"up" | "down">("down");
   const [internalValue, setInternalValue] = useState(defaultValue ?? options[0]?.value ?? "");
   const currentValue = value ?? internalValue;
   const selected = options.find((option) => option.value === currentValue) ?? options[0];
@@ -56,6 +58,33 @@ export function Select({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!open || disabled) return;
+
+    /** 根据菜单实际高度和视口剩余空间选择向上或向下展开。 */
+    const updatePlacement = () => {
+      const root = rootRef.current;
+      const menu = menuRef.current;
+      if (!root || !menu) return;
+
+      const rect = root.getBoundingClientRect();
+      const menuHeight = menu.getBoundingClientRect().height;
+      const gap = 6;
+      const spaceAbove = Math.max(0, rect.top - gap);
+      const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - gap);
+      const nextPlacement = spaceBelow >= menuHeight || spaceBelow >= spaceAbove ? "down" : "up";
+      setPlacement((current) => current === nextPlacement ? current : nextPlacement);
+    };
+
+    updatePlacement();
+    window.addEventListener("resize", updatePlacement);
+    window.addEventListener("scroll", updatePlacement, true);
+    return () => {
+      window.removeEventListener("resize", updatePlacement);
+      window.removeEventListener("scroll", updatePlacement, true);
+    };
+  }, [disabled, open, options.length]);
 
   /** 选择菜单项并同步受控或非受控值；禁用时不改变任何状态。 */
   const selectValue = (nextValue: string) => {
@@ -72,7 +101,7 @@ export function Select({
   const handleOptionClick = (option: SelectOption) => () => selectValue(option.value);
 
   return (
-    <div ref={rootRef} className={`rivet-select ${disabled ? "is-disabled" : ""} ${className}`.trim()}>
+    <div ref={rootRef} className={`rivet-select is-${placement} ${disabled ? "is-disabled" : ""} ${className}`.trim()}>
       <button
         type="button"
         className="rivet-select-trigger"
@@ -86,7 +115,7 @@ export function Select({
         <SvgIcon name="chevron" size={12} className="rivet-select-chevron" />
       </button>
       {open && !disabled && (
-        <div className="rivet-select-menu" role="listbox">
+        <div ref={menuRef} className="rivet-select-menu" role="listbox">
           {/* 渲染带选中状态的选项，并保留单一选择入口。 */}
           {options.map((option) => {
             const isSelected = option.value === currentValue;

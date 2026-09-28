@@ -226,12 +226,29 @@
   top: calc(100% + 6px);
   bottom: auto;
   width: 100%;
+  max-height: 238px;
   z-index: 50;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid var(--r-border);
   border-radius: 8px;
-  overflow: hidden;
   background: var(--r-surface);
   box-shadow: 0 10px 28px rgba(0, 0, 0, .16);
+  scrollbar-color: var(--r-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+.rivet-select.is-up .rivet-select-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+.rivet-select-menu::-webkit-scrollbar { width: 8px; }
+.rivet-select-menu::-webkit-scrollbar-track { background: transparent; }
+.rivet-select-menu::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--r-scrollbar-thumb);
+}
+.rivet-select-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--r-scrollbar-thumb-hover);
 }
 .rivet-select-option {
   width: 100%;
