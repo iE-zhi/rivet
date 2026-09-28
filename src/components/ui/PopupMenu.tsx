@@ -71,10 +71,24 @@ export function PopupMenu({
       const spaceAbove = Math.max(0, anchorRect.top - MENU_GAP - visibleBounds.top);
       const spaceBelow = Math.max(0, visibleBounds.bottom - anchorRect.bottom - MENU_GAP);
       const automaticPlacement: PopupMenuPlacement =
-        spaceBelow >= desiredHeight || spaceBelow >= spaceAbove ? "down" : "up";
+        spaceBelow >= desiredHeight
+          ? "down"
+          : spaceAbove >= desiredHeight
+            ? "up"
+            : spaceBelow >= spaceAbove
+              ? "down"
+              : "up";
       const preferredSpace = preferredPlacement === "up" ? spaceAbove : spaceBelow;
-      const nextPlacement: PopupMenuPlacement = preferredPlacement && preferredSpace >= 34
-        ? preferredPlacement
+      const oppositePlacement: PopupMenuPlacement = preferredPlacement === "up" ? "down" : "up";
+      const oppositeSpace = oppositePlacement === "up" ? spaceAbove : spaceBelow;
+      const nextPlacement: PopupMenuPlacement = preferredPlacement
+        ? preferredSpace >= desiredHeight
+          ? preferredPlacement
+          : oppositeSpace >= desiredHeight
+            ? oppositePlacement
+            : preferredSpace >= oppositeSpace
+              ? preferredPlacement
+              : oppositePlacement
         : automaticPlacement;
       const selectedSpace = nextPlacement === "down" ? spaceBelow : spaceAbove;
 
