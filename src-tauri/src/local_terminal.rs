@@ -433,6 +433,11 @@ fn default_shell_command() -> Result<CommandBuilder, String> {
 
 /// 仅对白名单内的交互 shell 启用临时 Shell Integration。
 fn default_shell_integration_kind() -> Option<String> {
+    #[cfg(windows)]
+    {
+        return Some("powershell".to_string());
+    }
+
     #[cfg(unix)]
     {
         let shell = env::var_os("SHELL")?;

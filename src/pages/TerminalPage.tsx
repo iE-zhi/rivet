@@ -525,7 +525,19 @@ function concatBytes(first: Uint8Array, second: Uint8Array): Uint8Array<ArrayBuf
   return combined;
 }
 
-type TerminalShellKind = "bash" | "zsh";
+function decodeTerminalCommandBase64(encoded: string): string | null {
+  if (encoded.length === 0 || encoded.length > 16 * 1024) return null;
+  try {
+    const binary = window.atob(encoded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const command = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return command.includes("\r") || command.includes("\n") ? null : command;
+  } catch {
+    return null;
+  }
+}
+
+type TerminalShellKind = "bash" | "zsh" | "powershell";
 
 /** 生成只作用于当前 shell 进程的集成脚本，不修改用户的持久化 shell 配置。 */
 function terminalShellIntegrationBootstrap(shellKind: TerminalShellKind, token: string): string {
@@ -533,6 +545,10 @@ function terminalShellIntegrationBootstrap(shellKind: TerminalShellKind, token: 
   const promptMarker = `RivetPrompt:${token}`;
   const executeMarker = `RivetExecute:${token}`;
 
+  if (shellKind === "powershell") {
+    const commandPrefix = `RivetCommand:${token}:`;
+    return `if (-not $global:__RIVET_SHELL_INTEGRATION) { $global:__RIVET_SHELL_INTEGRATION=$true; $global:__rivetReadyMarker=([char]27)+']633;${readyMarker}'+([char]7); $global:__rivetPromptMarker=([char]27)+']633;${promptMarker}'+([char]7); $global:__rivetCommandPrefix=([char]27)+']633;${commandPrefix}'; $global:__rivetOriginalPrompt=(Get-Item Function:prompt).ScriptBlock; $global:__rivetSkipHistory=$true; $global:__rivetLastHistoryId=$null; function global:prompt { $commandMarker=''; $historyItem=Get-History -Count 1 -ErrorAction SilentlyContinue; if ($global:__rivetSkipHistory) { if ($null -ne $historyItem) { $global:__rivetLastHistoryId=$historyItem.Id }; $global:__rivetSkipHistory=$false } elseif ($null -ne $historyItem -and $historyItem.Id -ne $global:__rivetLastHistoryId) { $global:__rivetLastHistoryId=$historyItem.Id; $line=[string]$historyItem.CommandLine; if (-not [string]::IsNullOrWhiteSpace($line) -and $line.IndexOf([char]10) -lt 0 -and $line.IndexOf([char]13) -lt 0) { $encoded=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($line)); $commandMarker=$global:__rivetCommandPrefix+$encoded+([char]7) } }; [Console]::Write($commandMarker+$global:__rivetReadyMarker); $promptText=& $global:__rivetOriginalPrompt; (@($promptText) -join '')+$global:__rivetPromptMarker } }; [Console]::Write(([char]13)+([char]27)+'[2K')\r`;
+  }
   if (shellKind === "bash") {
     return ` if [ -z "\${__RIVET_SHELL_INTEGRATION-}" ]; then __RIVET_SHELL_INTEGRATION=1; if [ "\${BASH_VERSINFO[0]:-0}" -gt 4 ] || { [ "\${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "\${BASH_VERSINFO[1]:-0}" -ge 4 ]; }; then __rivet_ready_marker=$'\\033]633;${readyMarker}\\007'; __rivet_prompt_marker=$'\\033]633;${promptMarker}\\007'; __rivet_execute_marker=$'\\033]633;${executeMarker}\\007'; PS1="\\[\${__rivet_ready_marker}\\]\${PS1}\\[\${__rivet_prompt_marker}\\]"; PS0="\${PS0-}\${__rivet_execute_marker}"; fi; fi; printf '\\r\\033[2K'\r`;
   }
@@ -676,6 +692,12 @@ function useTerminalCommandHistoryInput(
     if (data === `RivetReady:${token}`) {
       return true;
     }
+    const commandPrefix = `RivetCommand:${token}:`;
+    if (data.startsWith(commandPrefix)) {
+      const command = decodeTerminalCommandBase64(data.slice(commandPrefix.length));
+      if (enabledRef.current && command) recordTerminalCommand(command);
+      return true;
+    }
     if (data === `RivetPrompt:${token}`) {
       const terminal = terminalRef.current;
       promptActiveRef.current = true;
@@ -743,7 +765,7 @@ function useTerminalCommandHistoryInput(
   }, [stopIntegrationOutputSuppression]);
 
   const installShellIntegration = useCallback((shellKind: string | null) => {
-    if (shellKind !== "bash" && shellKind !== "zsh") return;
+    if (shellKind !== "bash" && shellKind !== "zsh" && shellKind !== "powershell") return;
     if (integrationInstalledRef.current === shellKind) return;
 
     integrationInstalledRef.current = shellKind;
@@ -906,7 +928,12 @@ function useTerminalCommandHistoryInput(
     }
 
     if (event.key === "Enter") {
-      hideMenu();
+      if (integrationInstalledRef.current === "powershell") {
+        promptActiveRef.current = false;
+        resetInputTracking();
+      } else {
+        hideMenu();
+      }
       return true;
     }
 
