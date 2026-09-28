@@ -10,7 +10,7 @@ import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
 import { Button, Checkbox, GroupManager, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
-import { TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, findTerminalCommandHistoryMatches, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, recordTerminalCommand } from "../preferences/terminalHistory";
+import { TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, deleteTerminalCommandHistory, findTerminalCommandHistoryMatches, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, recordTerminalCommand } from "../preferences/terminalHistory";
 import {
   deserializeRecentConnectionIds,
   deserializeTerminalConnections,
@@ -785,16 +785,41 @@ function useTerminalCommandHistoryInput(
         }));
         return false;
       }
-      if (event.key === "Tab" || event.key === "Enter") {
+      if (event.key === "Enter") {
         event.preventDefault();
         event.stopPropagation();
-        if (event.key === "Enter") {
-          suppressCandidateEnterRef.current = true;
-          window.setTimeout(() => {
-            suppressCandidateEnterRef.current = false;
-          }, 0);
-        }
+        suppressCandidateEnterRef.current = true;
+        window.setTimeout(() => {
+          suppressCandidateEnterRef.current = false;
+        }, 0);
         acceptCandidate(menuRef.current.selectedIndex);
+        return false;
+      }
+      if (event.key === "Delete" || event.code === "Delete") {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const selectedIndex = menuRef.current.selectedIndex;
+        const selectedCommand = menuRef.current.commands[selectedIndex];
+        if (!selectedCommand || !deleteTerminalCommandHistory(selectedCommand)) return false;
+
+        historyRef.current = readTerminalCommandHistory();
+        const query = inputRef.current.join("");
+        const commands = findTerminalCommandHistoryMatches(historyRef.current, query);
+        if (commands.length === 0) {
+          hideMenu();
+        } else {
+          const terminal = terminalRef.current;
+          const container = containerRef.current;
+          const layout = terminal && container
+            ? terminalCommandHistoryMenuLayout(terminal, container, commands)
+            : { left: 12, top: 12, width: 180, anchorHeight: 20 };
+          updateMenu(() => ({
+            commands,
+            selectedIndex: Math.min(selectedIndex, commands.length - 1),
+            ...layout,
+          }));
+        }
         return false;
       }
       if (event.key === "Escape") {

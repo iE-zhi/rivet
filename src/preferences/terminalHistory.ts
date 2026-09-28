@@ -87,6 +87,24 @@ export function clearTerminalCommandHistory(): boolean {
   }
 }
 
+/** 删除一条指定历史命令；不存在时视为成功。 */
+export function deleteTerminalCommandHistory(command: string): boolean {
+  const normalized = normalizeTerminalCommand(command);
+  if (normalized === null) return false;
+
+  const commands = readTerminalCommandHistory();
+  const nextCommands = commands.filter((item) => item !== normalized);
+  if (nextCommands.length === commands.length) return true;
+
+  try {
+    window.localStorage.setItem(TERMINAL_COMMAND_HISTORY_STORAGE_KEY, JSON.stringify(nextCommands));
+    notifyTerminalCommandHistoryChanged();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** 将刚提交的命令移到历史首位，保持精确去重并最多保存 500 条。 */
 export function recordTerminalCommand(command: string): boolean {
   if (!readTerminalCommandHistoryEnabled()) return false;
