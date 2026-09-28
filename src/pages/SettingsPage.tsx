@@ -8,6 +8,7 @@ import type { NotificationSettings } from "../preferences/notificationSettings";
 import type { NavigationItemId, NavigationSettings } from "../preferences/navigationSettings";
 import { isValidX11ServerAddress, isValidXauthPath, MAX_X11_SERVER_ADDRESS_LENGTH, MAX_XAUTH_PATH_LENGTH } from "../preferences/sshSettings";
 import { TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, clearTerminalCommandHistory, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, setTerminalCommandHistoryEnabled } from "../preferences/terminalHistory";
+import { isWindowsPlatform, isWindowsPowerShellMode, readWindowsPowerShellMode, setWindowsPowerShellMode } from "../preferences/terminalSettings";
 import { DEFAULT_BACKUP_SELECTION, type BackupSelection, type RivetSyncController, type SyncProvider } from "../rivetSync";
 import AboutPanel from "./AboutPanel";
 
@@ -154,6 +155,14 @@ interface SettingsPageCopy {
   receiveGroupTitle: string;
   /** SSH 设置组标题。 */
   sshGroupTitle: string;
+  /** Windows PowerShell 设置组标题。 */
+  powershellGroupTitle: string;
+  /** Windows 本地终端默认 PowerShell。 */
+  defaultPowerShell: string;
+  /** Windows PowerShell 选择下拉选项。 */
+  powerShellOptions: SelectOption[];
+  /** Windows PowerShell 设置保存失败通知。 */
+  powerShellSettingsFailed: string;
   /** 历史命令设置组标题。 */
   historyGroupTitle: string;
   /** 是否启用历史命令。 */
@@ -290,6 +299,14 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serialGroupTitle: "默认通信参数",
     receiveGroupTitle: "接收分包",
     sshGroupTitle: "X11",
+    powershellGroupTitle: "PowerShell",
+    defaultPowerShell: "默认 PowerShell",
+    powerShellOptions: [
+      { value: "auto", label: "自动切换" },
+      { value: "ps7", label: "PS7" },
+      { value: "ps5", label: "PS5" },
+    ],
+    powerShellSettingsFailed: "保存默认 PowerShell 设置失败。",
     historyGroupTitle: "历史命令",
     historyEnabled: "是否启用历史命令",
     historyDelete: "删除历史命令",
@@ -410,6 +427,14 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serialGroupTitle: "Default communication parameters",
     receiveGroupTitle: "Receive grouping",
     sshGroupTitle: "X11",
+    powershellGroupTitle: "PowerShell",
+    defaultPowerShell: "Default PowerShell",
+    powerShellOptions: [
+      { value: "auto", label: "Auto" },
+      { value: "ps7", label: "PS7" },
+      { value: "ps5", label: "PS5" },
+    ],
+    powerShellSettingsFailed: "Failed to save the default PowerShell setting.",
     historyGroupTitle: "Command history",
     historyEnabled: "Enable command history",
     historyDelete: "Delete command history",
@@ -663,6 +688,9 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   const [terminalHistoryEnabled, setTerminalHistoryEnabledState] = useState(readTerminalCommandHistoryEnabled);
   const [terminalHistoryCount, setTerminalHistoryCount] = useState(() => readTerminalCommandHistory().length);
   const [terminalHistoryDeletePending, setTerminalHistoryDeletePending] = useState(false);
+  /** Windows 默认 PowerShell 只保存在当前设备。 */
+  const windowsPlatform = isWindowsPlatform();
+  const [windowsPowerShellMode, setWindowsPowerShellModeState] = useState(readWindowsPowerShellMode);
   useEffect(() => {
     const syncTerminalHistoryState = () => {
       const commands = readTerminalCommandHistory();
@@ -757,6 +785,16 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
 
   /** 显示终端设置。 */
   const showSshSettings = () => setActiveCategory("ssh");
+
+  /** 保存 Windows 本机默认 PowerShell；只影响之后新开的本地终端。 */
+  const handleWindowsPowerShellModeChange = (value: string) => {
+    if (!isWindowsPowerShellMode(value)) return;
+    if (!setWindowsPowerShellMode(value)) {
+      notify({ kind: "error", message: copy.powerShellSettingsFailed });
+      return;
+    }
+    setWindowsPowerShellModeState(value);
+  };
 
   /** 编辑 X11 地址时只更新草稿；已标红字段修正为合法值后立即清除错误。 */
   const handleX11ServerAddressChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1433,6 +1471,25 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
             </>
           ) : activeCategory === "ssh" ? (
             <>
+              {windowsPlatform ? (
+                <section className="settings-section" aria-labelledby="settings-powershell-group-title">
+                  <h1 className="settings-section-title" id="settings-powershell-group-title">{copy.powershellGroupTitle}</h1>
+                  <div className="settings-list">
+                    <div className="settings-row">
+                      <span className="settings-row-label">{copy.defaultPowerShell}</span>
+                      <div className="settings-row-control">
+                        <Select
+                          className="settings-select"
+                          ariaLabel={copy.defaultPowerShell}
+                          options={copy.powerShellOptions}
+                          value={windowsPowerShellMode}
+                          onChange={handleWindowsPowerShellModeChange}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
               <section className="settings-section" aria-labelledby="settings-ssh-group-title">
                 <h1 className="settings-section-title" id="settings-ssh-group-title">{copy.sshGroupTitle}</h1>
                 <div className="settings-list">

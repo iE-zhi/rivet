@@ -11,6 +11,7 @@ import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
 import { Button, Checkbox, GroupManager, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
 import { TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, deleteTerminalCommandHistory, findTerminalCommandHistoryMatches, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, recordTerminalCommand, terminalCommandHistoryIndex } from "../preferences/terminalHistory";
+import { readWindowsPowerShellMode } from "../preferences/terminalSettings";
 import {
   deserializeRecentConnectionIds,
   deserializeTerminalConnections,
@@ -1439,6 +1440,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
           columns: Math.max(1, terminal.cols),
           rows: Math.max(1, terminal.rows),
           shellIntegrationToken: commandHistory.integrationToken,
+          powershellMode: readWindowsPowerShellMode(),
         });
         if (cancelled) {
           void invoke("close_local_terminal", { sessionId: session.id }).catch(() => undefined);

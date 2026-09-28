@@ -85,6 +85,7 @@ pub async fn open_local_terminal(
     columns: u16,
     rows: u16,
     shell_integration_token: Option<String>,
+    powershell_mode: Option<String>,
 ) -> Result<Option<String>, String> {
     validate_session_id(&session_id)?;
     validate_terminal_size(columns, rows)?;
@@ -106,6 +107,7 @@ pub async fn open_local_terminal(
             columns,
             rows,
             shell_integration_token,
+            powershell_mode,
             worker_sessions,
         )
     })
@@ -225,6 +227,7 @@ fn start_local_worker(
     columns: u16,
     rows: u16,
     shell_integration_token: Option<String>,
+    powershell_mode: Option<String>,
     sessions: Arc<RwLock<HashMap<String, LocalSessionEntry>>>,
 ) -> Result<(SyncSender<LocalCommand>, u32, Option<String>), String> {
     let pty_system = native_pty_system();
@@ -238,7 +241,10 @@ fn start_local_worker(
         .map_err(|error| format!("创建本地 PTY 失败：{error}"))?;
 
     let shell_kind = default_shell_integration_kind(shell_integration_token.as_deref());
-    let mut command = default_shell_command(shell_integration_token.as_deref())?;
+    let mut command = default_shell_command(
+        shell_integration_token.as_deref(),
+        powershell_mode.as_deref(),
+    )?;
     command.env("TERM", "xterm-256color");
     if let Some(home) = user_home_directory() {
         command.cwd(home);
@@ -419,10 +425,13 @@ fn run_worker(
 }
 
 /// 平台默认交互 shell。
-fn default_shell_command(shell_integration_token: Option<&str>) -> Result<CommandBuilder, String> {
+fn default_shell_command(
+    shell_integration_token: Option<&str>,
+    powershell_mode: Option<&str>,
+) -> Result<CommandBuilder, String> {
     #[cfg(windows)]
     {
-        let mut command = CommandBuilder::new(preferred_windows_powershell());
+        let mut command = CommandBuilder::new(select_windows_powershell(powershell_mode)?);
         command.arg("-NoLogo");
         if let Some(token) = shell_integration_token {
             validate_shell_integration_token(token)?;
@@ -436,6 +445,7 @@ fn default_shell_command(shell_integration_token: Option<&str>) -> Result<Comman
     #[cfg(unix)]
     {
         let _ = shell_integration_token;
+        let _ = powershell_mode;
         let shell = env::var_os("SHELL").unwrap_or_else(|| "/bin/sh".into());
         if shell.is_empty() {
             return Err("SHELL 环境变量为空".to_string());
@@ -470,8 +480,8 @@ fn default_shell_integration_kind(shell_integration_token: Option<&str>) -> Opti
 }
 
 #[cfg(windows)]
-/// 每次打开终端重新探测 PowerShell 7；不可用时回退系统自带 Windows PowerShell 5.1。
-fn preferred_windows_powershell() -> PathBuf {
+/// 每次打开终端重新探测 PowerShell 7 可执行文件。
+fn find_windows_powershell_7() -> Option<PathBuf> {
     for variable in ["ProgramW6432", "ProgramFiles"] {
         if let Some(root) = env::var_os(variable) {
             let candidate = PathBuf::from(root)
@@ -479,7 +489,7 @@ fn preferred_windows_powershell() -> PathBuf {
                 .join("7")
                 .join("pwsh.exe");
             if candidate.is_file() {
-                return candidate;
+                return Some(candidate);
             }
         }
     }
@@ -488,12 +498,28 @@ fn preferred_windows_powershell() -> PathBuf {
         for directory in env::split_paths(&path) {
             let candidate = directory.join("pwsh.exe");
             if candidate.is_file() {
-                return candidate;
+                return Some(candidate);
             }
         }
     }
 
-    PathBuf::from("powershell.exe")
+    None
+}
+
+#[cfg(windows)]
+/// 按本机设置选择 Windows PowerShell；自动模式优先 7，不可用时回退 5.1。
+fn select_windows_powershell(mode: Option<&str>) -> Result<PathBuf, String> {
+    match mode.unwrap_or("auto") {
+        "auto" => {
+            Ok(find_windows_powershell_7().unwrap_or_else(|| PathBuf::from("powershell.exe")))
+        }
+        "ps7" => find_windows_powershell_7().ok_or_else(|| {
+            "未找到 PowerShell 7（pwsh.exe），请安装 PowerShell 7 或切换默认 PowerShell。"
+                .to_string()
+        }),
+        "ps5" => Ok(PathBuf::from("powershell.exe")),
+        _ => Err("默认 PowerShell 设置无效".to_string()),
+    }
 }
 
 #[cfg(windows)]
