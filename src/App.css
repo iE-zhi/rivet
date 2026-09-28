@@ -317,6 +317,8 @@ button, input, textarea { font: inherit; }
   cursor: pointer;
 }
 .quick-command-delete-confirm button.is-danger { border-color: var(--r-danger); background: var(--r-danger); color: #fff; }
+.quick-command-delete-confirm button:hover:not(:disabled) { background: var(--r-surface-2); }
+.quick-command-delete-confirm button.is-danger:hover:not(:disabled) { border-color: var(--r-danger-hover); background: var(--r-danger-hover); color: #fff; }
 
 .rivet-button { position: relative; }
 .app-shell[data-theme="light"] { color-scheme: light; }

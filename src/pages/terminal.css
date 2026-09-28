@@ -749,6 +749,12 @@
   color: #fff;
 }
 
+.terminal-delete-actions button.danger:hover:not(:disabled) {
+  border-color: var(--r-danger-hover);
+  background: var(--r-danger-hover);
+  color: #fff;
+}
+
 .terminal-connection-form {
   display: flex;
   min-height: 0;

@@ -329,8 +329,8 @@
 }
 
 .sftp-inline-action button.danger:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--r-danger) 68%, #000);
-  background: color-mix(in srgb, var(--r-danger) 68%, #000);
+  border-color: var(--r-danger-hover);
+  background: var(--r-danger-hover);
   color: #fff;
 }
 

@@ -19,6 +19,7 @@
 
   --r-success: #10B981;
   --r-danger: #EF4444;
+  --r-danger-hover: color-mix(in srgb, var(--r-danger) 80%, #000);
   --r-warning: #F59E0B;
   --r-info: #3B82F6;
 

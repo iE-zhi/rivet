@@ -50,6 +50,7 @@
 .rivet-button-success { color: #fff; background: var(--r-success); }
 .rivet-button-danger { color: #fff; background: var(--r-danger); }
 .rivet-button:hover:not(:disabled) { filter: brightness(1.05); }
+.rivet-button-danger:hover:not(:disabled) { border-color: var(--r-danger-hover); background: var(--r-danger-hover); filter: none; }
 .rivet-button:focus-visible,
 .rivet-button.is-focus { box-shadow: 0 0 0 2px var(--r-bg), 0 0 0 4px var(--r-primary-light); }
 .rivet-button:disabled { opacity: .45; cursor: default; }
