@@ -47,7 +47,7 @@ const COPY = {
   zh: {
     title: "快捷命令",
     add: "添加命令",
-    manageGroups: "分组管理",
+    manageGroups: "分组排序",
     backToCommands: "返回快捷命令",
     reorderGroups: "调整分组顺序",
     noGroups: "暂无分组",
@@ -79,7 +79,7 @@ const COPY = {
   en: {
     title: "Quick commands",
     add: "Add command",
-    manageGroups: "Manage groups",
+    manageGroups: "Group sorting",
     backToCommands: "Back to quick commands",
     reorderGroups: "Reorder groups",
     noGroups: "No groups",
