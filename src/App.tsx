@@ -224,6 +224,8 @@ export default function App() {
   const [page, setPage] = useState<AppPage>(initialPage);
   /** SSH 终端页首次访问后保持挂载，避免初始加载 xterm 且切页不丢会话。 */
   const [terminalMounted, setTerminalMounted] = useState(initialPage === "terminal");
+  /** 最大化时取消悬浮留白，让应用内容真正铺满系统工作区。 */
+  const [windowMaximized, setWindowMaximized] = useState(false);
   /** 串口页将真实日志工具栏渲染到此标题栏宿主。 */
   const [serialTitlebarHost, setSerialTitlebarHost] = useState<HTMLDivElement | null>(null);
   /** 终端页将真实会话标签渲染到此标题栏宿主。 */
@@ -234,6 +236,39 @@ export default function App() {
   const copy = SHELL_COPY[locale];
   /** 应用窗口实际使用的颜色方案，system 模式随系统偏好实时更新。 */
   const resolvedTheme = theme === "system" ? (systemPrefersDark ? "dark" : "light") : theme;
+
+  /** 同步原生窗口最大化状态；系统快捷方式或标题栏按钮都能更新布局。 */
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    const appWindow = getCurrentWindow();
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+
+    const syncMaximizedState = async () => {
+      try {
+        const maximized = await appWindow.isMaximized();
+        if (!disposed) setWindowMaximized(maximized);
+      } catch (error) {
+        console.warn("Rivet 无法读取窗口最大化状态。", error);
+      }
+    };
+
+    void syncMaximizedState();
+    void appWindow.onResized(() => {
+      void syncMaximizedState();
+    }).then((disposeListener) => {
+      if (disposed) disposeListener();
+      else unlisten = disposeListener;
+    }).catch((error: unknown) => {
+      console.warn("Rivet 无法监听窗口尺寸变化。", error);
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     /** 跟随系统模式时更新深色偏好；清理监听器以释放窗口级事件资源。 */
@@ -457,7 +492,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="app-shell rivet-ui" data-theme={resolvedTheme} data-font={font} data-font-size={fontSize}>
+    <div className={`app-shell rivet-ui${windowMaximized ? " is-maximized" : ""}`} data-theme={resolvedTheme} data-font={font} data-font-size={fontSize}>
       <header className="app-titlebar">
         <div className="app-titlebar-logo" aria-label={copy.brand} title={copy.brand} onPointerDown={handleTitlebarPointerDown}>
           <img src={appIcon} alt="" aria-hidden="true" />

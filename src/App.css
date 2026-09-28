@@ -22,7 +22,14 @@ button, input, textarea { font: inherit; }
   background: var(--r-bg);
   color: var(--r-text);
   font-family: var(--rivet-font-family);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, .14), 0 2px 5px rgba(0, 0, 0, .08);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, .14), 0 1px 4px rgba(0, 0, 0, .08);
+}
+.app-shell.is-maximized {
+  width: calc(100% + 40px);
+  height: calc(100% + 40px);
+  margin: -20px;
+  border-radius: 0;
+  box-shadow: none;
 }
 .app-titlebar { position: relative; z-index: 200; height: 36px; border-bottom: 1px solid var(--r-border); background: var(--r-surface); user-select: none; }
 .app-titlebar-logo { position: absolute; z-index: 3; top: 0; left: 0; display: grid; width: 52px; height: 35px; place-items: center; border-right: 1px solid var(--r-border); }
@@ -40,6 +47,8 @@ button, input, textarea { font: inherit; }
 .app-window-button svg { width: 13px; height: 13px; }
 .app-body { display: grid; min-width: 0; min-height: 0; grid-template-columns: 52px minmax(0, 1fr); }
 .app-content { min-width: 0; min-height: 0; height: 100%; }
+.app-content > .rivet-notification-viewport { top: 68px; right: 32px; max-width: calc(100vw - 64px); max-height: calc(100vh - 88px); }
+.app-shell.is-maximized .rivet-notification-viewport { top: 48px; right: 16px; max-width: calc(100vw - 32px); max-height: calc(100vh - 64px); }
 .app-view { width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .app-view[hidden] { display: none !important; }
 .serial-page { display: grid; width: 100%; height: 100%; min-width: 0; min-height: 0; grid-template-columns: minmax(300px, 1fr) var(--serial-control-width); grid-template-rows: minmax(0, 1fr); }
