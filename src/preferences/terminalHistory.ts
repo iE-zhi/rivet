@@ -175,7 +175,7 @@ export function recordTerminalCommand(command: string): boolean {
   }
 }
 
-/** 按最近优先返回包含检索词的候选，精确相同项也保留。 */
+/** 精确匹配优先，其余包含检索词的候选保持最近优先顺序。 */
 export function findTerminalCommandHistoryMatches(
   history: readonly string[],
   query: string,
@@ -185,12 +185,23 @@ export function findTerminalCommandHistoryMatches(
   const queryIndex = terminalCommandHistoryIndex(query);
   if (queryIndex.length === 0) return [];
 
+  let exactMatch: string | null = null;
   const matches: string[] = [];
   for (const command of history) {
-    if (terminalCommandHistoryIndex(command).includes(queryIndex)) {
-      matches.push(command);
-      if (matches.length >= limit) break;
+    if (command === query) {
+      exactMatch = command;
+      continue;
     }
+    if (
+      matches.length < limit
+      && terminalCommandHistoryIndex(command).includes(queryIndex)
+    ) {
+      matches.push(command);
+    }
+  }
+
+  if (exactMatch !== null) {
+    return [exactMatch, ...matches.slice(0, Math.max(0, limit - 1))];
   }
   return matches;
 }
