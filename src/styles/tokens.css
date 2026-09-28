@@ -1,5 +1,8 @@
 :root,
 .rivet-theme-light {
+  /* 桌面浮层统一使用 160 毫秒淡入淡出，避免各面板出现不同节奏。 */
+  --r-overlay-fade-duration: 160ms;
+
   --r-bg: #FFFFFF;
   --r-surface: #F8FAFC;
   --r-surface-2: #F1F5F9;

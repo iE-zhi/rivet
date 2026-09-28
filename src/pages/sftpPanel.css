@@ -15,14 +15,14 @@
   box-shadow: 0 18px 50px rgba(0, 0, 0, .18), 0 3px 12px rgba(0, 0, 0, .08);
   opacity: 0;
   visibility: hidden;
-  transform: translateY(8px) scale(.985);
-  transition: opacity .16s ease, transform .16s ease, visibility .16s ease;
+  pointer-events: none;
+  transition: opacity var(--r-overlay-fade-duration) ease, visibility var(--r-overlay-fade-duration) ease;
 }
 
 .sftp-panel.open {
   opacity: 1;
   visibility: visible;
-  transform: none;
+  pointer-events: auto;
 }
 
 .sftp-header {
