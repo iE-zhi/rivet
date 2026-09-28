@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Button, Checkbox, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, Terminal, Textarea, VerticalScrollbar, useNotification, type TerminalLine } from "../components/ui";
@@ -136,6 +137,10 @@ export interface SerialPageProps {
   useSerialDefaults: boolean;
   /** 持久化且严格校验的前端 RX 分包参数；不改变 Rust 读取行为。 */
   serialRxSettings: SerialRxSettings;
+  /** 应用自定义标题栏中用于承载串口日志工具的 DOM 节点。 */
+  titlebarHost: HTMLElement | null;
+  /** 标题栏空白区域的阈值拖拽处理器。 */
+  onTitlebarPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
 }
 
 /**
@@ -188,9 +193,11 @@ function createLogPrefix(kind: "info" | "rx" | "tx" | "ok", timestamp: number, e
  * @param serialDefaults 当前应用持久化的默认通信参数；活动会话配置保存在页面本地。
  * @param useSerialDefaults 是否在启动时使用设置页默认参数。
  * @param serialRxSettings 当前持久化的前端 RX 展示分包参数。
+ * @param titlebarHost 应用外壳提供的自定义标题栏宿主。
+ * @param onTitlebarPointerDown 标题栏空白区域的阈值拖拽处理器。
  * @returns 串口控制台及其设备、日志和收发控件。
  */
-export default function SerialPage({ locale, serialDefaults, useSerialDefaults, serialRxSettings }: SerialPageProps) {
+export default function SerialPage({ locale, serialDefaults, useSerialDefaults, serialRxSettings, titlebarHost, onTitlebarPointerDown }: SerialPageProps) {
   /** 设备、串口配置、发送草稿和日志在页面挂载期间保留。 */
   const [ports, setPorts] = useState<PortInfo[]>([]);
   const [path, setPath] = useState("");
@@ -986,18 +993,23 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   }, [copy.unavailable, desktop, notify]);
 
   return (
-    <main className="serial-page" id="serial-page">
-      <section className="console-area">
-        <section className="log-panel" aria-label={copy.console}>
-          <div className="log-toolbar">
-            <Checkbox className="log-hex-option" label={copy.hexDisplay} checked={hexDisplay} onChange={updateHexDisplay} />
-            <div className="log-toolbar-actions">
-              <Button type="button" variant="secondary" className="save-button" onClick={saveLog} disabled={!desktop || !lines.length || saving}>{copy.save}</Button>
-              <Button type="button" variant="secondary" className="clear-button" onClick={clearLog} disabled={!lines.length && byteCounts.sent === 0n && byteCounts.received === 0n}>{copy.clear}</Button>
-            </div>
+    <>
+      {titlebarHost && createPortal(
+        <div className="serial-titlebar-tools">
+          <Checkbox className="log-hex-option" label={copy.hexDisplay} checked={hexDisplay} onChange={updateHexDisplay} />
+          <span className="serial-titlebar-drag" onPointerDown={onTitlebarPointerDown} />
+          <div className="log-toolbar-actions">
+            <Button type="button" variant="secondary" className="save-button" onClick={saveLog} disabled={!desktop || !lines.length || saving}>{copy.save}</Button>
+            <Button type="button" variant="secondary" className="clear-button" onClick={clearLog} disabled={!lines.length && byteCounts.sent === 0n && byteCounts.received === 0n}>{copy.clear}</Button>
           </div>
-          {lines.length ? <VerticalScrollbar className="serial-log-scroll" viewportClassName="serial-log-viewport" height="100%" viewportLabel={copy.logViewport} autoScrollToBottom><Terminal className="serial-terminal" lines={lines} /></VerticalScrollbar> : <div className="empty-state"><div className="empty-icon"><SvgIcon name="wave" size={22} /></div><strong>{copy.empty}</strong></div>}
-        </section>
+        </div>,
+        titlebarHost,
+      )}
+      <main className="serial-page" id="serial-page">
+        <section className="console-area">
+          <section className="log-panel" aria-label={copy.console}>
+            {lines.length ? <VerticalScrollbar className="serial-log-scroll" viewportClassName="serial-log-viewport" height="100%" viewportLabel={copy.logViewport} autoScrollToBottom><Terminal className="serial-terminal" lines={lines} /></VerticalScrollbar> : <div className="empty-state"><div className="empty-icon"><SvgIcon name="wave" size={22} /></div><strong>{copy.empty}</strong></div>}
+          </section>
         <footer className="console-footer"><span className="console-byte-counts"><span>{copy.sent}{byteCounts.sent.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")} {copy.byteUnit}</span><span>{copy.received}{byteCounts.received.toLocaleString(locale === "zh" ? "zh-CN" : "en-US")} {copy.byteUnit}</span></span><span>{connected ? copy.connected : copy.disconnected}</span></footer>
       </section>
       <aside className="control-panel">
@@ -1249,6 +1261,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
           </VerticalScrollbar>
         </section>
       </aside>
-    </main>
+      </main>
+    </>
   );
 }

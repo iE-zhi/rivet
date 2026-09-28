@@ -148,7 +148,6 @@
   place-items: center;
   padding: 0;
   border: 0;
-  border-right: 1px solid var(--r-border);
   background: transparent;
   color: var(--r-subtle);
   cursor: pointer;
@@ -876,6 +875,7 @@
     width: min(310px, calc(100vw - 28px));
   }
   .terminal-session-picker-top { right: 6px; }
+  .app-titlebar-terminal-host .terminal-session-picker-top { left: max(0px, calc(100% - min(310px, calc(100vw - 28px)))); right: auto; }
   .terminal-connection-panel {
     left: 8px;
     width: min(330px, calc(100% - 16px));

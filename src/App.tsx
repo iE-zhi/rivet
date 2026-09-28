@@ -1,4 +1,6 @@
-import { lazy, Suspense, useCallback, useEffect, useState, type MouseEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import appIcon from "../src-tauri/icons/128x128.png";
 import { NotificationProvider, SvgIcon } from "./components/ui";
 import { APP_PREFERENCE_STORAGE_KEYS, persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT, useRivetSync } from "./rivetSync";
@@ -15,8 +17,8 @@ const TerminalPage = lazy(() => import("./pages/TerminalPage"));
 
 /** 应用外壳所需的导航与品牌文案。 */
 const SHELL_COPY = {
-  zh: { brand: "Rivet", navigation: "主导航", serial: "串口", terminal: "终端", settings: "设置" },
-  en: { brand: "Rivet", navigation: "Main navigation", serial: "Serial", terminal: "Terminal", settings: "Settings" },
+  zh: { brand: "Rivet", navigation: "主导航", serial: "串口", terminal: "终端", settings: "设置", minimize: "最小化", maximize: "最大化/还原", close: "关闭" },
+  en: { brand: "Rivet", navigation: "Main navigation", serial: "Serial", terminal: "Terminal", settings: "Settings", minimize: "Minimize", maximize: "Maximize/restore", close: "Close" },
 } as const;
 
 /** 支持的语言值，用于校验浏览器存储中的输入。 */
@@ -222,6 +224,10 @@ export default function App() {
   const [page, setPage] = useState<AppPage>(initialPage);
   /** SSH 终端页首次访问后保持挂载，避免初始加载 xterm 且切页不丢会话。 */
   const [terminalMounted, setTerminalMounted] = useState(initialPage === "terminal");
+  /** 串口页将真实日志工具栏渲染到此标题栏宿主。 */
+  const [serialTitlebarHost, setSerialTitlebarHost] = useState<HTMLDivElement | null>(null);
+  /** 终端页将真实会话标签渲染到此标题栏宿主。 */
+  const [terminalTitlebarHost, setTerminalTitlebarHost] = useState<HTMLDivElement | null>(null);
   /** Git 托管同步控制器常驻应用外壳，设置页只负责展示和人工操作。 */
   const sync = useRivetSync();
   /** 当前 locale 对应的一级导航文案。 */
@@ -396,68 +402,148 @@ export default function App() {
     }
   };
 
+  /** 执行自定义标题栏窗口操作；浏览器预览环境保持无副作用。 */
+  const runWindowAction = useCallback((action: "minimize" | "toggleMaximize" | "close") => {
+    if (!isTauri()) return;
+    const appWindow = getCurrentWindow();
+    const operation = action === "minimize"
+      ? appWindow.minimize()
+      : action === "toggleMaximize"
+        ? appWindow.toggleMaximize()
+        : appWindow.close();
+    void operation.catch((error: unknown) => console.warn(`Rivet 窗口操作失败：${action}`, error));
+  }, []);
+
+  /** 标题栏按下后仅在移动超过阈值时进入系统拖拽，避免普通点击或轻微手抖移动窗口。 */
+  const handleTitlebarPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (!isTauri() || event.button !== 0 || !event.isPrimary) return;
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let finished = false;
+
+    const cleanup = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerEnd);
+      window.removeEventListener("pointercancel", handlePointerEnd);
+    };
+
+    const handlePointerEnd = () => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+    };
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      if (finished) return;
+      if ((moveEvent.buttons & 1) === 0) {
+        handlePointerEnd();
+        return;
+      }
+
+      const distance = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
+      if (distance < 4) return;
+
+      finished = true;
+      cleanup();
+      void getCurrentWindow().startDragging().catch((error: unknown) => {
+        console.warn("Rivet 启动窗口拖拽失败。", error);
+      });
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    window.addEventListener("pointerup", handlePointerEnd, { once: true });
+    window.addEventListener("pointercancel", handlePointerEnd, { once: true });
+  }, []);
+
   return (
     <div className="app-shell rivet-ui" data-theme={resolvedTheme} data-font={font} data-font-size={fontSize}>
-      <nav className="rail" aria-label={copy.navigation}>
-        <a className="brand-mark" href="#serial-page" onClick={navigateToSerial} aria-label={copy.brand} title="Rivet">
+      <header className="app-titlebar">
+        <div className="app-titlebar-logo" aria-label={copy.brand} title={copy.brand} onPointerDown={handleTitlebarPointerDown}>
           <img src={appIcon} alt="" aria-hidden="true" />
-        </a>
-        <span className="rail-divider" aria-hidden="true" />
-        {navigationSettings.filter((item) => item.visible).map((item) => (
-          item.id === "serial" ? (
-            <a
-              key={item.id}
-              className={`rail-link${page === "serial" ? " active" : ""}`}
-              href="#serial-page"
-              onClick={navigateToSerial}
-              aria-current={page === "serial" ? "page" : undefined}
-              aria-label={copy.serial}
-              title={copy.serial}
-            >
-              <SvgIcon name="serial" size={24} className="serial-icon" />
-            </a>
-          ) : (
-            <a
-              key={item.id}
-              className={`rail-link${page === "terminal" ? " active" : ""}`}
-              href="#terminal-page"
-              onClick={navigateToTerminal}
-              aria-current={page === "terminal" ? "page" : undefined}
-              aria-label={copy.terminal}
-              title={copy.terminal}
-            >
-              <SvgIcon name="terminal" size={23} />
-            </a>
-          )
-        ))}
-        <span className="rail-spacer" />
-        <a
-          className={`rail-link settings-rail-link${page === "settings" ? " active" : ""}`}
-          href="#settings-display"
-          onClick={navigateToSettings}
-          aria-current={page === "settings" ? "page" : undefined}
-          aria-label={copy.settings}
-          title={copy.settings}
-        >
-          <SvgIcon name="setting" />
-        </a>
-      </nav>
-      <div className="app-content">
-        <NotificationProvider locale={locale} visibility={notificationSettings}>
-          <div className="app-view serial-view" hidden={page !== "serial"}>
-            <SerialPage locale={locale} serialDefaults={serialDefaults} useSerialDefaults={useSerialDefaults} serialRxSettings={serialRxSettings} />
-          </div>
-          {terminalMounted && (
-            <div className="app-view terminal-view" hidden={page !== "terminal"}>
-              <Suspense fallback={null}>
-                <TerminalPage locale={locale} themeKey={resolvedTheme} pageActive={page === "terminal"} fontSize={Number(fontSize)} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} onRequestActivate={activateTerminalPage} />
-              </Suspense>
+        </div>
+        <div
+          ref={setSerialTitlebarHost}
+          className="app-titlebar-host app-titlebar-serial-host"
+          hidden={page !== "serial"}
+        />
+        <div
+          ref={setTerminalTitlebarHost}
+          className="app-titlebar-host app-titlebar-terminal-host"
+          hidden={page !== "terminal"}
+        />
+        <div className="app-titlebar-drag" onPointerDown={handleTitlebarPointerDown} />
+        <div className="app-window-controls">
+          <button type="button" className="app-window-button" aria-label={copy.minimize} title={copy.minimize} onClick={() => runWindowAction("minimize")}>
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5h10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
+          </button>
+          <button type="button" className="app-window-button" aria-label={copy.maximize} title={copy.maximize} onClick={() => runWindowAction("toggleMaximize")}>
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3.25" y="3.25" width="9.5" height="9.5" rx=".5" stroke="currentColor" strokeWidth="1.1" /></svg>
+          </button>
+          <button type="button" className="app-window-button app-window-close" aria-label={copy.close} title={copy.close} onClick={() => runWindowAction("close")}>
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <div className="app-body">
+        <nav className="rail" aria-label={copy.navigation}>
+          {navigationSettings.filter((item) => item.visible).map((item) => (
+            item.id === "serial" ? (
+              <a
+                key={item.id}
+                className={`rail-link${page === "serial" ? " active" : ""}`}
+                href="#serial-page"
+                onClick={navigateToSerial}
+                aria-current={page === "serial" ? "page" : undefined}
+                aria-label={copy.serial}
+                title={copy.serial}
+              >
+                <SvgIcon name="serial" size={24} className="serial-icon" />
+              </a>
+            ) : (
+              <a
+                key={item.id}
+                className={`rail-link${page === "terminal" ? " active" : ""}`}
+                href="#terminal-page"
+                onClick={navigateToTerminal}
+                aria-current={page === "terminal" ? "page" : undefined}
+                aria-label={copy.terminal}
+                title={copy.terminal}
+              >
+                <SvgIcon name="terminal" size={23} />
+              </a>
+            )
+          ))}
+          <span className="rail-spacer" />
+          <a
+            className={`rail-link settings-rail-link${page === "settings" ? " active" : ""}`}
+            href="#settings-display"
+            onClick={navigateToSettings}
+            aria-current={page === "settings" ? "page" : undefined}
+            aria-label={copy.settings}
+            title={copy.settings}
+          >
+            <SvgIcon name="setting" />
+          </a>
+        </nav>
+        <div className="app-content">
+          <NotificationProvider locale={locale} visibility={notificationSettings}>
+            <div className="app-view serial-view" hidden={page !== "serial"}>
+              <SerialPage locale={locale} serialDefaults={serialDefaults} useSerialDefaults={useSerialDefaults} serialRxSettings={serialRxSettings} titlebarHost={serialTitlebarHost} onTitlebarPointerDown={handleTitlebarPointerDown} />
             </div>
-          )}
-          <div className="app-view settings-view" hidden={page !== "settings"}>
-            <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} fontSize={fontSize} onFontSizeChange={setFontSize} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} sync={sync} />
-          </div>
-        </NotificationProvider>
+            {terminalMounted && (
+              <div className="app-view terminal-view" hidden={page !== "terminal"}>
+                <Suspense fallback={null}>
+                  <TerminalPage locale={locale} themeKey={resolvedTheme} pageActive={page === "terminal"} fontSize={Number(fontSize)} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} onRequestActivate={activateTerminalPage} titlebarHost={terminalTitlebarHost} />
+                </Suspense>
+              </div>
+            )}
+            <div className="app-view settings-view" hidden={page !== "settings"}>
+              <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} fontSize={fontSize} onFontSizeChange={setFontSize} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} sync={sync} />
+            </div>
+          </NotificationProvider>
+        </div>
       </div>
     </div>
   );

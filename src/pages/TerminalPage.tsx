@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { notifySyncedSecretsChanged, persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT } from "../rivetSync";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -56,6 +57,8 @@ interface TerminalPageProps {
   linuxXauthPath: string;
   /** 系统窗口关闭被拦截时，确保终端页可见以展示确认弹窗。 */
   onRequestActivate: () => void;
+  /** 应用自定义标题栏中用于承载真实会话标签的 DOM 节点。 */
+  titlebarHost: HTMLElement | null;
 }
 
 type TerminalSessionState = "connecting" | "connected" | "closed" | "error";
@@ -954,7 +957,7 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
 }
 
 /** Rivet 终端页面：Tab 之内使用递归 pane 树管理本地、SSH 与串口终端。 */
-export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x11ServerAddress, linuxXauthPath, onRequestActivate }: TerminalPageProps) {
+export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x11ServerAddress, linuxXauthPath, onRequestActivate, titlebarHost }: TerminalPageProps) {
   const copy = COPY[locale];
   const { notify } = useNotification();
   const [initialWorkspace] = useState(() => createInitialTerminalWorkspace(copy.terminal));
@@ -1419,7 +1422,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
     await getCurrentWindow().destroy();
   }, []);
 
-  /** 系统标题栏关闭监听只注册一次，防止状态变化造成多重 preventDefault。 */
+  /** 窗口关闭请求监听只注册一次，防止状态变化造成多重 preventDefault。 */
   useEffect(() => {
     if (!isTauri()) return;
 
@@ -1962,62 +1965,66 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
     );
   };
 
-  return (
-    <main className="terminal-page">
-      <header className="terminal-tabbar">
-        <HorizontalScrollbar
-          className="terminal-tabs"
-          viewportClassName="terminal-tabs-viewport"
-          height="36px"
-          viewportLabel={locale === "zh" ? "终端会话标签" : "Terminal session tabs"}
-        >
-          <div className="terminal-tabs-row">
-          {tabs.map((tab) => {
-            const tabPane = findTerminalPane(tab.root, tab.activePaneId);
-            const tabSession = tabPane ? sessionsById.get(tabPane.sessionId) ?? null : null;
-            return (
-              <div key={tab.id} className={`terminal-tab ${tab.id === activeTabId ? "active" : ""}`}>
-                <button
-                  type="button"
-                  className="terminal-tab-main"
-                  aria-current={tab.id === activeTabId ? "page" : undefined}
-                  onClick={() => setActiveTabId(tab.id)}
-                >
-                  {tabSession && (
-                    <span className={`terminal-session-dot state-${tabSession.state}`} />
-                  )}
-                  <span className="terminal-tab-title">{tab.title}</span>
-                </button>
-                <button
-                  type="button"
-                  className="terminal-tab-close"
-                  aria-label={locale === "zh" ? "关闭会话" : "Close session"}
-                  onClick={() => void requestCloseTab(tab.id)}
-                >
-                  <SvgIcon name="close" size={11} />
-                </button>
-              </div>
-            );
-          })}
-          </div>
-        </HorizontalScrollbar>
-        <button
-          type="button"
-          className="terminal-new-tab terminal-picker-trigger"
-          title={copy.addSession}
-          aria-label={copy.addSession}
-          onClick={() =>
-            setPicker((current) =>
-              current?.action === "new-tab" ? null : { action: "new-tab", anchor: "top" },
-            )
-          }
-        >
-          <SvgIcon name="plus" size={16} />
-        </button>
-        {picker?.anchor === "top" && renderPicker()}
-      </header>
+  const titlebarTabs = (
+    <header className="terminal-tabbar">
+      <HorizontalScrollbar
+        className="terminal-tabs"
+        viewportClassName="terminal-tabs-viewport"
+        height="35px"
+        viewportLabel={locale === "zh" ? "终端会话标签" : "Terminal session tabs"}
+      >
+        <div className="terminal-tabs-row">
+        {tabs.map((tab) => {
+          const tabPane = findTerminalPane(tab.root, tab.activePaneId);
+          const tabSession = tabPane ? sessionsById.get(tabPane.sessionId) ?? null : null;
+          return (
+            <div key={tab.id} className={`terminal-tab ${tab.id === activeTabId ? "active" : ""}`}>
+              <button
+                type="button"
+                className="terminal-tab-main"
+                aria-current={tab.id === activeTabId ? "page" : undefined}
+                onClick={() => setActiveTabId(tab.id)}
+              >
+                {tabSession && (
+                  <span className={`terminal-session-dot state-${tabSession.state}`} />
+                )}
+                <span className="terminal-tab-title">{tab.title}</span>
+              </button>
+              <button
+                type="button"
+                className="terminal-tab-close"
+                aria-label={locale === "zh" ? "关闭会话" : "Close session"}
+                onClick={() => void requestCloseTab(tab.id)}
+              >
+                <SvgIcon name="close" size={11} />
+              </button>
+            </div>
+          );
+        })}
+        </div>
+      </HorizontalScrollbar>
+      <button
+        type="button"
+        className="terminal-new-tab terminal-picker-trigger"
+        title={copy.addSession}
+        aria-label={copy.addSession}
+        onClick={() =>
+          setPicker((current) =>
+            current?.action === "new-tab" ? null : { action: "new-tab", anchor: "top" },
+          )
+        }
+      >
+        <SvgIcon name="plus" size={16} />
+      </button>
+      {picker?.anchor === "top" && renderPicker()}
+    </header>
+  );
 
-      <section className="terminal-workspace">
+  return (
+    <>
+      {titlebarHost && createPortal(titlebarTabs, titlebarHost)}
+      <main className="terminal-page">
+        <section className="terminal-workspace">
         {tabs.map((tab) => {
           const paneLayout = layoutTerminalPanes(tab.root);
           const showHeaders = paneLayout.panes.length > 1;
@@ -2630,7 +2637,8 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
           </button>
           {picker?.anchor === "bottom" && renderPicker()}
         </div>
-      </footer>
-    </main>
+        </footer>
+      </main>
+    </>
   );
 }

@@ -28,7 +28,7 @@ russh = { version = "=0.63.3", default-features = false, features = ["ring", "rs
 russh-sftp = "=3.0.0"
 serial2 = "=0.2.38"
 sysinfo = "=0.39.6"
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync", "time", "fs"] }
 tempfile = "3"

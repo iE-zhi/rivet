@@ -16,8 +16,12 @@
       "height": 600,
       "minWidth": 1024,
       "minHeight": 600,
-      "center": true
+      "center": true,
+      "decorations": false,
+      "transparent": true,
+      "shadow": false
     }],
+    "macOSPrivateApi": true,
     "security": {}
   },
   "bundle": {
