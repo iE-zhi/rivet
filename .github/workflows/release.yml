@@ -74,6 +74,16 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: Rivet v__VERSION__
+          releaseBody: |
+            ## v0.1.8 更新内容
+
+            - 统一快捷命令、SFTP、终端连接等浮层的淡入淡出动画，交互节奏更一致。
+            - 修复终端光标闪烁被全局动画兼容规则抑制的问题，恢复正常光标闪烁。
+            - 优化 macOS 小尺寸应用图标：改用 1024px 母版统一重采样 ICNS 各尺寸帧，提升 Dock、Finder 等场景下的小图标清晰度。
+            - 完善图标生成脚本的 ICNS 帧校验与规范化处理，减少缺帧或尺寸异常导致的平台图标问题。
+            - 新增 Rivet Halo 项目介绍页面，用于展示项目定位与主要能力。
+
+            请在下方 Assets 下载对应平台的安装包。
           releaseDraft: false
           prerelease: false
           generateReleaseNotes: true
