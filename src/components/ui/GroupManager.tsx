@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { SvgIcon } from "./SvgIcon";
 
 export interface GroupManagerItem {
@@ -53,10 +53,23 @@ export function GroupManager({
 }: GroupManagerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cleanupDragRef = useRef<(() => void) | null>(null);
+  const keyboardMovedIdRef = useRef<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
   useEffect(() => () => cleanupDragRef.current?.(), []);
+
+  /** 键盘排序提交后，让被移动的分组保持在最近可视区域内。 */
+  useLayoutEffect(() => {
+    const movedId = keyboardMovedIdRef.current;
+    if (!movedId) return;
+    keyboardMovedIdRef.current = null;
+    const row = Array.from(
+      containerRef.current?.querySelectorAll<HTMLElement>("[data-group-manager-id]") ?? [],
+    ).find((item) => item.dataset.groupManagerId === movedId);
+    row?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [items]);
+
 
   const commitKeyboardMove = (id: string, direction: -1 | 1) => {
     const order = items.map((item) => item.id);
@@ -64,6 +77,7 @@ export function GroupManager({
     const nextIndex = index + direction;
     if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
     [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+    keyboardMovedIdRef.current = id;
     onOrderChange(order);
   };
 
@@ -79,6 +93,7 @@ export function GroupManager({
       const order = items.map((item) => item.id).filter((itemId) => itemId !== id);
       if (event.key === "Home") order.unshift(id);
       else order.push(id);
+      keyboardMovedIdRef.current = id;
       onOrderChange(order);
     }
   };

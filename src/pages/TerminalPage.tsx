@@ -255,6 +255,7 @@ const COPY = {
     localDesktopOnly: "本地终端仅在 Rivet 桌面应用中可用。",
     serialDesktopOnly: "串口终端仅在 Rivet 桌面应用中可用。",
     historySuggestions: "历史命令候选",
+    historyDeleteConfirm: "删除？Enter 确认 · Esc 取消",
     terminalConnections: "终端连接",
     occupied: "已占用",
   },
@@ -341,6 +342,7 @@ const COPY = {
     localDesktopOnly: "Local terminals are available in the Rivet desktop app.",
     serialDesktopOnly: "Serial terminals are available in the Rivet desktop app.",
     historySuggestions: "Command history suggestions",
+    historyDeleteConfirm: "Delete? Enter confirm · Esc cancel",
     terminalConnections: "Terminal connections",
     occupied: "In use",
   },
@@ -455,6 +457,7 @@ function useXtermScrollbar(terminalRef: React.RefObject<XtermTerminal | null>) {
 interface TerminalCommandHistoryMenuState {
   commands: string[];
   selectedIndex: number;
+  deleteConfirmIndex: number | null;
   left: number;
   top: number;
   width: number;
@@ -469,6 +472,7 @@ interface TerminalCommandInputStart {
 const EMPTY_TERMINAL_COMMAND_HISTORY_MENU: TerminalCommandHistoryMenuState = {
   commands: [],
   selectedIndex: 0,
+  deleteConfirmIndex: null,
   left: 12,
   top: 12,
   width: 180,
@@ -480,6 +484,7 @@ function terminalCommandHistoryMenuLayout(
   terminal: XtermTerminal,
   container: HTMLDivElement,
   commands: readonly string[],
+  extraCharacters = 0,
 ): Pick<TerminalCommandHistoryMenuState, "left" | "top" | "width" | "anchorHeight"> {
   const host = container.parentElement;
   if (!host) return { left: 12, top: 12, width: 180, anchorHeight: 20 };
@@ -497,7 +502,7 @@ function terminalCommandHistoryMenuLayout(
   const maximumWidth = Math.max(96, host.clientWidth - 24);
   const minimumWidth = Math.min(180, maximumWidth);
   const longestLength = commands.reduce((length, command) => Math.max(length, Array.from(command).length), 0);
-  const desiredWidth = Math.ceil(longestLength * Math.max(cellWidth, 7) + 28);
+  const desiredWidth = Math.ceil((longestLength + extraCharacters) * Math.max(cellWidth, 7) + 28);
   const width = Math.min(maximumWidth, Math.max(minimumWidth, desiredWidth));
   const left = Math.max(12, Math.min(cursorLeft, Math.max(12, host.clientWidth - width - 12)));
   const top = Math.max(8, Math.min(cursorRowTop, Math.max(8, host.clientHeight - anchorHeight - 8)));
@@ -547,10 +552,10 @@ function terminalShellIntegrationBootstrap(shellKind: Exclude<TerminalShellKind,
   const executeMarker = `RivetExecute:${token}`;
 
   if (shellKind === "bash") {
-    return ` if [ -z "\${__RIVET_SHELL_INTEGRATION-}" ]; then __RIVET_SHELL_INTEGRATION=1; if [ "\${BASH_VERSINFO[0]:-0}" -gt 4 ] || { [ "\${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "\${BASH_VERSINFO[1]:-0}" -ge 4 ]; }; then __rivet_ready_marker=$'\\033]633;${readyMarker}\\007'; __rivet_prompt_marker=$'\\033]633;${promptMarker}\\007'; __rivet_execute_marker=$'\\033]633;${executeMarker}\\007'; PS1="\\[\${__rivet_ready_marker}\\]\${PS1}\\[\${__rivet_prompt_marker}\\]"; PS0="\${PS0-}\${__rivet_execute_marker}"; fi; fi; printf '\\r\\033[2K'\r`;
+    return ` __rivet_ready_marker=$'\\033]633;${readyMarker}\\007'; if [ -z "\${__RIVET_SHELL_INTEGRATION-}" ]; then __RIVET_SHELL_INTEGRATION=1; if [ "\${BASH_VERSINFO[0]:-0}" -gt 4 ] || { [ "\${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "\${BASH_VERSINFO[1]:-0}" -ge 4 ]; }; then __rivet_prompt_marker=$'\\033]633;${promptMarker}\\007'; __rivet_execute_marker=$'\\033]633;${executeMarker}\\007'; PS1="\\[\${__rivet_ready_marker}\\]\${PS1}\\[\${__rivet_prompt_marker}\\]"; PS0="\${PS0-}\${__rivet_execute_marker}"; fi; fi; printf '%s\\r\\033[2K' "\${__rivet_ready_marker}"\r`;
   }
 
-  return ` if [[ -z \${__RIVET_SHELL_INTEGRATION-} ]]; then typeset -g __RIVET_SHELL_INTEGRATION=1; typeset -g __rivet_ready_marker=$'\\033]633;${readyMarker}\\007'; typeset -g __rivet_prompt_marker=$'\\033]633;${promptMarker}\\007'; function __rivet_preexec() { printf '\\033]633;${executeMarker}\\007'; }; autoload -Uz add-zsh-hook; add-zsh-hook preexec __rivet_preexec; PROMPT="%{\${__rivet_ready_marker}%}\${PROMPT}%{\${__rivet_prompt_marker}%}"; fi; printf '\\r\\033[2K'\r`;
+  return ` typeset -g __rivet_ready_marker=$'\\033]633;${readyMarker}\\007'; if [[ -z \${__RIVET_SHELL_INTEGRATION-} ]]; then typeset -g __RIVET_SHELL_INTEGRATION=1; typeset -g __rivet_prompt_marker=$'\\033]633;${promptMarker}\\007'; function __rivet_preexec() { printf '\\033]633;${executeMarker}\\007'; }; autoload -Uz add-zsh-hook; add-zsh-hook preexec __rivet_preexec; PROMPT="%{\${__rivet_ready_marker}%}\${PROMPT}%{\${__rivet_prompt_marker}%}"; fi; printf '%s\\r\\033[2K' "\${__rivet_ready_marker}"\r`;
 }
 
 /** 从 shell 明确标记的输入起点读取单行命令；多行编辑无法确定时拒绝记录。 */
@@ -618,7 +623,9 @@ function useTerminalCommandHistoryInput(
   }, []);
 
   const hideMenu = useCallback(() => {
-    updateMenu((current) => current.commands.length === 0 ? current : { ...current, commands: [], selectedIndex: 0 });
+    updateMenu((current) => current.commands.length === 0
+      ? current
+      : { ...current, commands: [], selectedIndex: 0, deleteConfirmIndex: null });
   }, [updateMenu]);
 
   const resetInputTracking = useCallback(() => {
@@ -677,7 +684,7 @@ function useTerminalCommandHistoryInput(
     const layout = terminal && container
       ? terminalCommandHistoryMenuLayout(terminal, container, commands)
       : { left: 12, top: 12, width: 180, anchorHeight: 20 };
-    updateMenu(() => ({ commands, selectedIndex: 0, ...layout }));
+    updateMenu(() => ({ commands, selectedIndex: 0, deleteConfirmIndex: null, ...layout }));
   }, [containerRef, hideMenu, terminalRef, updateMenu]);
 
   const acceptCandidate = useCallback((index: number) => {
@@ -841,7 +848,40 @@ function useTerminalCommandHistoryInput(
         updateMenu((current) => ({
           ...current,
           selectedIndex: (current.selectedIndex + direction + count) % count,
+          deleteConfirmIndex: null,
         }));
+        return false;
+      }
+      if (menuRef.current.deleteConfirmIndex !== null && event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        suppressCandidateEnterRef.current = true;
+        window.setTimeout(() => {
+          suppressCandidateEnterRef.current = false;
+        }, 0);
+
+        const deleteIndex = menuRef.current.deleteConfirmIndex;
+        const selectedCommand = menuRef.current.commands[deleteIndex];
+        if (!selectedCommand || !deleteTerminalCommandHistory(selectedCommand)) return false;
+
+        historyRef.current = readTerminalCommandHistory();
+        const query = inputRef.current.join("");
+        const commands = findTerminalCommandHistoryMatches(historyRef.current, query);
+        if (commands.length === 0) {
+          hideMenu();
+        } else {
+          const terminal = terminalRef.current;
+          const container = containerRef.current;
+          const layout = terminal && container
+            ? terminalCommandHistoryMenuLayout(terminal, container, commands)
+            : { left: 12, top: 12, width: 180, anchorHeight: 20 };
+          updateMenu(() => ({
+            commands,
+            selectedIndex: Math.min(deleteIndex, commands.length - 1),
+            deleteConfirmIndex: null,
+            ...layout,
+          }));
+        }
         return false;
       }
       if (event.key === "Enter") {
@@ -864,33 +904,33 @@ function useTerminalCommandHistoryInput(
         event.preventDefault();
         event.stopPropagation();
 
+        if (menuRef.current.deleteConfirmIndex !== null) return false;
         const selectedIndex = menuRef.current.selectedIndex;
-        const selectedCommand = menuRef.current.commands[selectedIndex];
-        if (!selectedCommand || !deleteTerminalCommandHistory(selectedCommand)) return false;
-
-        historyRef.current = readTerminalCommandHistory();
-        const query = inputRef.current.join("");
-        const commands = findTerminalCommandHistoryMatches(historyRef.current, query);
-        if (commands.length === 0) {
-          hideMenu();
-        } else {
-          const terminal = terminalRef.current;
-          const container = containerRef.current;
-          const layout = terminal && container
-            ? terminalCommandHistoryMenuLayout(terminal, container, commands)
-            : { left: 12, top: 12, width: 180, anchorHeight: 20 };
-          updateMenu(() => ({
-            commands,
-            selectedIndex: Math.min(selectedIndex, commands.length - 1),
-            ...layout,
-          }));
-        }
+        const terminal = terminalRef.current;
+        const container = containerRef.current;
+        const layout = terminal && container
+          ? terminalCommandHistoryMenuLayout(terminal, container, menuRef.current.commands, 32)
+          : { left: 12, top: 12, width: 360, anchorHeight: 20 };
+        updateMenu((current) => ({
+          ...current,
+          deleteConfirmIndex: selectedIndex,
+          ...layout,
+        }));
         return false;
       }
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        hideMenu();
+        if (menuRef.current.deleteConfirmIndex !== null) {
+          const terminal = terminalRef.current;
+          const container = containerRef.current;
+          const layout = terminal && container
+            ? terminalCommandHistoryMenuLayout(terminal, container, menuRef.current.commands)
+            : { left: 12, top: 12, width: 180, anchorHeight: 20 };
+          updateMenu((current) => ({ ...current, deleteConfirmIndex: null, ...layout }));
+        } else {
+          hideMenu();
+        }
         return false;
       }
     }
@@ -1055,15 +1095,36 @@ function useTerminalCommandHistoryInput(
 function TerminalCommandHistoryMenu({
   menu,
   ariaLabel,
+  deleteConfirmLabel,
   onSelect,
 }: {
   menu: TerminalCommandHistoryMenuState;
   ariaLabel: string;
+  deleteConfirmLabel: string;
   onSelect: (index: number) => void;
 }) {
+  const anchorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const popup = anchor.querySelector<HTMLElement>(".terminal-history-menu");
+    const selected = anchor.querySelector<HTMLElement>(".terminal-history-menu-item.is-selected");
+    if (!popup || !selected) return;
+
+    const popupRect = popup.getBoundingClientRect();
+    const selectedRect = selected.getBoundingClientRect();
+    if (selectedRect.top < popupRect.top) {
+      popup.scrollTop -= popupRect.top - selectedRect.top;
+    } else if (selectedRect.bottom > popupRect.bottom) {
+      popup.scrollTop += selectedRect.bottom - popupRect.bottom;
+    }
+  }, [menu.commands.length, menu.selectedIndex]);
+
   if (menu.commands.length === 0) return null;
   return (
     <div
+      ref={anchorRef}
       className="terminal-history-anchor"
       style={{ left: menu.left, top: menu.top, width: menu.width, height: menu.anchorHeight }}
     >
@@ -1085,7 +1146,10 @@ function TerminalCommandHistoryMenu({
             onPointerDown={(event) => event.preventDefault()}
             onClick={() => onSelect(index)}
           >
-            {command}
+            <span className="terminal-history-menu-command">{command}</span>
+            {menu.deleteConfirmIndex === index ? (
+              <span className="terminal-history-delete-confirm">{deleteConfirmLabel}</span>
+            ) : null}
           </PopupMenuItem>
         ))}
       </PopupMenu>
@@ -1299,7 +1363,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
   return (
     <div className="terminal-emulator rivet-vertical-scrollbar">
       <div ref={containerRef} className="terminal-emulator-xterm" />
-      <TerminalCommandHistoryMenu menu={commandHistory.menu} ariaLabel={COPY[locale].historySuggestions} onSelect={commandHistory.acceptCandidate} />
+      <TerminalCommandHistoryMenu menu={commandHistory.menu} ariaLabel={COPY[locale].historySuggestions} deleteConfirmLabel={COPY[locale].historyDeleteConfirm} onSelect={commandHistory.acceptCandidate} />
       <VerticalScrollbarTrack
         className="terminal-emulator-scrollbar"
         scrollTop={scrollMetrics.scrollTop}
@@ -1501,7 +1565,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
   return (
     <div className="terminal-emulator rivet-vertical-scrollbar">
       <div ref={containerRef} className="terminal-emulator-xterm" />
-      <TerminalCommandHistoryMenu menu={commandHistory.menu} ariaLabel={COPY[locale].historySuggestions} onSelect={commandHistory.acceptCandidate} />
+      <TerminalCommandHistoryMenu menu={commandHistory.menu} ariaLabel={COPY[locale].historySuggestions} deleteConfirmLabel={COPY[locale].historyDeleteConfirm} onSelect={commandHistory.acceptCandidate} />
       <VerticalScrollbarTrack
         className="terminal-emulator-scrollbar"
         scrollTop={scrollMetrics.scrollTop}
@@ -1694,7 +1758,7 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
   return (
     <div className="terminal-emulator rivet-vertical-scrollbar">
       <div ref={containerRef} className="terminal-emulator-xterm" />
-      <TerminalCommandHistoryMenu menu={commandHistory.menu} ariaLabel={COPY[locale].historySuggestions} onSelect={commandHistory.acceptCandidate} />
+      <TerminalCommandHistoryMenu menu={commandHistory.menu} ariaLabel={COPY[locale].historySuggestions} deleteConfirmLabel={COPY[locale].historyDeleteConfirm} onSelect={commandHistory.acceptCandidate} />
       <VerticalScrollbarTrack
         className="terminal-emulator-scrollbar"
         scrollTop={scrollMetrics.scrollTop}

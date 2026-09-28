@@ -499,9 +499,25 @@
 }
 
 .terminal-history-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.terminal-history-menu-command {
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: pre;
+}
+
+.terminal-history-delete-confirm {
+  flex: 0 0 auto;
+  color: var(--r-danger);
+  font-size: var(--r-font-size-secondary);
+  white-space: nowrap;
 }
 
 .terminal-history-menu-item.is-selected {
