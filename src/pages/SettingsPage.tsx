@@ -49,7 +49,7 @@ interface SettingsPageCopy {
   display: string;
   /** 串口设置栏目名称。 */
   serial: string;
-  /** SSH 设置栏目名称。 */
+  /** 终端设置栏目名称。 */
   ssh: string;
   /** 同步设置栏目名称。 */
   sync: string;
@@ -215,7 +215,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     navigation: "设置分类",
     display: "显示",
     serial: "串口",
-    ssh: "SSH",
+    ssh: "终端",
     sync: "同步",
     about: "关于",
     syncGroupTitle: "同步",
@@ -326,7 +326,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     navigation: "Settings sections",
     display: "Display",
     serial: "Serial",
-    ssh: "SSH",
+    ssh: "Terminal",
     sync: "Sync",
     about: "About",
     syncGroupTitle: "Sync",
@@ -703,7 +703,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
    */
   const showSerialSettings = () => setActiveCategory("serial");
 
-  /** 显示 SSH 设置。 */
+  /** 显示终端设置。 */
   const showSshSettings = () => setActiveCategory("ssh");
 
   /** 编辑 X11 地址时只更新草稿；已标红字段修正为合法值后立即清除错误。 */
