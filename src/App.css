@@ -85,7 +85,7 @@ button, input, textarea { font: inherit; }
 .control-panel-scroll .rivet-vertical-scrollbar-track { display: none; }
 .control-panel-viewport { padding-right: 0; }
 .control-panel-viewport > div { display: flex; min-height: 100%; flex-direction: column; }
-.control-panel-content { display: flex; flex: 1; flex-direction: column; padding: 22px 22px 20px; }
+.control-panel-content { display: flex; flex: 1; flex-direction: column; padding: 16px 22px 16px; }
 /* 设备选择与刷新按钮共用 36px 控件高度；窄屏时下拉框收缩并省略长设备名。 */
 .device-select-controls { display: flex; min-width: 0; align-items: stretch; gap: 8px; }
 .device-select-controls .device-select-control { width: 0; min-width: 0; flex: 1 1 0; }
@@ -94,16 +94,16 @@ button, input, textarea { font: inherit; }
 .refresh-button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--r-border) 72%, var(--r-subtle)); background: var(--r-surface); color: var(--r-text); }
 .refresh-button:active:not(:disabled) { filter: brightness(.96); transform: translateY(1px); }
 .connect-button { display: flex; width: 100%; align-items: center; justify-content: center; gap: 9px; }
-.section-divider { height: 1px; flex: 0 0 auto; margin: 20px 0; background: var(--r-border); }
-.field { display: flex; min-width: 0; flex-direction: column; gap: 7px; margin: 0 0 13px; color: var(--r-subtle); font-size: var(--r-font-size-secondary); }
+.section-divider { height: 1px; flex: 0 0 auto; margin: 14px 0; background: var(--r-border); }
+.field { display: flex; min-width: 0; flex-direction: column; gap: 5px; margin: 0 0 10px; color: var(--r-subtle); font-size: var(--r-font-size-secondary); }
 .field .rivet-input { width: 100%; height: 36px; border-radius: 6px; font-size: var(--r-font-size-base); }
 .field .rivet-select { width: 100%; }
 .field .rivet-select-trigger { height: 36px; border-radius: 6px; font-size: var(--r-font-size-base); }
-.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.settings-group + .connect-button + .section-divider { margin-top: 7px; margin-bottom: 7px; }
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 10px; row-gap: 8px; }
+.settings-group + .connect-button + .section-divider { margin-top: 8px; margin-bottom: 8px; }
 .send-section { display: flex; min-height: 0; flex: 1; flex-direction: column; }
-.message-input { width: 100%; min-height: 104px !important; border-radius: 6px !important; font-size: var(--r-font-size-base) !important; line-height: 1.55; resize: vertical !important; }
-.send-options { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 9px 0 12px; }
+.message-input { width: 100%; min-height: 92px !important; border-radius: 6px !important; font-size: var(--r-font-size-base) !important; line-height: 1.5; resize: vertical !important; }
+.send-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 7px 0 9px; }
 .send-options .send-option { gap: 6px; color: var(--r-muted); font-size: var(--r-font-size-base); white-space: nowrap; }
 .send-options .rivet-checkbox { width: 14px; height: 14px; border-color: color-mix(in srgb, var(--r-border) 92%, var(--r-subtle)); }
 .send-button { display: flex; width: 100%; align-items: center; justify-content: center; gap: 9px; }
