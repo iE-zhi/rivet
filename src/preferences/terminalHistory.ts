@@ -179,9 +179,8 @@ export function recordTerminalCommand(command: string): boolean {
 export function findTerminalCommandHistoryMatches(
   history: readonly string[],
   query: string,
-  limit = 8,
 ): string[] {
-  if (query.length === 0 || limit <= 0) return [];
+  if (query.length === 0) return [];
   const queryIndex = terminalCommandHistoryIndex(query);
   if (queryIndex.length === 0) return [];
 
@@ -192,16 +191,10 @@ export function findTerminalCommandHistoryMatches(
       exactMatch = command;
       continue;
     }
-    if (
-      matches.length < limit
-      && terminalCommandHistoryIndex(command).includes(queryIndex)
-    ) {
+    if (terminalCommandHistoryIndex(command).includes(queryIndex)) {
       matches.push(command);
     }
   }
 
-  if (exactMatch !== null) {
-    return [exactMatch, ...matches.slice(0, Math.max(0, limit - 1))];
-  }
-  return matches;
+  return exactMatch !== null ? [exactMatch, ...matches] : matches;
 }
