@@ -24,7 +24,14 @@ export function SearchInput({
 }: SearchInputProps) {
   return (
     <div className="rivet-search">
-      <input className={`rivet-search-input ${className}`.trim()} type="search" {...props} />
+      <input
+        className={`rivet-search-input ${className}`.trim()}
+        type="search"
+        {...props}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+      />
       <Button
         className="rivet-search-button"
         type="button"
