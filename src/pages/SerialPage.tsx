@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -55,6 +55,8 @@ const SERIAL_QUICK_COMMAND_COPY = {
   zh: {
     title: "快捷命令",
     empty: "暂无快捷命令",
+    noMatches: "无匹配命令",
+    filterPlaceholder: "过滤命令",
     newCommand: "新建快捷命令",
     manageGroups: "分组排序",
     backToCommands: "返回快捷命令",
@@ -86,6 +88,8 @@ const SERIAL_QUICK_COMMAND_COPY = {
   en: {
     title: "Quick commands",
     empty: "No quick commands",
+    noMatches: "No matching commands",
+    filterPlaceholder: "Filter commands",
     newCommand: "New quick command",
     manageGroups: "Group sorting",
     backToCommands: "Back to quick commands",
@@ -236,6 +240,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   /** 用户快捷命令独立持久化，页面切换和应用重启后继续保留。 */
   const [quickGroups, setQuickGroups] = useState<SerialQuickCommandGroup[]>(readInitialSerialQuickCommands);
   const [quickPanelOpen, setQuickPanelOpen] = useState(false);
+  const [quickFilter, setQuickFilter] = useState("");
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [quickGroupManageOpen, setQuickGroupManageOpen] = useState(false);
   const [quickName, setQuickName] = useState("");
@@ -249,6 +254,19 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
   const [quickMenuKey, setQuickMenuKey] = useState<string | null>(null);
   const [quickEditTarget, setQuickEditTarget] = useState<QuickEditTarget>(null);
   const [quickDeleteTarget, setQuickDeleteTarget] = useState<QuickDeleteTarget>(null);
+  const quickFilterQuery = quickFilter.trim().toLocaleLowerCase();
+  const filteredQuickGroups = useMemo(() => {
+    if (!quickFilterQuery) return quickGroups;
+    return quickGroups
+      .map((group) => ({
+        ...group,
+        commands: group.commands.filter((command) =>
+          command.name.toLocaleLowerCase().includes(quickFilterQuery) ||
+          command.payload.toLocaleLowerCase().includes(quickFilterQuery),
+        ),
+      }))
+      .filter((group) => group.commands.length > 0);
+  }, [quickFilterQuery, quickGroups]);
   /** 当前 Hex 展示开关；原始行数据保留，切换时只重建显示文本。 */
   const [hexDisplay, setHexDisplay] = useState(false);
   /** 保存命令进行期间禁用保存按钮。 */
@@ -1073,6 +1091,15 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
         <section className={"quick-command-panel" + (quickPanelOpen ? " is-open" : "")} aria-label={quickCopy.title} aria-hidden={!quickPanelOpen}>
           <header className="quick-command-header">
             <strong>{quickGroupManageOpen ? quickCopy.manageGroups : quickCopy.title}</strong>
+            {!quickCreateOpen && !quickGroupManageOpen && (
+              <Input
+                className="quick-command-filter-input"
+                value={quickFilter}
+                aria-label={quickCopy.filterPlaceholder}
+                placeholder={quickCopy.filterPlaceholder}
+                onChange={(event) => setQuickFilter(event.currentTarget.value)}
+              />
+            )}
             <div className="quick-command-header-actions">
               <button
                 type="button"
@@ -1199,10 +1226,10 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
           ) : (
           <VerticalScrollbar className="quick-command-scroll" viewportClassName="quick-command-scroll-viewport" height="100%" viewportLabel={quickCopy.title}>
             <div className="quick-command-content">
-              {quickGroups.length === 0 ? (
-                <div className="quick-command-empty">{quickCopy.empty}</div>
-              ) : quickGroups.map((group) => {
-                const collapsed = quickCollapsedGroupIds.has(group.id);
+              {filteredQuickGroups.length === 0 ? (
+                <div className="quick-command-empty">{quickFilterQuery ? quickCopy.noMatches : quickCopy.empty}</div>
+              ) : filteredQuickGroups.map((group) => {
+                const collapsed = !quickFilterQuery && quickCollapsedGroupIds.has(group.id);
                 const groupMenuKey = "group:" + group.id;
                 const deletingGroup = quickDeleteTarget?.kind === "group" && quickDeleteTarget.groupId === group.id;
                 return (
@@ -1234,7 +1261,7 @@ export default function SerialPage({ locale, serialDefaults, useSerialDefaults, 
 
                     {deletingGroup && (
                       <div className="quick-command-delete-confirm quick-command-group-delete-confirm">
-                        <span>{quickCopy.deleteGroupPrompt(group.commands.length)}</span>
+                        <span>{quickCopy.deleteGroupPrompt(quickGroups.find((item) => item.id === group.id)?.commands.length ?? group.commands.length)}</span>
                         <div>
                           <button type="button" onClick={() => setQuickDeleteTarget(null)}>{quickCopy.cancel}</button>
                           <button type="button" className="is-danger" onClick={confirmQuickDelete}>{quickCopy.delete}</button>

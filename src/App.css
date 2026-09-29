@@ -166,8 +166,19 @@ button, input, textarea { font: inherit; }
   border-bottom: 1px solid var(--r-border);
   background: inherit;
 }
-.quick-command-header strong { font-size: var(--r-font-size-base); font-weight: 700; }
-.quick-command-header-actions { display: flex; align-items: center; gap: 3px; }
+.quick-command-header strong { flex: 0 0 auto; font-size: var(--r-font-size-base); font-weight: 700; white-space: nowrap; }
+.quick-command-filter-input {
+  width: auto;
+  min-width: 72px;
+  max-width: 170px;
+  height: 28px;
+  flex: 1 1 140px;
+  margin: 0 8px 0 12px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: var(--r-font-size-secondary);
+}
+.quick-command-header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 3px; }
 .quick-command-add-button,
 .quick-command-more-button,
 .quick-command-send {

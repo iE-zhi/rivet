@@ -61,6 +61,8 @@ const COPY = {
     description: "详情",
     descriptionPlaceholder: "补充命令用途、注意事项或使用说明",
     empty: "暂无快捷命令",
+    noMatches: "无匹配命令",
+    filterPlaceholder: "过滤命令",
     save: "保存",
     cancel: "取消",
     close: "关闭",
@@ -93,6 +95,8 @@ const COPY = {
     description: "Details",
     descriptionPlaceholder: "Add usage notes, purpose, or other details",
     empty: "No quick commands",
+    noMatches: "No matching commands",
+    filterPlaceholder: "Filter commands",
     save: "Save",
     cancel: "Cancel",
     close: "Close",
@@ -153,6 +157,7 @@ export default function TerminalQuickCommandPanel({
   const copy = COPY[locale];
   const { notify } = useNotification();
   const [commands, setCommands] = useState<TerminalQuickCommand[]>(readCommands);
+  const [filterQuery, setFilterQuery] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [groupManageOpen, setGroupManageOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -231,7 +236,10 @@ export default function TerminalQuickCommandPanel({
   const handleHeaderPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
     const target = event.target;
-    if (target instanceof Element && target.closest(".terminal-command-header-actions")) return;
+    if (
+      target instanceof Element &&
+      target.closest(".terminal-command-header-actions, .quick-command-filter-input")
+    ) return;
 
     const panel = panelRef.current;
     const parent = panel?.offsetParent;
@@ -279,6 +287,20 @@ export default function TerminalQuickCommandPanel({
     });
     return result;
   }, [commands]);
+
+  const normalizedFilterQuery = filterQuery.trim().toLocaleLowerCase();
+  const filteredGroups = useMemo(() => {
+    if (!normalizedFilterQuery) return groups;
+    const result = new Map<string, TerminalQuickCommand[]>();
+    groups.forEach((items, group) => {
+      const matches = items.filter((command) =>
+        command.name.toLocaleLowerCase().includes(normalizedFilterQuery) ||
+        command.command.toLocaleLowerCase().includes(normalizedFilterQuery),
+      );
+      if (matches.length > 0) result.set(group, matches);
+    });
+    return result;
+  }, [groups, normalizedFilterQuery]);
 
   const groupNames = useMemo(() => Array.from(groups.keys()), [groups]);
 
@@ -460,6 +482,15 @@ export default function TerminalQuickCommandPanel({
         onPointerDown={handleHeaderPointerDown}
       >
         <strong>{formOpen ? (editingId ? copy.editAction : copy.add) : groupManageOpen ? copy.manageGroups : copy.title}</strong>
+        {!formOpen && !groupManageOpen && (
+          <Input
+            className="quick-command-filter-input"
+            value={filterQuery}
+            aria-label={copy.filterPlaceholder}
+            placeholder={copy.filterPlaceholder}
+            onChange={(event) => setFilterQuery(event.currentTarget.value)}
+          />
+        )}
         <div className="terminal-command-header-actions">
           {!formOpen && (
             <>
@@ -632,14 +663,14 @@ export default function TerminalQuickCommandPanel({
           height="100%"
           viewportLabel={copy.title}
         >
-          {commands.length === 0 && (
-            <div className="terminal-connection-empty">{copy.empty}</div>
+          {filteredGroups.size === 0 && (
+            <div className="terminal-connection-empty">{normalizedFilterQuery ? copy.noMatches : copy.empty}</div>
           )}
 
-          {Array.from(groups.entries()).map(([group, items]) => (
+          {Array.from(filteredGroups.entries()).map(([group, items]) => (
             <section
               key={group}
-              className={`terminal-connection-group ${collapsedGroups.has(group) ? "collapsed" : ""}`}
+              className={`terminal-connection-group ${!normalizedFilterQuery && collapsedGroups.has(group) ? "collapsed" : ""}`}
             >
               <div className="terminal-group-header-row">
                 <button
@@ -683,8 +714,8 @@ export default function TerminalQuickCommandPanel({
                 <div className="terminal-delete-confirm terminal-group-delete-confirm">
                   <span>
                     {locale === "zh"
-                      ? `删除“${group}”及其中 ${items.length} 条命令？`
-                      : `Delete "${group}" and its ${items.length} command${items.length === 1 ? "" : "s"}?`}
+                      ? `删除“${group}”及其中 ${groups.get(group)?.length ?? items.length} 条命令？`
+                      : `Delete "${group}" and its ${groups.get(group)?.length ?? items.length} command${(groups.get(group)?.length ?? items.length) === 1 ? "" : "s"}?`}
                   </span>
                   <div className="terminal-delete-actions">
                     <button type="button" onClick={() => setDeleteTarget(null)}>
