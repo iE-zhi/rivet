@@ -74,6 +74,7 @@ interface SshSession {
   connection: SavedSshConnection;
   secrets: SshConnectionSecrets;
   state: TerminalSessionState;
+  reconnectNonce: number;
 }
 
 interface LocalSession {
@@ -87,6 +88,7 @@ interface SerialSession {
   id: string;
   connection: SavedSerialConnection;
   state: TerminalSessionState;
+  reconnectNonce: number;
 }
 
 type TerminalSession = SshSession | LocalSession | SerialSession;
@@ -1090,6 +1092,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
   const connectedRef = useRef(false);
   const connectingRef = useRef(false);
   const reconnectRef = useRef<(() => Promise<void>) | null>(null);
+  const handledReconnectNonceRef = useRef(session.reconnectNonce);
   const [closedExitStatus, setClosedExitStatus] = useState<number | null>(null);
   const { scrollMetrics, syncScrollMetrics, scrollTo } = useXtermScrollbar(terminalRef);
   const { notify } = useNotification();
@@ -1302,25 +1305,17 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
     }
   }, [active, syncScrollMetrics]);
 
-  const retryConnection = useCallback(() => {
-    if (session.state !== "closed") return;
+  useEffect(() => {
+    if (session.reconnectNonce === handledReconnectNonceRef.current) return;
+    handledReconnectNonceRef.current = session.reconnectNonce;
     void reconnectRef.current?.();
-  }, [session.state]);
+  }, [session.reconnectNonce]);
 
   return (
     <div className="terminal-emulator rivet-vertical-scrollbar">
       <div ref={containerRef} className="terminal-emulator-xterm" />
       {session.state === "closed" ? (
-        <div className="terminal-reconnect-status" role="status">
-          <button
-            type="button"
-            className="terminal-retry-button"
-            aria-label={COPY[locale].retryConnection}
-            title={COPY[locale].retryConnection}
-            onClick={retryConnection}
-          >
-            <SvgIcon name="retry" size={14} />
-          </button>
+        <div className="terminal-closed-status" role="status">
           <span>[{COPY[locale].closed}{closedExitStatus === null ? "" : ` · exit ${closedExitStatus}`}]</span>
         </div>
       ) : null}
@@ -1552,6 +1547,9 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
   const terminalRef = useRef<XtermTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const connectedRef = useRef(false);
+  const connectingRef = useRef(false);
+  const reconnectRef = useRef<(() => Promise<void>) | null>(null);
+  const handledReconnectNonceRef = useRef(session.reconnectNonce);
   const { scrollMetrics, syncScrollMetrics, scrollTo } = useXtermScrollbar(terminalRef);
   const { notify } = useNotification();
   const copyRef = useRef(COPY[locale]);
@@ -1621,34 +1619,18 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
       sendInput(data);
     });
 
-    const start = async () => {
-      try {
-        const dataUnlisten = await listen<SshDataEvent>("terminal-serial:data", (event) => {
-          if (event.payload.sessionId === session.id) {
-            terminal.write(Uint8Array.from(event.payload.data), syncScrollMetrics);
-          }
-        });
-        const errorUnlisten = await listen<SshErrorEvent>("terminal-serial:error", (event) => {
-          if (event.payload.sessionId !== session.id) return;
-          connectedRef.current = false;
-          onStateChange(session.id, "error");
-          terminal.writeln(`\r\n\x1b[31m[SERIAL] ${event.payload.message}\x1b[0m`);
-          notifyRef.current({ kind: "error", message: `${copyRef.current.serialFailed}${event.payload.message}` });
-        });
-        const closedUnlisten = await listen<SerialClosedEvent>("terminal-serial:closed", (event) => {
-          if (event.payload.sessionId !== session.id) return;
-          connectedRef.current = false;
-          onStateChange(session.id, "closed");
-          terminal.writeln(`\r\n\x1b[90m[${copyRef.current.serialClosed}]\x1b[0m`);
-        });
-        unlisteners = [dataUnlisten, errorUnlisten, closedUnlisten];
+    const connect = async () => {
+      if (cancelled || connectedRef.current || connectingRef.current) return;
+      if (!isTauri()) {
+        terminal.writeln(copyRef.current.serialDesktopOnly);
+        onStateChange(session.id, "error");
+        return;
+      }
 
-        if (cancelled) return;
-        if (!isTauri()) {
-          terminal.writeln(copyRef.current.serialDesktopOnly);
-          onStateChange(session.id, "error");
-          return;
-        }
+      connectingRef.current = true;
+      connectedRef.current = false;
+      onStateChange(session.id, "connecting");
+      try {
         await invoke("open_terminal_serial_session", {
           config: {
             sessionId: session.id,
@@ -1673,6 +1655,45 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
         onStateChange(session.id, "error");
         terminal.writeln(`\r\n\x1b[31m[SERIAL] ${String(error)}\x1b[0m`);
         notifyRef.current({ kind: "error", message: `${copyRef.current.serialFailed}${String(error)}` });
+      } finally {
+        connectingRef.current = false;
+      }
+    };
+    reconnectRef.current = connect;
+
+    const start = async () => {
+      try {
+        const dataUnlisten = await listen<SshDataEvent>("terminal-serial:data", (event) => {
+          if (event.payload.sessionId === session.id) {
+            terminal.write(Uint8Array.from(event.payload.data), syncScrollMetrics);
+          }
+        });
+        const errorUnlisten = await listen<SshErrorEvent>("terminal-serial:error", (event) => {
+          if (event.payload.sessionId !== session.id) return;
+          connectingRef.current = false;
+          connectedRef.current = false;
+          onStateChange(session.id, "error");
+          terminal.writeln(`\r\n\x1b[31m[SERIAL] ${event.payload.message}\x1b[0m`);
+          notifyRef.current({ kind: "error", message: `${copyRef.current.serialFailed}${event.payload.message}` });
+        });
+        const closedUnlisten = await listen<SerialClosedEvent>("terminal-serial:closed", (event) => {
+          if (event.payload.sessionId !== session.id) return;
+          connectingRef.current = false;
+          connectedRef.current = false;
+          onStateChange(session.id, "closed");
+          terminal.writeln(`\r\n\x1b[90m[${copyRef.current.serialClosed}]\x1b[0m`);
+        });
+        unlisteners = [dataUnlisten, errorUnlisten, closedUnlisten];
+
+        if (cancelled) return;
+        await connect();
+      } catch (error) {
+        if (cancelled) return;
+        connectingRef.current = false;
+        connectedRef.current = false;
+        onStateChange(session.id, "error");
+        terminal.writeln(`\r\n\x1b[31m[SERIAL] ${String(error)}\x1b[0m`);
+        notifyRef.current({ kind: "error", message: `${copyRef.current.serialFailed}${String(error)}` });
       }
     };
     void start();
@@ -1680,6 +1701,8 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
     return () => {
       cancelled = true;
       connectedRef.current = false;
+      connectingRef.current = false;
+      reconnectRef.current = null;
       resizeObserver.disconnect();
       inputDisposable.dispose();
       shellIntegrationDisposable.dispose();
@@ -1713,6 +1736,12 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
       syncScrollMetrics();
     }
   }, [active, syncScrollMetrics]);
+
+  useEffect(() => {
+    if (session.reconnectNonce === handledReconnectNonceRef.current) return;
+    handledReconnectNonceRef.current = session.reconnectNonce;
+    void reconnectRef.current?.();
+  }, [session.reconnectNonce]);
 
   return (
     <div className="terminal-emulator rivet-vertical-scrollbar">
@@ -1916,6 +1945,19 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
     );
   }, []);
 
+  /** 从顶部会话标签触发已关闭 SSH 或串口会话重新连接。 */
+  const retryClosedSession = useCallback((sessionId: string) => {
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === sessionId &&
+        (session.kind === "ssh" || session.kind === "serial") &&
+        session.state === "closed"
+          ? { ...session, state: "connecting", reconnectNonce: session.reconnectNonce + 1 }
+          : session,
+      ),
+    );
+  }, []);
+
 
 
   /** 从内存或 Rivet 自有凭据文件读取 SSH 秘密，并缓存到当前前端会话。 */
@@ -1953,6 +1995,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
         id: createId("serial"),
         connection: { ...template.connection },
         state: "connecting",
+        reconnectNonce: 0,
       };
     }
     return {
@@ -1961,6 +2004,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
       connection: { ...template.connection },
       secrets: { ...template.secrets },
       state: "connecting",
+      reconnectNonce: 0,
     };
   }, []);
 
@@ -2781,6 +2825,19 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
                 )}
                 <span className="terminal-tab-title">{tab.title}</span>
               </button>
+              {tabSession &&
+              (tabSession.kind === "ssh" || tabSession.kind === "serial") &&
+              tabSession.state === "closed" ? (
+                <button
+                  type="button"
+                  className="terminal-tab-retry"
+                  aria-label={copy.retryConnection}
+                  title={copy.retryConnection}
+                  onClick={() => retryClosedSession(tabSession.id)}
+                >
+                  <SvgIcon name="retry" size={12} />
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="terminal-tab-close"

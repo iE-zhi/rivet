@@ -281,16 +281,21 @@ fn start_terminal_serial_worker(
             run_terminal_serial_loop(&app, &session_id, &mut port, receiver, &closing);
             drop(port);
             let _ = released.send(true);
-            let _ = app.emit(
-                "terminal-serial:closed",
-                TerminalSerialClosedEvent {
-                    session_id: session_id.clone(),
-                },
-            );
+            // 先从活动表释放会话，再通知前端可按同一会话标识重新打开设备。
             if let Some(sessions) = sessions.upgrade() {
+                let closed_app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     sessions.write().await.remove(&session_id);
+                    let _ = closed_app.emit(
+                        "terminal-serial:closed",
+                        TerminalSerialClosedEvent { session_id },
+                    );
                 });
+            } else {
+                let _ = app.emit(
+                    "terminal-serial:closed",
+                    TerminalSerialClosedEvent { session_id },
+                );
             }
         })
         .map_err(|error| format!("启动串口终端 worker 失败：{error}"))?;
@@ -405,7 +410,10 @@ fn validate_config(config: &TerminalSerialConfig) -> Result<(), String> {
     if !matches!(config.parity.as_str(), "none" | "even" | "odd") {
         return Err("串口终端校验位参数无效".to_string());
     }
-    if !matches!(config.flow_control.as_str(), "none" | "hardware" | "software") {
+    if !matches!(
+        config.flow_control.as_str(),
+        "none" | "hardware" | "software"
+    ) {
         return Err("串口终端流控参数无效".to_string());
     }
     let available =
