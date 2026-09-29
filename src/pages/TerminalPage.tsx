@@ -705,7 +705,7 @@ function useTerminalCommandHistoryInput(
     if (!promptActiveRef.current) return;
     const candidate = menuRef.current.commands[index];
     const query = inputRef.current.join("");
-    if (!candidate || !terminalCommandHistoryIndex(candidate).startsWith(terminalCommandHistoryIndex(query))) return;
+    if (!candidate || !terminalCommandHistoryIndex(candidate).includes(terminalCommandHistoryIndex(query))) return;
 
     if (candidate.startsWith(query)) {
       const suffix = candidate.slice(query.length);

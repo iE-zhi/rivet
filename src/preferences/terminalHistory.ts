@@ -175,7 +175,7 @@ export function recordTerminalCommand(command: string): boolean {
   }
 }
 
-/** 仅返回仍可继续补全的命令前缀；已经完整匹配的历史命令不再显示为候选。 */
+/** 返回历史候选：前缀匹配优先，其次任意位置包含匹配；完整相同项不再重复显示。 */
 export function findTerminalCommandHistoryMatches(
   history: readonly string[],
   query: string,
@@ -184,14 +184,17 @@ export function findTerminalCommandHistoryMatches(
   const queryIndex = terminalCommandHistoryIndex(query);
   if (queryIndex.length === 0) return [];
 
-  const matches: string[] = [];
+  const prefixMatches: string[] = [];
+  const containsMatches: string[] = [];
   for (const command of history) {
     const commandIndex = terminalCommandHistoryIndex(command);
     if (commandIndex === queryIndex) continue;
     if (commandIndex.startsWith(queryIndex)) {
-      matches.push(command);
+      prefixMatches.push(command);
+    } else if (commandIndex.includes(queryIndex)) {
+      containsMatches.push(command);
     }
   }
 
-  return matches;
+  return [...prefixMatches, ...containsMatches];
 }
