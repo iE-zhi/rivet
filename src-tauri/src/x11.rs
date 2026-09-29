@@ -120,7 +120,7 @@ pub(crate) fn prepare_local_x11(
 
 /// Unix 平台从 DISPLAY 获取本地 X Server；普通 Unix DISPLAY 使用 xauth cookie。
 #[cfg(unix)]
-fn prepare_local_x11(
+pub(crate) fn prepare_local_x11(
     _server_address: Option<&str>,
     xauth_path: Option<&str>,
 ) -> Result<(LocalEndpoint, LocalAuth, u32), String> {
