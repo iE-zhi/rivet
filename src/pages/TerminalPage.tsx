@@ -582,6 +582,7 @@ function useTerminalCommandHistoryInput(
   const outputSyncTimerRef = useRef<number | null>(null);
   const inputStartRef = useRef<TerminalCommandInputStart | null>(null);
   const suppressCandidateEnterRef = useRef(false);
+  const candidateSelectionExplicitRef = useRef(false);
   const compositionActiveRef = useRef(false);
   const compositionCommitPendingRef = useRef(false);
   const pendingCompositionControlsRef = useRef<string[]>([]);
@@ -605,6 +606,7 @@ function useTerminalCommandHistoryInput(
   }, []);
 
   const hideMenu = useCallback(() => {
+    candidateSelectionExplicitRef.current = false;
     updateMenu((current) => current.commands.length === 0
       ? current
       : { ...current, commands: [], selectedIndex: 0, deleteConfirmIndex: null });
@@ -668,6 +670,7 @@ function useTerminalCommandHistoryInput(
     const layout = terminal && container
       ? terminalCommandHistoryMenuLayout(terminal, container, commands)
       : { left: 12, top: 12, width: 180, anchorHeight: 20 };
+    candidateSelectionExplicitRef.current = false;
     updateMenu(() => ({ commands, selectedIndex: 0, deleteConfirmIndex: null, ...layout }));
   }, [containerRef, hideMenu, terminalRef, updateMenu]);
 
@@ -822,10 +825,14 @@ function useTerminalCommandHistoryInput(
 
     const count = menuRef.current.commands.length;
     if (count > 0) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (event.key === "ArrowUp" && !candidateSelectionExplicitRef.current) {
+        // 自动弹出的候选不抢占第一次 ↑；关闭候选后继续交给 Shell 做原生历史上翻。
+        hideMenu();
+      } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         event.stopPropagation();
         const direction = event.key === "ArrowDown" ? 1 : -1;
+        candidateSelectionExplicitRef.current = true;
         updateMenu((current) => ({
           ...current,
           selectedIndex: (current.selectedIndex + direction + count) % count,
@@ -866,9 +873,12 @@ function useTerminalCommandHistoryInput(
         return false;
       }
       if (event.key === "Enter") {
-        const selectedCandidate = menuRef.current.commands[menuRef.current.selectedIndex];
         const query = inputRef.current.join("");
-        if (selectedCandidate === query) {
+        const queryIndex = terminalCommandHistoryIndex(query);
+        const hasExactHistoryMatch = queryIndex.length > 0
+          && historyRef.current.some((command) => terminalCommandHistoryIndex(command) === queryIndex);
+        if (hasExactHistoryMatch && !candidateSelectionExplicitRef.current) {
+          // 当前输入本身已是一条完整历史命令且用户没有主动选择候选时，Enter 执行当前命令。
           hideMenu();
         } else {
           event.preventDefault();
