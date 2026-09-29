@@ -2,7 +2,10 @@
 
 Rivet 是一个面向开发、调试与设备连接场景的跨平台桌面工具，基于 **Tauri 2 + React + TypeScript + Rust** 开发，目标平台为 Windows、Linux 和 macOS。
 
-项目地址：<https://gitee.com/boo0ood/rivet>
+项目地址：
+
+- github：<https://github.com/iE-zhi/rivet>
+- gitee：<https://gitee.com/boo0ood/rivet>
 
 ## 功能
 
