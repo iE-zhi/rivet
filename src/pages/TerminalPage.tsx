@@ -251,6 +251,7 @@ const COPY = {
     serialFailed: "串口终端失败：",
     serialReleaseFailed: "释放串口资源失败：",
     closed: "SSH 连接已关闭",
+    retryConnection: "重试连接",
     localClosed: "本地终端已关闭",
     serialClosed: "串口终端已关闭",
     desktopOnly: "SSH 终端仅在 Rivet 桌面应用中可用。",
@@ -338,6 +339,7 @@ const COPY = {
     serialFailed: "Serial terminal failed: ",
     serialReleaseFailed: "Failed to release serial resources: ",
     closed: "SSH connection closed",
+    retryConnection: "Retry connection",
     localClosed: "Local terminal closed",
     serialClosed: "Serial terminal closed",
     desktopOnly: "SSH terminals are available in the Rivet desktop app.",
@@ -1086,6 +1088,9 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
   const terminalRef = useRef<XtermTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const connectedRef = useRef(false);
+  const connectingRef = useRef(false);
+  const reconnectRef = useRef<(() => Promise<void>) | null>(null);
+  const [closedExitStatus, setClosedExitStatus] = useState<number | null>(null);
   const { scrollMetrics, syncScrollMetrics, scrollTo } = useXtermScrollbar(terminalRef);
   const { notify } = useNotification();
   const copyRef = useRef(COPY[locale]);
@@ -1161,40 +1166,19 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       void invoke("ssh_resize_session", { sessionId: session.id, columns: cols, rows }).catch(() => undefined);
     });
 
-    const start = async () => {
-      try {
-        const dataUnlisten = await listen<SshDataEvent>("ssh:data", (event) => {
-          if (event.payload.sessionId === session.id) {
-            terminal.write(Uint8Array.from(event.payload.data), syncScrollMetrics);
-          }
-        });
-        const errorUnlisten = await listen<SshErrorEvent>("ssh:error", (event) => {
-          if (event.payload.sessionId !== session.id) return;
-          connectedRef.current = false;
-          onStateChange(session.id, "error");
-          terminal.writeln(`\r\n\x1b[31m[SSH] ${event.payload.message}\x1b[0m`);
-          notifyRef.current({ kind: "error", message: `${copyRef.current.connectFailed}${event.payload.message}` });
-        });
-        const x11ErrorUnlisten = await listen<SshErrorEvent>("ssh:x11-error", (event) => {
-          if (event.payload.sessionId !== session.id) return;
-          terminal.writeln(`\r\n\x1b[33m[X11] ${event.payload.message}\x1b[0m`);
-          notifyRef.current({ kind: "warning", message: `${copyRef.current.x11Failed}${event.payload.message}` });
-        });
-        const closedUnlisten = await listen<SshClosedEvent>("ssh:closed", (event) => {
-          if (event.payload.sessionId !== session.id) return;
-          connectedRef.current = false;
-          onStateChange(session.id, "closed");
-          const suffix = event.payload.exitStatus === null ? "" : ` · exit ${event.payload.exitStatus}`;
-          terminal.writeln(`\r\n\x1b[90m[${copyRef.current.closed}${suffix}]\x1b[0m`);
-        });
-        unlisteners = [dataUnlisten, errorUnlisten, x11ErrorUnlisten, closedUnlisten];
+    const connect = async () => {
+      if (cancelled || connectedRef.current || connectingRef.current) return;
+      if (!isTauri()) {
+        terminal.writeln(copyRef.current.desktopOnly);
+        onStateChange(session.id, "error");
+        return;
+      }
 
-        if (cancelled) return;
-        if (!isTauri()) {
-          terminal.writeln(copyRef.current.desktopOnly);
-          onStateChange(session.id, "error");
-          return;
-        }
+      connectingRef.current = true;
+      connectedRef.current = false;
+      setClosedExitStatus(null);
+      onStateChange(session.id, "connecting");
+      try {
         fit.fit();
         syncScrollMetrics();
         const shellKind = await invoke<TerminalShellKind | null>("open_ssh_session", {
@@ -1212,7 +1196,8 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
             x11LinuxXauthPath: session.connection.x11 ? linuxXauthPath : null,
             columns: Math.max(1, terminal.cols),
             rows: Math.max(1, terminal.rows),
-            shellIntegrationToken: commandHistory.getShellIntegrationToken(),          },
+            shellIntegrationToken: commandHistory.getShellIntegrationToken(),
+          },
         });
         if (cancelled) {
           void invoke("close_ssh_session", { sessionId: session.id }).catch(() => undefined);
@@ -1228,6 +1213,51 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
         onStateChange(session.id, "error");
         terminal.writeln(`\r\n\x1b[31m[SSH] ${String(error)}\x1b[0m`);
         notifyRef.current({ kind: "error", message: `${copyRef.current.connectFailed}${String(error)}` });
+      } finally {
+        connectingRef.current = false;
+      }
+    };
+    reconnectRef.current = connect;
+
+    const start = async () => {
+      try {
+        const dataUnlisten = await listen<SshDataEvent>("ssh:data", (event) => {
+          if (event.payload.sessionId === session.id) {
+            terminal.write(Uint8Array.from(event.payload.data), syncScrollMetrics);
+          }
+        });
+        const errorUnlisten = await listen<SshErrorEvent>("ssh:error", (event) => {
+          if (event.payload.sessionId !== session.id) return;
+          connectingRef.current = false;
+          connectedRef.current = false;
+          onStateChange(session.id, "error");
+          terminal.writeln(`\r\n\x1b[31m[SSH] ${event.payload.message}\x1b[0m`);
+          notifyRef.current({ kind: "error", message: `${copyRef.current.connectFailed}${event.payload.message}` });
+        });
+        const x11ErrorUnlisten = await listen<SshErrorEvent>("ssh:x11-error", (event) => {
+          if (event.payload.sessionId !== session.id) return;
+          terminal.writeln(`\r\n\x1b[33m[X11] ${event.payload.message}\x1b[0m`);
+          notifyRef.current({ kind: "warning", message: `${copyRef.current.x11Failed}${event.payload.message}` });
+        });
+        const closedUnlisten = await listen<SshClosedEvent>("ssh:closed", (event) => {
+          if (event.payload.sessionId !== session.id) return;
+          connectingRef.current = false;
+          connectedRef.current = false;
+          setClosedExitStatus(event.payload.exitStatus);
+          terminal.write("\r\n", syncScrollMetrics);
+          onStateChange(session.id, "closed");
+        });
+        unlisteners = [dataUnlisten, errorUnlisten, x11ErrorUnlisten, closedUnlisten];
+
+        if (cancelled) return;
+        await connect();
+      } catch (error) {
+        if (cancelled) return;
+        connectingRef.current = false;
+        connectedRef.current = false;
+        onStateChange(session.id, "error");
+        terminal.writeln(`\r\n\x1b[31m[SSH] ${String(error)}\x1b[0m`);
+        notifyRef.current({ kind: "error", message: `${copyRef.current.connectFailed}${String(error)}` });
       }
     };
     void start();
@@ -1235,6 +1265,8 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
     return () => {
       cancelled = true;
       connectedRef.current = false;
+      connectingRef.current = false;
+      reconnectRef.current = null;
       resizeObserver.disconnect();
       inputDisposable.dispose();
       shellIntegrationDisposable.dispose();
@@ -1270,9 +1302,28 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
     }
   }, [active, syncScrollMetrics]);
 
+  const retryConnection = useCallback(() => {
+    if (session.state !== "closed") return;
+    void reconnectRef.current?.();
+  }, [session.state]);
+
   return (
     <div className="terminal-emulator rivet-vertical-scrollbar">
       <div ref={containerRef} className="terminal-emulator-xterm" />
+      {session.state === "closed" ? (
+        <div className="terminal-reconnect-status" role="status">
+          <button
+            type="button"
+            className="terminal-retry-button"
+            aria-label={COPY[locale].retryConnection}
+            title={COPY[locale].retryConnection}
+            onClick={retryConnection}
+          >
+            <SvgIcon name="retry" size={14} />
+          </button>
+          <span>[{COPY[locale].closed}{closedExitStatus === null ? "" : ` · exit ${closedExitStatus}`}]</span>
+        </div>
+      ) : null}
       <TerminalCommandHistoryMenu menu={commandHistory.menu} ariaLabel={COPY[locale].historySuggestions} deleteConfirmLabel={COPY[locale].historyDeleteConfirm} onSelect={commandHistory.acceptCandidate} />
       <VerticalScrollbarTrack
         className="terminal-emulator-scrollbar"

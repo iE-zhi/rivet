@@ -16,6 +16,7 @@ import moreIcon from "../../assets/svg/more.svg?url";
 import plusIcon from "../../assets/svg/plus.svg?url";
 import plugIcon from "../../assets/svg/plug.svg?url";
 import refreshIcon from "../../assets/svg/refresh.svg?url";
+import retryIcon from "../../assets/svg/retry.svg?url";
 import searchIcon from "../../assets/svg/search.svg?url";
 import showIcon from "../../assets/svg/show.svg?url";
 import settingIcon from "../../assets/svg/setting.svg?url";
@@ -30,7 +31,7 @@ import unplugIcon from "../../assets/svg/unplug.svg?url";
 import waveIcon from "../../assets/svg/wave.svg?url";
 
 /** 可共用的单色图标标识；SVG 通过 CSS mask 继承所在位置的文字颜色。 */
-export type SvgIconName = "check" | "chevron" | "close" | "cmd" | "copy" | "display" | "download" | "file" | "folder" | "globe" | "group" | "info" | "list" | "more" | "plus" | "plug" | "refresh" | "search" | "send" | "serial" | "setting" | "show" | "split-horizontal" | "split-vertical" | "terminal" | "unplug" | "unshow" | "upload" | "wave";
+export type SvgIconName = "check" | "chevron" | "close" | "cmd" | "copy" | "display" | "download" | "file" | "folder" | "globe" | "group" | "info" | "list" | "more" | "plus" | "plug" | "refresh" | "retry" | "search" | "send" | "serial" | "setting" | "show" | "split-horizontal" | "split-vertical" | "terminal" | "unplug" | "unshow" | "upload" | "wave";
 
 /** SVG 图标组件参数；尺寸以 CSS 像素计，默认 17px。 */
 export interface SvgIconProps {
@@ -61,6 +62,7 @@ const SVG_ICON_SOURCES: Record<SvgIconName, string> = {
   plus: plusIcon,
   plug: plugIcon,
   refresh: refreshIcon,
+  retry: retryIcon,
   search: searchIcon,
   show: showIcon,
   send: sendIcon,

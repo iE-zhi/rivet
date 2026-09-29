@@ -399,17 +399,28 @@ pub async fn open_ssh_session(
         )
         .await;
 
-        if let Err(message) = result {
-            let _ = app.emit(
-                "ssh:error",
-                SshErrorEvent {
-                    session_id: session_id.clone(),
-                    message,
-                },
-            );
-        }
-
         sessions.write().await.remove(&session_id);
+
+        match result {
+            Ok(exit_status) => {
+                let _ = app.emit(
+                    "ssh:closed",
+                    SshClosedEvent {
+                        session_id,
+                        exit_status,
+                    },
+                );
+            }
+            Err(message) => {
+                let _ = app.emit(
+                    "ssh:error",
+                    SshErrorEvent {
+                        session_id,
+                        message,
+                    },
+                );
+            }
+        }
     });
 
     Ok(shell_kind)
@@ -627,7 +638,7 @@ async fn run_session_worker(
     channel: &mut russh::Channel<russh::client::Msg>,
     mut commands: mpsc::Receiver<SshCommand>,
     initial_output: Vec<u8>,
-) -> Result<(), String> {
+) -> Result<Option<u32>, String> {
     let mut exit_status = None;
     let mut sftp_sender: Option<mpsc::Sender<SftpCommand>> = None;
 
@@ -712,17 +723,7 @@ async fn run_session_worker(
         .disconnect(Disconnect::ByApplication, "", "English")
         .await;
 
-    if result.is_ok() {
-        let _ = app.emit(
-            "ssh:closed",
-            SshClosedEvent {
-                session_id,
-                exit_status,
-            },
-        );
-    }
-
-    result
+    result.map(|_| exit_status)
 }
 
 /// 校验所有外部连接参数，避免无效地址和异常尺寸进入网络层。
