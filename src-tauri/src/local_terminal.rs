@@ -16,6 +16,7 @@ use std::{
     time::Duration,
 };
 
+use crate::shell_integration;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use sysinfo::{Pid, ProcessesToUpdate, System};
@@ -220,16 +221,22 @@ async fn send_command(
     })
 }
 
-/// 创建 PTY、启动 shell，并为其启动控制线程和输出读取线程。
-fn start_local_worker(
-    app: AppHandle,
-    session_id: String,
+/// 已启动的本地 Shell 及其 PTY 资源。
+struct SpawnedLocalShell {
+    master: Box<dyn MasterPty + Send>,
+    reader: Option<Box<dyn Read + Send>>,
+    writer: Box<dyn Write + Send>,
+    child: Box<dyn Child + Send + Sync>,
+    shell_pid: u32,
+}
+
+/// 创建 PTY 并启动平台默认 Shell；Windows Integration 作为启动参数安装。
+fn spawn_local_shell(
     columns: u16,
     rows: u16,
-    shell_integration_token: Option<String>,
-    powershell_mode: Option<String>,
-    sessions: Arc<RwLock<HashMap<String, LocalSessionEntry>>>,
-) -> Result<(SyncSender<LocalCommand>, u32, Option<String>), String> {
+    shell_integration_token: Option<&str>,
+    powershell_mode: Option<&str>,
+) -> Result<SpawnedLocalShell, String> {
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -240,11 +247,7 @@ fn start_local_worker(
         })
         .map_err(|error| format!("创建本地 PTY 失败：{error}"))?;
 
-    let shell_kind = default_shell_integration_kind(shell_integration_token.as_deref());
-    let mut command = default_shell_command(
-        shell_integration_token.as_deref(),
-        powershell_mode.as_deref(),
-    )?;
+    let mut command = default_shell_command(shell_integration_token, powershell_mode)?;
     command.env("TERM", "xterm-256color");
     if let Some(home) = user_home_directory() {
         command.cwd(home);
@@ -268,35 +271,171 @@ fn start_local_worker(
         .take_writer()
         .map_err(|error| format!("创建 PTY 输入 writer 失败：{error}"))?;
 
+    Ok(SpawnedLocalShell {
+        master: pair.master,
+        reader: Some(reader),
+        writer,
+        child,
+        shell_pid,
+    })
+}
+
+#[cfg(unix)]
+/// 从初始化 PTY 输出中等待真实 Prompt；整个过程不向前端发布任何脚本回显。
+fn read_shell_integration_prompt(
+    mut reader: Box<dyn Read + Send>,
+    token: String,
+) -> Result<(Box<dyn Read + Send>, Vec<u8>), String> {
+    let mut buffered = Vec::new();
+    let mut buffer = [0_u8; 8192];
+
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => return Err("Shell Integration 初始化期间本地 Shell 已关闭".to_string()),
+            Ok(length) => {
+                if buffered.len() + length > shell_integration::MAX_OUTPUT_BYTES {
+                    return Err("Shell Integration 初始化输出过大".to_string());
+                }
+                buffered.extend_from_slice(&buffer[..length]);
+                if let Some(output) = shell_integration::take_prompt_output(&mut buffered, &token) {
+                    return Ok((reader, output));
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => {
+                return Err(format!("读取 Shell Integration 初始化输出失败：{error}"));
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+/// 在普通 local:data 转发开始前安装 bash/zsh Integration，并回收已消费初始化输出的 reader。
+fn install_unix_shell_integration(
+    session_id: &str,
+    reader: Box<dyn Read + Send>,
+    writer: &mut Box<dyn Write + Send>,
+    shell_kind: &str,
+    token: &str,
+) -> Result<(Box<dyn Read + Send>, Vec<u8>), String> {
+    let bootstrap = shell_integration::unix_bootstrap(shell_kind, token)?;
+    writer
+        .write_all(bootstrap.as_bytes())
+        .and_then(|_| writer.flush())
+        .map_err(|error| format!("发送 Shell Integration 初始化脚本失败：{error}"))?;
+
+    let (result_sender, result_receiver) = mpsc::sync_channel(1);
+    let token = token.to_string();
+    thread::Builder::new()
+        .name(format!("rivet-local-init-{session_id}"))
+        .spawn(move || {
+            let result = read_shell_integration_prompt(reader, token);
+            let _ = result_sender.send(result);
+        })
+        .map_err(|error| format!("启动 Shell Integration 初始化线程失败：{error}"))?;
+
+    result_receiver
+        .recv_timeout(shell_integration::INSTALL_TIMEOUT)
+        .map_err(|error| match error {
+            mpsc::RecvTimeoutError::Timeout => format!(
+                "Shell Integration 初始化超时（{} 秒）",
+                shell_integration::INSTALL_TIMEOUT.as_secs()
+            ),
+            mpsc::RecvTimeoutError::Disconnected => {
+                "Shell Integration 初始化线程意外停止".to_string()
+            }
+        })?
+}
+
+/// 创建 PTY、启动 shell，并为其启动控制线程和输出读取线程。
+fn start_local_worker(
+    app: AppHandle,
+    session_id: String,
+    columns: u16,
+    rows: u16,
+    shell_integration_token: Option<String>,
+    powershell_mode: Option<String>,
+    sessions: Arc<RwLock<HashMap<String, LocalSessionEntry>>>,
+) -> Result<(SyncSender<LocalCommand>, u32, Option<String>), String> {
+    let requested_shell_kind = default_shell_integration_kind(shell_integration_token.as_deref());
+    #[cfg(unix)]
+    let mut shell_kind = requested_shell_kind;
+    #[cfg(not(unix))]
+    let shell_kind = requested_shell_kind;
+    let mut spawned = spawn_local_shell(
+        columns,
+        rows,
+        shell_integration_token.as_deref(),
+        powershell_mode.as_deref(),
+    )?;
+    let mut initial_output = Vec::new();
+
+    #[cfg(unix)]
+    if let (Some(kind), Some(token)) = (shell_kind.as_deref(), shell_integration_token.as_deref()) {
+        let reader = spawned
+            .reader
+            .take()
+            .ok_or_else(|| "本地终端输出 reader 不可用".to_string())?;
+        match install_unix_shell_integration(&session_id, reader, &mut spawned.writer, kind, token)
+        {
+            Ok((reader, output)) => {
+                spawned.reader = Some(reader);
+                initial_output = output;
+            }
+            Err(_) => {
+                // 失败时销毁整个带注入痕迹的 PTY，再启动一个完全干净的 Shell。
+                let _ = spawned.child.kill();
+                let _ = spawned.child.wait();
+                drop(spawned);
+                spawned = spawn_local_shell(columns, rows, None, powershell_mode.as_deref())?;
+                shell_kind = None;
+            }
+        }
+    }
+
+    let reader = spawned
+        .reader
+        .take()
+        .ok_or_else(|| "本地终端输出 reader 不可用".to_string())?;
+    let shell_pid = spawned.shell_pid;
+    let master = spawned.master;
+    let writer = spawned.writer;
+    let child = spawned.child;
+
     let (sender, receiver) = mpsc::sync_channel(COMMAND_QUEUE_CAPACITY);
 
     let reader_app = app.clone();
     let reader_session_id = session_id.clone();
     thread::Builder::new()
         .name(format!("rivet-local-reader-{session_id}"))
-        .spawn(move || read_output(reader_app, reader_session_id, reader))
+        .spawn(move || read_output(reader_app, reader_session_id, reader, initial_output))
         .map_err(|error| format!("启动本地终端输出线程失败：{error}"))?;
 
     thread::Builder::new()
         .name(format!("rivet-local-worker-{session_id}"))
-        .spawn(move || {
-            run_worker(
-                app,
-                session_id,
-                pair.master,
-                writer,
-                child,
-                receiver,
-                sessions,
-            )
-        })
+        .spawn(move || run_worker(app, session_id, master, writer, child, receiver, sessions))
         .map_err(|error| format!("启动本地终端 worker 失败：{error}"))?;
 
     Ok((sender, shell_pid, shell_kind))
 }
 
 /// 循环读取 PTY 输出并发送给前端；EOF 正常结束。
-fn read_output(app: AppHandle, session_id: String, mut reader: Box<dyn Read + Send>) {
+fn read_output(
+    app: AppHandle,
+    session_id: String,
+    mut reader: Box<dyn Read + Send>,
+    initial_output: Vec<u8>,
+) {
+    if !initial_output.is_empty() {
+        let _ = app.emit(
+            "local:data",
+            LocalDataEvent {
+                session_id: session_id.clone(),
+                data: initial_output,
+            },
+        );
+    }
+
     let mut buffer = [0_u8; 8192];
     loop {
         match reader.read(&mut buffer) {
@@ -434,7 +573,7 @@ fn default_shell_command(
         let mut command = CommandBuilder::new(select_windows_powershell(powershell_mode)?);
         command.arg("-NoLogo");
         if let Some(token) = shell_integration_token {
-            validate_shell_integration_token(token)?;
+            shell_integration::validate_token(token)?;
             command.arg("-NoExit");
             command.arg("-Command");
             command.arg(powershell_shell_integration_bootstrap(token));
@@ -521,16 +660,6 @@ fn select_windows_powershell(mode: Option<&str>) -> Result<PathBuf, String> {
         "ps5" => Ok(PathBuf::from("powershell.exe")),
         _ => Err("默认 PowerShell 设置无效".to_string()),
     }
-}
-
-#[cfg(windows)]
-/// 校验前端生成的 Shell Integration 会话标识。
-fn validate_shell_integration_token(token: &str) -> Result<(), String> {
-    if !(16..=128).contains(&token.len()) || !token.bytes().all(|byte| byte.is_ascii_alphanumeric())
-    {
-        return Err("Shell Integration 会话标识无效".to_string());
-    }
-    Ok(())
 }
 
 #[cfg(windows)]

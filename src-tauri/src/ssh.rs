@@ -6,6 +6,7 @@
 use std::{collections::HashMap, error::Error as StdError, fmt, sync::Arc, time::Duration};
 
 use crate::sftp::{self, SftpCommand};
+use crate::shell_integration;
 use crate::x11::{self, X11ForwardConfig};
 use russh::{
     client,
@@ -80,6 +81,8 @@ pub struct SshConnectConfig {
     pub columns: u32,
     /// 初始 PTY 行数。
     pub rows: u32,
+    /// 前端生成的 Shell Integration 会话标识；只用于当前 SSH PTY。
+    pub shell_integration_token: Option<String>,
 }
 
 /// SSH 终端输出事件。
@@ -351,40 +354,25 @@ pub async fn open_ssh_session(
         return Err("SSH 认证被服务器拒绝".to_string());
     }
 
-    let shell_kind = detect_remote_shell(&session).await;
+    let mut shell_kind = detect_remote_shell(&session).await;
 
-    let mut channel = session
-        .channel_open_session()
-        .await
-        .map_err(|error| format!("创建 SSH 会话通道失败：{error}"))?;
-    channel
-        .request_pty(
-            true,
-            "xterm-256color",
-            config.columns,
-            config.rows,
-            0,
-            0,
-            &[],
-        )
-        .await
-        .map_err(|error| format!("申请 SSH PTY 失败：{error}"))?;
-    if let Some(x11) = x11_config.as_ref() {
-        channel
-            .request_x11(
-                true,
-                false,
-                x11.protocol.as_ref(),
-                x11.fake_cookie_hex.as_ref(),
-                x11.screen,
-            )
-            .await
-            .map_err(|error| format!("申请 SSH X11 转发失败：{error}"))?;
+    let mut channel = open_pty_shell_channel(&session, &config, x11_config.as_ref()).await?;
+    let mut initial_output = Vec::new();
+    if let (Some(kind), Some(token)) = (
+        shell_kind.as_deref(),
+        config.shell_integration_token.as_deref(),
+    ) {
+        match install_remote_shell_integration(&mut channel, kind, token).await {
+            Ok(output) => initial_output = output,
+            Err(_) => {
+                // 初始化失败时丢弃整个旧 PTY，确保注入脚本及迟到回显绝不进入正式数据流。
+                let _ = channel.eof().await;
+                let _ = channel.close().await;
+                channel = open_pty_shell_channel(&session, &config, x11_config.as_ref()).await?;
+                shell_kind = None;
+            }
+        }
     }
-    channel
-        .request_shell(true)
-        .await
-        .map_err(|error| format!("启动 SSH Shell 失败：{error}"))?;
 
     let (command_sender, command_receiver) = mpsc::channel(COMMAND_QUEUE_CAPACITY);
     {
@@ -403,6 +391,7 @@ pub async fn open_ssh_session(
             &mut session,
             &mut channel,
             command_receiver,
+            initial_output,
         )
         .await;
 
@@ -484,6 +473,92 @@ pub(crate) async fn request_sftp_sender(
         .map_err(|_| "SSH worker 未返回 SFTP 会话结果".to_string())?
 }
 
+/// 创建配置完整的 SSH PTY Shell；Integration 失败时可复用此函数重建干净通道。
+async fn open_pty_shell_channel(
+    session: &client::Handle<ClientHandler>,
+    config: &SshConnectConfig,
+    x11_config: Option<&X11ForwardConfig>,
+) -> Result<russh::Channel<client::Msg>, String> {
+    let channel = session
+        .channel_open_session()
+        .await
+        .map_err(|error| format!("创建 SSH 会话通道失败：{error}"))?;
+    channel
+        .request_pty(
+            true,
+            "xterm-256color",
+            config.columns,
+            config.rows,
+            0,
+            0,
+            &[],
+        )
+        .await
+        .map_err(|error| format!("申请 SSH PTY 失败：{error}"))?;
+    if let Some(x11) = x11_config {
+        channel
+            .request_x11(
+                true,
+                false,
+                x11.protocol.as_ref(),
+                x11.fake_cookie_hex.as_ref(),
+                x11.screen,
+            )
+            .await
+            .map_err(|error| format!("申请 SSH X11 转发失败：{error}"))?;
+    }
+    channel
+        .request_shell(true)
+        .await
+        .map_err(|error| format!("启动 SSH Shell 失败：{error}"))?;
+    Ok(channel)
+}
+
+/// 在正常 SSH 数据转发开始前完成 Shell Integration，并只保留真实 Prompt。
+async fn install_remote_shell_integration(
+    channel: &mut russh::Channel<client::Msg>,
+    shell_kind: &str,
+    token: &str,
+) -> Result<Vec<u8>, String> {
+    let bootstrap = shell_integration::unix_bootstrap(shell_kind, token)?;
+    channel
+        .data_bytes(bootstrap.into_bytes())
+        .await
+        .map_err(|error| format!("发送 Shell Integration 初始化脚本失败：{error}"))?;
+
+    let wait_for_prompt = async {
+        let mut buffered = Vec::new();
+        while let Some(message) = channel.wait().await {
+            match message {
+                ChannelMsg::Data { data } | ChannelMsg::ExtendedData { data, .. } => {
+                    if buffered.len() + data.len() > shell_integration::MAX_OUTPUT_BYTES {
+                        return Err("Shell Integration 初始化输出过大".to_string());
+                    }
+                    buffered.extend_from_slice(&data);
+                    if let Some(output) =
+                        shell_integration::take_prompt_output(&mut buffered, token)
+                    {
+                        return Ok(output);
+                    }
+                }
+                ChannelMsg::ExitStatus { .. } | ChannelMsg::Eof | ChannelMsg::Close => {
+                    return Err("Shell Integration 初始化期间远端 Shell 已关闭".to_string());
+                }
+                _ => {}
+            }
+        }
+        Err("Shell Integration 初始化期间远端 Shell 已关闭".to_string())
+    };
+
+    timeout(shell_integration::INSTALL_TIMEOUT, wait_for_prompt)
+        .await
+        .map_err(|_| {
+            format!(
+                "Shell Integration 初始化超时（{} 秒）",
+                shell_integration::INSTALL_TIMEOUT.as_secs()
+            )
+        })?
+}
 /// 使用独立 exec channel 探测登录 shell；失败或未知 shell 时关闭自动命令记录。
 async fn detect_remote_shell(session: &client::Handle<ClientHandler>) -> Option<String> {
     let probe = async {
@@ -547,9 +622,21 @@ async fn run_session_worker(
     session: &mut client::Handle<ClientHandler>,
     channel: &mut russh::Channel<russh::client::Msg>,
     mut commands: mpsc::Receiver<SshCommand>,
+    initial_output: Vec<u8>,
 ) -> Result<(), String> {
     let mut exit_status = None;
     let mut sftp_sender: Option<mpsc::Sender<SftpCommand>> = None;
+
+    if !initial_output.is_empty() {
+        app.emit(
+            "ssh:data",
+            SshDataEvent {
+                session_id: session_id.clone(),
+                data: initial_output,
+            },
+        )
+        .map_err(|error| format!("发布 SSH 初始终端数据失败：{error}"))?;
+    }
 
     let result: Result<(), String> = loop {
         tokio::select! {
@@ -662,6 +749,9 @@ fn validate_connect_config(config: &SshConnectConfig) -> Result<(), String> {
             .is_some_and(|value| value.len() > MAX_CREDENTIAL_BYTES)
     {
         return Err("SSH 认证字段过长".to_string());
+    }
+    if let Some(token) = config.shell_integration_token.as_deref() {
+        shell_integration::validate_token(token)?;
     }
     if config.x11
         && config

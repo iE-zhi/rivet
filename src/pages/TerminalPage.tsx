@@ -513,25 +513,7 @@ function terminalCommandHistoryMenuLayout(
 }
 
 const RIVET_SHELL_INTEGRATION_OSC = 633;
-const MAX_SHELL_INTEGRATION_BOOTSTRAP_OUTPUT_BYTES = 256 * 1024;
-
-function findByteSequence(haystack: Uint8Array, needle: Uint8Array): number {
-  if (needle.length === 0 || haystack.length < needle.length) return -1;
-  outer: for (let index = 0; index <= haystack.length - needle.length; index += 1) {
-    for (let offset = 0; offset < needle.length; offset += 1) {
-      if (haystack[index + offset] !== needle[offset]) continue outer;
-    }
-    return index;
-  }
-  return -1;
-}
-
-function concatBytes(first: Uint8Array, second: Uint8Array): Uint8Array<ArrayBuffer> {
-  const combined = new Uint8Array(first.length + second.length);
-  combined.set(first);
-  combined.set(second, first.length);
-  return combined;
-}
+type TerminalShellKind = "bash" | "zsh" | "powershell";
 
 function decodeTerminalCommandBase64(encoded: string): string | null {
   if (encoded.length === 0 || encoded.length > 16 * 1024) return null;
@@ -544,22 +526,6 @@ function decodeTerminalCommandBase64(encoded: string): string | null {
     return null;
   }
 }
-
-type TerminalShellKind = "bash" | "zsh" | "powershell";
-
-/** 生成只作用于当前 shell 进程的集成脚本，不修改用户的持久化 shell 配置。 */
-function terminalShellIntegrationBootstrap(shellKind: Exclude<TerminalShellKind, "powershell">, token: string): string {
-  const readyMarker = `RivetReady:${token}`;
-  const promptMarker = `RivetPrompt:${token}`;
-  const executeMarker = `RivetExecute:${token}`;
-
-  if (shellKind === "bash") {
-    return ` __rivet_ready_marker=$'\\033]633;${readyMarker}\\007'; if [ -z "\${__RIVET_SHELL_INTEGRATION-}" ]; then __RIVET_SHELL_INTEGRATION=1; if [ "\${BASH_VERSINFO[0]:-0}" -gt 4 ] || { [ "\${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "\${BASH_VERSINFO[1]:-0}" -ge 4 ]; }; then __rivet_prompt_marker=$'\\033]633;${promptMarker}\\007'; __rivet_execute_marker=$'\\033]633;${executeMarker}\\007'; PS1="\\[\${__rivet_ready_marker}\\]\${PS1}\\[\${__rivet_prompt_marker}\\]"; PS0="\${PS0-}\${__rivet_execute_marker}"; fi; fi; printf '%s\\r\\033[2K' "\${__rivet_ready_marker}"\r`;
-  }
-
-  return ` typeset -g __rivet_ready_marker=$'\\033]633;${readyMarker}\\007'; if [[ -z \${__RIVET_SHELL_INTEGRATION-} ]]; then typeset -g __RIVET_SHELL_INTEGRATION=1; typeset -g __rivet_prompt_marker=$'\\033]633;${promptMarker}\\007'; function __rivet_preexec() { printf '\\033]633;${executeMarker}\\007'; }; autoload -Uz add-zsh-hook; add-zsh-hook preexec __rivet_preexec; PROMPT="%{\${__rivet_ready_marker}%}\${PROMPT}%{\${__rivet_prompt_marker}%}"; fi; printf '%s\\r\\033[2K' "\${__rivet_ready_marker}"\r`;
-}
-
 /** 从 shell 明确标记的输入起点读取单行命令；多行编辑无法确定时拒绝记录。 */
 function readTerminalCommandFromBuffer(
   terminal: XtermTerminal,
@@ -604,10 +570,7 @@ function useTerminalCommandHistoryInput(
   const shellLineResyncPendingRef = useRef(false);
   const inputStartRef = useRef<TerminalCommandInputStart | null>(null);
   const suppressCandidateEnterRef = useRef(false);
-  const integrationInstalledRef = useRef<TerminalShellKind | null>(null);
-  const integrationOutputSuppressedRef = useRef(false);
-  const integrationOutputBufferRef = useRef(new Uint8Array(0));
-  const integrationOutputTimeoutRef = useRef<number | null>(null);
+  const integrationKindRef = useRef<TerminalShellKind | null>(null);
   const integrationTokenRef = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID().replaceAll("-", "")
@@ -767,64 +730,12 @@ function useTerminalCommandHistoryInput(
     return false;
   }, [hideMenu, resetInputTracking, terminalRef]);
 
-  const stopIntegrationOutputSuppression = useCallback(() => {
-    integrationOutputSuppressedRef.current = false;
-    integrationOutputBufferRef.current = new Uint8Array(0);
-    if (integrationOutputTimeoutRef.current !== null) {
-      window.clearTimeout(integrationOutputTimeoutRef.current);
-      integrationOutputTimeoutRef.current = null;
-    }
-  }, []);
 
-  /** 注入期间丢弃脚本回显，只从就绪标记后的真实 shell prompt 开始交给 xterm 渲染。 */
-  const filterShellIntegrationOutput = useCallback((data: Uint8Array): Uint8Array | null => {
-    if (!integrationOutputSuppressedRef.current) return data;
-
-    const combined = concatBytes(integrationOutputBufferRef.current, data);
-    const marker = new TextEncoder().encode(
-      `\x1b]${RIVET_SHELL_INTEGRATION_OSC};RivetReady:${integrationTokenRef.current}\x07`,
-    );
-    const markerIndex = findByteSequence(combined, marker);
-    if (markerIndex >= 0) {
-      stopIntegrationOutputSuppression();
-      return combined.slice(markerIndex + marker.length);
-    }
-
-    if (combined.length > MAX_SHELL_INTEGRATION_BOOTSTRAP_OUTPUT_BYTES) {
-      const buffered = combined;
-      stopIntegrationOutputSuppression();
-      integrationInstalledRef.current = null;
-      promptActiveRef.current = false;
-      return buffered;
-    }
-
-    integrationOutputBufferRef.current = combined;
-    return null;
-  }, [stopIntegrationOutputSuppression]);
-
-  const installShellIntegration = useCallback((shellKind: string | null) => {
-    if (shellKind !== "bash" && shellKind !== "zsh" && shellKind !== "powershell") return;
-    if (integrationInstalledRef.current === shellKind) return;
-
-    integrationInstalledRef.current = shellKind;
-    if (shellKind === "powershell") return;
-
-    integrationOutputSuppressedRef.current = true;
-    integrationOutputBufferRef.current = new Uint8Array(0);
-    if (integrationOutputTimeoutRef.current !== null) {
-      window.clearTimeout(integrationOutputTimeoutRef.current);
-    }
-    integrationOutputTimeoutRef.current = window.setTimeout(() => {
-      const buffered = integrationOutputBufferRef.current;
-      integrationOutputSuppressedRef.current = false;
-      integrationOutputBufferRef.current = new Uint8Array(0);
-      integrationOutputTimeoutRef.current = null;
-      integrationInstalledRef.current = null;
-      promptActiveRef.current = false;
-      if (buffered.length > 0) terminalRef.current?.write(buffered);
-    }, 2_000);
-
-    sendInputRef.current(terminalShellIntegrationBootstrap(shellKind, integrationTokenRef.current));
+  /** 后端负责安装 Integration；前端只保留 shell 类型用于差异化 Enter 跟踪。 */
+  const setShellIntegrationKind = useCallback((shellKind: string | null) => {
+    integrationKindRef.current = shellKind === "bash" || shellKind === "zsh" || shellKind === "powershell"
+      ? shellKind
+      : null;
   }, []);
 
   /** 候选框使用自己的按键状态机；非 shell prompt 输入完全交还给终端。 */
@@ -1020,7 +931,7 @@ function useTerminalCommandHistoryInput(
     }
 
     if (event.key === "Enter") {
-      if (integrationInstalledRef.current === "powershell") {
+      if (integrationKindRef.current === "powershell") {
         promptActiveRef.current = false;
         resetInputTracking();
       } else {
@@ -1075,20 +986,13 @@ function useTerminalCommandHistoryInput(
     return () => window.removeEventListener(TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, syncHistory);
   }, [hideMenu, refreshSuggestions]);
 
-  useEffect(() => () => {
-    if (integrationOutputTimeoutRef.current !== null) {
-      window.clearTimeout(integrationOutputTimeoutRef.current);
-    }
-  }, []);
-
   return {
     menu,
     handleInput,
     handleKeyEvent,
     handleShellIntegrationOsc,
-    filterShellIntegrationOutput,
     integrationToken: integrationTokenRef.current,
-    installShellIntegration,
+    setShellIntegrationKind,
     refreshMenuLayout,
     acceptCandidate,
   };
@@ -1256,8 +1160,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       try {
         const dataUnlisten = await listen<SshDataEvent>("ssh:data", (event) => {
           if (event.payload.sessionId === session.id) {
-            const output = commandHistory.filterShellIntegrationOutput(Uint8Array.from(event.payload.data));
-            if (output && output.length > 0) terminal.write(output, syncScrollMetrics);
+            terminal.write(Uint8Array.from(event.payload.data), syncScrollMetrics);
           }
         });
         const errorUnlisten = await listen<SshErrorEvent>("ssh:error", (event) => {
@@ -1304,14 +1207,15 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
             x11LinuxXauthPath: session.connection.x11 ? linuxXauthPath : null,
             columns: Math.max(1, terminal.cols),
             rows: Math.max(1, terminal.rows),
+            shellIntegrationToken: commandHistory.integrationToken,
           },
         });
         if (cancelled) {
           void invoke("close_ssh_session", { sessionId: session.id }).catch(() => undefined);
           return;
         }
+        commandHistory.setShellIntegrationKind(shellKind);
         connectedRef.current = true;
-        commandHistory.installShellIntegration(shellKind);
         onStateChange(session.id, "connected");
         terminal.focus();
       } catch (error) {
@@ -1341,7 +1245,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [commandHistory.filterShellIntegrationOutput, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.installShellIntegration, commandHistory.refreshMenuLayout, linuxXauthPath, onStateChange, sendInput, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
+  }, [commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.refreshMenuLayout, commandHistory.setShellIntegrationKind, linuxXauthPath, onStateChange, sendInput, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -1473,8 +1377,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
       try {
         const dataUnlisten = await listen<SshDataEvent>("local:data", (event) => {
           if (event.payload.sessionId === session.id) {
-            const output = commandHistory.filterShellIntegrationOutput(Uint8Array.from(event.payload.data));
-            if (output && output.length > 0) terminal.write(output, syncScrollMetrics);
+            terminal.write(Uint8Array.from(event.payload.data), syncScrollMetrics);
           }
         });
         const errorUnlisten = await listen<SshErrorEvent>("local:error", (event) => {
@@ -1512,8 +1415,8 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
           void invoke("close_local_terminal", { sessionId: session.id }).catch(() => undefined);
           return;
         }
+        commandHistory.setShellIntegrationKind(shellKind);
         connectedRef.current = true;
-        commandHistory.installShellIntegration(shellKind);
         onStateChange(session.id, "connected");
         terminal.focus();
       } catch (error) {
@@ -1543,7 +1446,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [commandHistory.filterShellIntegrationOutput, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.installShellIntegration, commandHistory.refreshMenuLayout, onStateChange, sendInput, session.id, syncScrollMetrics]);
+  }, [commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.refreshMenuLayout, commandHistory.setShellIntegrationKind, onStateChange, sendInput, session.id, syncScrollMetrics]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

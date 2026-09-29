@@ -7,6 +7,7 @@ mod local_terminal;
 mod log_export;
 mod serial;
 mod sftp;
+mod shell_integration;
 mod ssh;
 mod sync;
 mod sync_secrets;
