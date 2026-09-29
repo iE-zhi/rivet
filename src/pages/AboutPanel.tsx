@@ -29,6 +29,16 @@ const ABOUT_COPY: Record<Locale, {
     project: "项目地址",
     timeline: [
       {
+        date: "2026.09.29",
+        title: "终端历史与会话体验完善",
+        description: "重构终端历史候选与 Shell Integration，修复输入法、原生历史导航和候选同步问题，新增 SSH/串口重试、快捷命令过滤与活动栏滚动条设置，并统一相关交互样式。",
+      },
+      {
+        date: "2026.09.28",
+        title: "0.2.0 与终端历史体系",
+        description: "升级至 0.2.0，加入终端历史命令补全和 Windows PowerShell/PowerShell 7 支持，新增默认 PowerShell 选择、分组管理与拖拽排序，并完善自定义标题栏与浮层体验。",
+      },
+      {
         date: "2026.09.27",
         title: "X11 与快捷命令体验完善",
         description: "完善 Windows、Linux 与 macOS 的 X11 转发链路和 X Server 下载入口，同步改为无感热更新，并为终端快捷命令增加详情与展开查看。",
@@ -61,6 +71,16 @@ const ABOUT_COPY: Record<Locale, {
     core: "Core",
     project: "Project",
     timeline: [
+      {
+        date: "2026.09.29",
+        title: "Terminal history and session improvements",
+        description: "Reworked terminal history suggestions and Shell Integration, fixed IME, native history navigation, and suggestion synchronization issues, added SSH/serial retry actions, quick command filtering, and activity-bar scrollbar settings, and aligned related interactions.",
+      },
+      {
+        date: "2026.09.28",
+        title: "0.2.0 and terminal history foundation",
+        description: "Upgraded to 0.2.0 with terminal history completion and Windows PowerShell/PowerShell 7 support, added default PowerShell selection, group management with drag sorting, and refined the custom title bar and popup experience.",
+      },
       {
         date: "2026.09.27",
         title: "X11 and quick command improvements",
