@@ -4,7 +4,7 @@ export const TERMINAL_COMMAND_HISTORY_ENABLED_STORAGE_KEY = "rivet.terminal.comm
 export const TERMINAL_COMMAND_HISTORY_CHANGED_EVENT = "rivet:terminal-command-history-changed";
 export const MAX_TERMINAL_COMMAND_HISTORY = 500;
 
-const MAX_TERMINAL_COMMAND_LENGTH = 8_192;
+export const MAX_TERMINAL_COMMAND_LENGTH = 8_192;
 const MAX_SERIALIZED_TERMINAL_COMMAND_HISTORY_LENGTH = 4 * 1024 * 1024;
 
 /** 统一历史命令格式，忽略空命令和异常超长输入。 */
@@ -13,7 +13,7 @@ function normalizeTerminalCommand(command: string): string | null {
   return normalized.length > 0 && normalized.length <= MAX_TERMINAL_COMMAND_LENGTH ? normalized : null;
 }
 
-/** 生成历史检索键：仅压缩参数分隔空白，引号中的内容保持不变。 */
+/** 生成历史检索键：压缩参数分隔空白和多行换行，引号中的内容保持不变。 */
 export function terminalCommandHistoryIndex(command: string): string {
   let result = "";
   let quote: "'" | '"' | null = null;
@@ -42,7 +42,7 @@ export function terminalCommandHistoryIndex(command: string): string {
       continue;
     }
 
-    if (character === " " || character === "\t") {
+    if (character === " " || character === "\t" || character === "\r" || character === "\n") {
       pendingWhitespace = true;
       continue;
     }
