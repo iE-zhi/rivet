@@ -14,6 +14,7 @@ import "./terminalQuickCommandPanel.css";
 
 interface TerminalQuickCommandPanelProps {
   open: boolean;
+  pageActive: boolean;
   locale: Locale;
   canSend: boolean;
   onClose: () => void;
@@ -143,6 +144,7 @@ async function copyText(text: string): Promise<void> {
 /** 终端快捷命令独立悬浮窗口；外部点击不会关闭窗口本身。 */
 export default function TerminalQuickCommandPanel({
   open,
+  pageActive,
   locale,
   canSend,
   onClose,
@@ -200,7 +202,7 @@ export default function TerminalQuickCommandPanel({
   }, [open]);
   /** 窗口尺寸变化或表单高度变化时，将已拖动窗口限制在终端工作区可见范围内。 */
   useEffect(() => {
-    if (!open || panelPosition === null) return;
+    if (!open || !pageActive || panelPosition === null) return;
     const panel = panelRef.current;
     const parent = panel?.offsetParent;
     if (!panel || !(parent instanceof HTMLElement)) return;
@@ -223,7 +225,7 @@ export default function TerminalQuickCommandPanel({
     observer.observe(parent);
     observer.observe(panel);
     return () => observer.disconnect();
-  }, [formOpen, open, panelPosition]);
+  }, [formOpen, open, pageActive, panelPosition]);
 
   /** 拖动标题栏移动窗口；标题栏右侧操作按钮保持正常点击行为。 */
   const handleHeaderPointerDown = (event: ReactPointerEvent<HTMLElement>) => {

@@ -3383,6 +3383,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
 
         <TerminalQuickCommandPanel
           open={quickCommandOpen}
+          pageActive={pageActive}
           locale={locale}
           canSend={activeSession?.state === "connected"}
           onClose={() => setQuickCommandOpen(false)}
