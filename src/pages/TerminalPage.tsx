@@ -477,7 +477,7 @@ interface TerminalCommandInputStart {
 
 const EMPTY_TERMINAL_COMMAND_HISTORY_MENU: TerminalCommandHistoryMenuState = {
   commands: [],
-  selectedIndex: 0,
+  selectedIndex: -1,
   deleteConfirmIndex: null,
   left: 12,
   top: 12,
@@ -582,7 +582,6 @@ function useTerminalCommandHistoryInput(
   const outputSyncTimerRef = useRef<number | null>(null);
   const inputStartRef = useRef<TerminalCommandInputStart | null>(null);
   const suppressCandidateEnterRef = useRef(false);
-  const candidateSelectionExplicitRef = useRef(false);
   const compositionActiveRef = useRef(false);
   const compositionCommitPendingRef = useRef(false);
   const pendingCompositionControlsRef = useRef<string[]>([]);
@@ -606,10 +605,9 @@ function useTerminalCommandHistoryInput(
   }, []);
 
   const hideMenu = useCallback(() => {
-    candidateSelectionExplicitRef.current = false;
     updateMenu((current) => current.commands.length === 0
       ? current
-      : { ...current, commands: [], selectedIndex: 0, deleteConfirmIndex: null });
+      : { ...current, commands: [], selectedIndex: -1, deleteConfirmIndex: null });
   }, [updateMenu]);
 
   const resetInputTracking = useCallback(() => {
@@ -670,8 +668,7 @@ function useTerminalCommandHistoryInput(
     const layout = terminal && container
       ? terminalCommandHistoryMenuLayout(terminal, container, commands)
       : { left: 12, top: 12, width: 180, anchorHeight: 20 };
-    candidateSelectionExplicitRef.current = false;
-    updateMenu(() => ({ commands, selectedIndex: 0, deleteConfirmIndex: null, ...layout }));
+    updateMenu(() => ({ commands, selectedIndex: -1, deleteConfirmIndex: null, ...layout }));
   }, [containerRef, hideMenu, terminalRef, updateMenu]);
 
   /** 只在 Shell 自己改写输入行时同步；普通回显不得覆盖本地按键跟踪状态。 */
@@ -825,17 +822,18 @@ function useTerminalCommandHistoryInput(
 
     const count = menuRef.current.commands.length;
     if (count > 0) {
-      if (event.key === "ArrowUp" && !candidateSelectionExplicitRef.current) {
-        // 自动弹出的候选不抢占第一次 ↑；关闭候选后继续交给 Shell 做原生历史上翻。
+      if (event.key === "ArrowUp" && menuRef.current.selectedIndex < 0) {
+        // 候选仅展示、尚未进入选择时，第一次 ↑ 继续交给 Shell 做原生历史上翻。
         hideMenu();
       } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         event.stopPropagation();
         const direction = event.key === "ArrowDown" ? 1 : -1;
-        candidateSelectionExplicitRef.current = true;
         updateMenu((current) => ({
           ...current,
-          selectedIndex: (current.selectedIndex + direction + count) % count,
+          selectedIndex: current.selectedIndex < 0
+            ? (direction > 0 ? 0 : count - 1)
+            : (current.selectedIndex + direction + count) % count,
           deleteConfirmIndex: null,
         }));
         return false;
@@ -873,12 +871,8 @@ function useTerminalCommandHistoryInput(
         return false;
       }
       if (event.key === "Enter") {
-        const query = inputRef.current.join("");
-        const queryIndex = terminalCommandHistoryIndex(query);
-        const hasExactHistoryMatch = queryIndex.length > 0
-          && historyRef.current.some((command) => terminalCommandHistoryIndex(command) === queryIndex);
-        if (hasExactHistoryMatch && !candidateSelectionExplicitRef.current) {
-          // 当前输入本身已是一条完整历史命令且用户没有主动选择候选时，Enter 执行当前命令。
+        if (menuRef.current.selectedIndex < 0) {
+          // 候选仅展示、用户尚未进入选择时，Enter 永远执行当前输入。
           hideMenu();
         } else {
           event.preventDefault();
@@ -891,7 +885,10 @@ function useTerminalCommandHistoryInput(
           return false;
         }
       }
-      if (event.key === "Delete" || event.code === "Delete") {
+      if (
+        (event.key === "Delete" || event.code === "Delete")
+        && menuRef.current.selectedIndex >= 0
+      ) {
         event.preventDefault();
         event.stopPropagation();
 
