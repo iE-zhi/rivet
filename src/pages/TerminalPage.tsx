@@ -475,11 +475,6 @@ interface TerminalCommandInputStart {
   column: number;
 }
 
-interface TerminalCommandBufferState {
-  command: string;
-  cursor: number;
-}
-
 const EMPTY_TERMINAL_COMMAND_HISTORY_MENU: TerminalCommandHistoryMenuState = {
   commands: [],
   selectedIndex: 0,
@@ -531,80 +526,10 @@ function configureTerminalTextarea(textarea: HTMLTextAreaElement | undefined): v
 }
 
 const RIVET_SHELL_INTEGRATION_OSC = 633;
-type TerminalShellKind = "bash" | "zsh" | "powershell";
 const TERMINAL_EXTERNAL_INPUT_EVENT = "rivet:terminal-external-input";
 interface TerminalExternalInputDetail {
   sessionId: string;
   data: string;
-}
-
-function decodeTerminalCommandBase64(encoded: string): string | null {
-  if (encoded.length === 0 || encoded.length > 16 * 1024) return null;
-  try {
-    const binary = window.atob(encoded);
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    const command = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    return command.includes("\r") || command.includes("\n") ? null : command;
-  } catch {
-    return null;
-  }
-}
-/** 从 shell Prompt 起点读取当前完整逻辑行和真实光标位置。 */
-function readTerminalCommandStateFromBuffer(
-  terminal: XtermTerminal,
-  start: TerminalCommandInputStart | null,
-): TerminalCommandBufferState | null {
-  if (!start) return null;
-  const buffer = terminal.buffer.active;
-  const cursorRow = buffer.baseY + buffer.cursorY;
-  if (start.row < 0 || start.row >= buffer.length || cursorRow < start.row) return null;
-
-  let endRow = start.row;
-  while (endRow + 1 < buffer.length) {
-    const nextLine = buffer.getLine(endRow + 1);
-    if (!nextLine?.isWrapped) break;
-    endRow += 1;
-  }
-  if (cursorRow > endRow) return null;
-
-  const commandParts: string[] = [];
-  const cursorParts: string[] = [];
-  for (let row = start.row; row <= endRow; row += 1) {
-    const line = buffer.getLine(row);
-    if (!line || (row > start.row && !line.isWrapped)) return null;
-    const startColumn = row === start.row ? start.column : 0;
-
-    if (row < endRow) {
-      commandParts.push(line.translateToString(false, startColumn));
-    } else {
-      let tail = line.translateToString(true, startColumn);
-      if (row === cursorRow) {
-        const cursorTail = line.translateToString(false, startColumn, buffer.cursorX);
-        if (cursorTail.length > tail.length) tail = cursorTail;
-      }
-      commandParts.push(tail);
-    }
-
-    if (row < cursorRow) {
-      cursorParts.push(line.translateToString(false, startColumn));
-    } else if (row === cursorRow) {
-      cursorParts.push(line.translateToString(false, startColumn, buffer.cursorX));
-    }
-  }
-
-  return {
-    command: commandParts.join(""),
-    cursor: Array.from(cursorParts.join("")).length,
-  };
-}
-
-/** 读取当前完整命令；用于执行标记到达时写入历史记录。 */
-function readTerminalCommandFromBuffer(
-  terminal: XtermTerminal,
-  start: TerminalCommandInputStart | null,
-): string | null {
-  const state = readTerminalCommandStateFromBuffer(terminal, start);
-  return state && state.command.length > 0 ? state.command : null;
 }
 
 /** 只读取 Prompt 起点到真实光标；忽略右侧 PSReadLine/zsh-autosuggestions 等绘制的 ghost 文本。 */
@@ -654,15 +579,15 @@ function useTerminalCommandHistoryInput(
   const trackingReliableRef = useRef(true);
   const shellLineResyncPendingRef = useRef(false);
   const shellHistoryNavigationRef = useRef(false);
-  const shellHistoryEditPendingRef = useRef(false);
-  const shellHistoryEditBeforeRef = useRef<TerminalCommandBufferState | null>(null);
   const outputSyncTimerRef = useRef<number | null>(null);
   const inputStartRef = useRef<TerminalCommandInputStart | null>(null);
   const suppressCandidateEnterRef = useRef(false);
   const compositionActiveRef = useRef(false);
   const compositionCommitPendingRef = useRef(false);
   const pendingCompositionControlsRef = useRef<string[]>([]);
-  const integrationKindRef = useRef<TerminalShellKind | null>(null);
+  const pendingSubmittedCommandRef = useRef<string | null>(null);
+  const awaitingSubmittedPromptRef = useRef(false);
+  const ignoreNextSubmitDataRef = useRef(false);
   const integrationTokenRef = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID().replaceAll("-", "")
@@ -691,8 +616,6 @@ function useTerminalCommandHistoryInput(
     trackingReliableRef.current = true;
     shellLineResyncPendingRef.current = false;
     shellHistoryNavigationRef.current = false;
-    shellHistoryEditPendingRef.current = false;
-    shellHistoryEditBeforeRef.current = null;
     inputStartRef.current = null;
     hideMenu();
   }, [hideMenu]);
@@ -751,13 +674,7 @@ function useTerminalCommandHistoryInput(
   /** 只在 Shell 自己改写输入行时同步；普通回显不得覆盖本地按键跟踪状态。 */
   const handleTerminalOutputParsed = useCallback(() => {
     refreshMenuLayout();
-    if (
-      !shellLineResyncPendingRef.current
-      && !shellHistoryEditPendingRef.current
-      && !shellHistoryNavigationRef.current
-    ) {
-      return;
-    }
+    if (!shellLineResyncPendingRef.current) return;
     if (outputSyncTimerRef.current !== null) {
       window.clearTimeout(outputSyncTimerRef.current);
     }
@@ -780,8 +697,6 @@ function useTerminalCommandHistoryInput(
         hideMenu();
         return;
       }
-      shellHistoryEditPendingRef.current = false;
-      shellHistoryEditBeforeRef.current = null;
       refreshSuggestions();
     }, 50);
   }, [hideMenu, refreshMenuLayout, refreshSuggestions, resyncInputTrackingFromTerminal]);
@@ -825,21 +740,24 @@ function useTerminalCommandHistoryInput(
     if (data === `RivetReady:${token}`) {
       return true;
     }
-    const commandPrefix = `RivetCommand:${token}:`;
-    if (data.startsWith(commandPrefix)) {
-      const command = decodeTerminalCommandBase64(data.slice(commandPrefix.length));
-      if (enabledRef.current && command) recordTerminalCommand(command);
-      return true;
-    }
     if (data === `RivetPrompt:${token}`) {
+      if (awaitingSubmittedPromptRef.current) {
+        const submittedCommand = pendingSubmittedCommandRef.current;
+        if (enabledRef.current && submittedCommand) {
+          recordTerminalCommand(submittedCommand);
+        }
+        pendingSubmittedCommandRef.current = null;
+        awaitingSubmittedPromptRef.current = false;
+        ignoreNextSubmitDataRef.current = false;
+      }
+
       const terminal = terminalRef.current;
       promptActiveRef.current = true;
       inputRef.current = [];
       cursorRef.current = 0;
       trackingReliableRef.current = true;
+      shellLineResyncPendingRef.current = false;
       shellHistoryNavigationRef.current = false;
-      shellHistoryEditPendingRef.current = false;
-      shellHistoryEditBeforeRef.current = null;
       if (terminal) {
         const buffer = terminal.buffer.active;
         inputStartRef.current = {
@@ -853,35 +771,14 @@ function useTerminalCommandHistoryInput(
       return true;
     }
 
-    if (data === `RivetExecute:${token}`) {
-      if (
-        enabledRef.current
-        && promptActiveRef.current
-        && trackingReliableRef.current
-      ) {
-        const command = inputRef.current.join("");
-        if (command) recordTerminalCommand(command);
-      }
-      promptActiveRef.current = false;
-      resetInputTracking();
-      return true;
-    }
-
     return false;
-  }, [hideMenu, resetInputTracking, terminalRef]);
+  }, [hideMenu, terminalRef]);
 
 
   /** 只有历史命令开启时才向后端提供 Integration token。 */
   const getShellIntegrationToken = useCallback((): string | null => (
     enabledRef.current ? integrationTokenRef.current : null
   ), []);
-
-  /** 后端负责安装 Integration；前端只保留 shell 类型用于差异化 Enter 跟踪。 */
-  const setShellIntegrationKind = useCallback((shellKind: string | null) => {
-    integrationKindRef.current = shellKind === "bash" || shellKind === "zsh" || shellKind === "powershell"
-      ? shellKind
-      : null;
-  }, []);
 
   /** 候选框使用自己的按键状态机；非 shell prompt 输入完全交还给终端。 */
   const handleKeyEvent = useCallback((event: KeyboardEvent): boolean => {
@@ -1024,8 +921,6 @@ function useTerminalCommandHistoryInput(
       || (event.ctrlKey && !event.metaKey && (key === "p" || key === "n"));
     if (isNativeHistoryKey) {
       shellHistoryNavigationRef.current = true;
-      shellHistoryEditPendingRef.current = false;
-      shellHistoryEditBeforeRef.current = null;
       trackingReliableRef.current = false;
       shellLineResyncPendingRef.current = true;
       hideMenu();
@@ -1035,7 +930,6 @@ function useTerminalCommandHistoryInput(
     if (shellHistoryNavigationRef.current) {
       if (!trackingReliableRef.current && !resyncInputTrackingFromTerminal()) {
         shellHistoryNavigationRef.current = false;
-        shellHistoryEditPendingRef.current = true;
         shellLineResyncPendingRef.current = true;
         hideMenu();
         return true;
@@ -1044,14 +938,16 @@ function useTerminalCommandHistoryInput(
     }
 
     if (event.key === "Enter") {
-      shellHistoryEditPendingRef.current = false;
-      shellHistoryEditBeforeRef.current = null;
-      if (integrationKindRef.current === "powershell") {
-        promptActiveRef.current = false;
-        resetInputTracking();
-      } else {
-        hideMenu();
+      if (shellLineResyncPendingRef.current && !trackingReliableRef.current) {
+        resyncInputTrackingFromTerminal();
       }
+      pendingSubmittedCommandRef.current = trackingReliableRef.current
+        ? inputRef.current.join("")
+        : null;
+      awaitingSubmittedPromptRef.current = true;
+      ignoreNextSubmitDataRef.current = true;
+      promptActiveRef.current = false;
+      resetInputTracking();
       return true;
     }
 
@@ -1156,7 +1052,6 @@ function useTerminalCommandHistoryInput(
     if (shellHistoryNavigationRef.current) {
       if (!trackingReliableRef.current && !resyncInputTrackingFromTerminal()) {
         shellHistoryNavigationRef.current = false;
-        shellHistoryEditPendingRef.current = true;
         shellLineResyncPendingRef.current = true;
         hideMenu();
         return;
@@ -1191,8 +1086,6 @@ function useTerminalCommandHistoryInput(
     compositionCommitPendingRef.current = false;
     shellHistoryNavigationRef.current = false;
     pendingCompositionControlsRef.current = [];
-    shellHistoryEditPendingRef.current = false;
-    shellHistoryEditBeforeRef.current = null;
     trackingReliableRef.current = false;
     hideMenu();
   }, [hideMenu]);
@@ -1212,6 +1105,19 @@ function useTerminalCommandHistoryInput(
       if (controls.length > 0) terminalRef.current?.input(controls.join(""), true);
     }, 0);
   }, [hideMenu, terminalRef]);
+
+  /** Enter 提交后，若下一个 Prompt 前又收到用户输入，说明不是一次完整的单行 Shell 提交。 */
+  const handleTerminalData = useCallback((data: string) => {
+    if (!awaitingSubmittedPromptRef.current || data.length === 0) return;
+
+    if (ignoreNextSubmitDataRef.current) {
+      ignoreNextSubmitDataRef.current = false;
+      if (data === "\r" || data === "\n" || data === "\r\n") return;
+    }
+
+    // 例如多行续写、交互程序输入或执行期间 Ctrl+C：宁可漏记，也不把不完整命令写入历史。
+    pendingSubmittedCommandRef.current = null;
+  }, []);
 
   useEffect(() => {
     const handleExternalInput = (event: Event) => {
@@ -1247,13 +1153,13 @@ function useTerminalCommandHistoryInput(
   return {
     menu,
     handleInput,
+    handleTerminalData,
     handleCompositionStart,
     handleCompositionEnd,
     handleTerminalOutputParsed,
     handleKeyEvent,
     handleShellIntegrationOsc,
     getShellIntegrationToken,
-    setShellIntegrationKind,
     refreshMenuLayout,
     acceptCandidate,
   };
@@ -1416,6 +1322,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
 
     const inputDisposable = terminal.onData((data) => {
       if (!connectedRef.current) return;
+      commandHistory.handleTerminalData(data);
       sendInput(data);
     });
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
@@ -1438,7 +1345,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       try {
         fit.fit();
         syncScrollMetrics();
-        const shellKind = await invoke<TerminalShellKind | null>("open_ssh_session", {
+        await invoke("open_ssh_session", {
           config: {
             sessionId: session.id,
             host: session.connection.host,
@@ -1460,7 +1367,6 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
           void invoke("close_ssh_session", { sessionId: session.id }).catch(() => undefined);
           return;
         }
-        commandHistory.setShellIntegrationKind(shellKind);
         connectedRef.current = true;
         onStateChange(session.id, "connected");
         terminal.focus();
@@ -1540,7 +1446,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [commandHistory.handleCompositionEnd, commandHistory.handleCompositionStart, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.handleTerminalOutputParsed, commandHistory.refreshMenuLayout, commandHistory.setShellIntegrationKind, linuxXauthPath, onStateChange, sendInput, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
+  }, [commandHistory.handleCompositionEnd, commandHistory.handleCompositionStart, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.handleTerminalData, commandHistory.handleTerminalOutputParsed, commandHistory.refreshMenuLayout, linuxXauthPath, onStateChange, sendInput, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -1674,6 +1580,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
 
     const inputDisposable = terminal.onData((data) => {
       if (!connectedRef.current) return;
+      commandHistory.handleTerminalData(data);
       sendInput(data);
     });
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
@@ -1712,7 +1619,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
         }
         fit.fit();
         syncScrollMetrics();
-        const shellKind = await invoke<TerminalShellKind | null>("open_local_terminal", {
+        await invoke("open_local_terminal", {
           sessionId: session.id,
           columns: Math.max(1, terminal.cols),
           rows: Math.max(1, terminal.rows),
@@ -1722,7 +1629,6 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
           void invoke("close_local_terminal", { sessionId: session.id }).catch(() => undefined);
           return;
         }
-        commandHistory.setShellIntegrationKind(shellKind);
         connectedRef.current = true;
         onStateChange(session.id, "connected");
         terminal.focus();
@@ -1755,7 +1661,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [commandHistory.handleCompositionEnd, commandHistory.handleCompositionStart, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.handleTerminalOutputParsed, commandHistory.refreshMenuLayout, commandHistory.setShellIntegrationKind, onStateChange, sendInput, session.id, syncScrollMetrics]);
+  }, [commandHistory.handleCompositionEnd, commandHistory.handleCompositionStart, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.handleTerminalData, commandHistory.handleTerminalOutputParsed, commandHistory.refreshMenuLayout, onStateChange, sendInput, session.id, syncScrollMetrics]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

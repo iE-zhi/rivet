@@ -24,10 +24,10 @@ pub(crate) fn unix_bootstrap(shell_kind: &str, token: &str) -> Result<String, St
     const TOKEN: &str = "__RIVET_TOKEN__";
     let script = match shell_kind {
         "bash" => {
-            r#" __rivet_ready_marker=$'\033]633;RivetReady:__RIVET_TOKEN__\007'; __rivet_prompt_marker=$'\033]633;RivetPrompt:__RIVET_TOKEN__\007'; __rivet_execute_marker=$'\033]633;RivetExecute:__RIVET_TOKEN__\007'; if [ -z "${__RIVET_SHELL_INTEGRATION-}" ]; then __RIVET_SHELL_INTEGRATION=1; PS1="\[${__rivet_ready_marker}\]${PS1}\[${__rivet_prompt_marker}\]"; if [ "${BASH_VERSINFO[0]:-0}" -gt 4 ] || { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -ge 4 ]; }; then PS0="${PS0-}${__rivet_execute_marker}"; fi; fi; printf '\r\033[2K'"#
+            r#" __rivet_ready_marker=$'\033]633;RivetReady:__RIVET_TOKEN__\007'; __rivet_prompt_marker=$'\033]633;RivetPrompt:__RIVET_TOKEN__\007'; if [ -z "${__RIVET_SHELL_INTEGRATION-}" ]; then __RIVET_SHELL_INTEGRATION=1; PS1="\[${__rivet_ready_marker}\]${PS1}\[${__rivet_prompt_marker}\]"; fi; printf '\r\033[2K'"#
         }
         "zsh" => {
-            r#" typeset -g __rivet_ready_marker=$'\033]633;RivetReady:__RIVET_TOKEN__\007'; typeset -g __rivet_prompt_marker=$'\033]633;RivetPrompt:__RIVET_TOKEN__\007'; if [[ -z ${__RIVET_SHELL_INTEGRATION-} ]]; then typeset -g __RIVET_SHELL_INTEGRATION=1; function __rivet_preexec() { printf '\033]633;RivetExecute:__RIVET_TOKEN__\007'; }; autoload -Uz add-zsh-hook; add-zsh-hook preexec __rivet_preexec; PROMPT="%{${__rivet_ready_marker}%}${PROMPT}%{${__rivet_prompt_marker}%}"; fi; printf '\r\033[2K'"#
+            r#" typeset -g __rivet_ready_marker=$'\033]633;RivetReady:__RIVET_TOKEN__\007'; typeset -g __rivet_prompt_marker=$'\033]633;RivetPrompt:__RIVET_TOKEN__\007'; if [[ -z ${__RIVET_SHELL_INTEGRATION-} ]]; then typeset -g __RIVET_SHELL_INTEGRATION=1; PROMPT="%{${__rivet_ready_marker}%}${PROMPT}%{${__rivet_prompt_marker}%}"; fi; printf '\r\033[2K'"#
         }
         _ => return Err("不支持的 Shell Integration 类型".to_string()),
     };

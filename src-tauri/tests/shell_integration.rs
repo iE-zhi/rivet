@@ -21,7 +21,8 @@ fn builds_bash_and_zsh_bootstrap_with_session_markers() {
         assert!(script.ends_with('\r'));
         assert!(script.contains(&format!("RivetReady:{TOKEN}")));
         assert!(script.contains(&format!("RivetPrompt:{TOKEN}")));
-        assert!(script.contains(&format!("RivetExecute:{TOKEN}")));
+        assert!(!script.contains("RivetExecute:"));
+        assert!(!script.contains("RivetCommand:"));
     }
 }
 

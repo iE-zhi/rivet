@@ -368,7 +368,10 @@ fn start_local_worker(
         shell_integration_token.as_deref(),
         powershell_mode.as_deref(),
     )?;
+    #[cfg(unix)]
     let mut initial_output = Vec::new();
+    #[cfg(not(unix))]
+    let initial_output = Vec::new();
 
     #[cfg(unix)]
     if let (Some(kind), Some(token)) = (shell_kind.as_deref(), shell_integration_token.as_deref()) {
@@ -667,7 +670,7 @@ fn select_windows_powershell(mode: Option<&str>) -> Result<PathBuf, String> {
 /// 生成仅作用于当前 PowerShell 进程的 Shell Integration 初始化脚本。
 fn powershell_shell_integration_bootstrap(token: &str) -> String {
     format!(
-        r#"if (-not $global:__RIVET_SHELL_INTEGRATION) {{ $global:__RIVET_SHELL_INTEGRATION=$true; $global:__rivetReadyMarker=([char]27)+']633;RivetReady:{token}'+([char]7); $global:__rivetPromptMarker=([char]27)+']633;RivetPrompt:{token}'+([char]7); $global:__rivetCommandPrefix=([char]27)+']633;RivetCommand:{token}:'; $global:__rivetOriginalPrompt=(Get-Item Function:prompt).ScriptBlock; $global:__rivetSkipHistory=$true; $global:__rivetLastHistoryId=$null; function global:prompt {{ $commandMarker=''; $historyItem=Get-History -Count 1 -ErrorAction SilentlyContinue; if ($global:__rivetSkipHistory) {{ if ($null -ne $historyItem) {{ $global:__rivetLastHistoryId=$historyItem.Id }}; $global:__rivetSkipHistory=$false }} elseif ($null -ne $historyItem -and $historyItem.Id -ne $global:__rivetLastHistoryId) {{ $global:__rivetLastHistoryId=$historyItem.Id; $line=[string]$historyItem.CommandLine; if (-not [string]::IsNullOrWhiteSpace($line) -and $line.IndexOf([char]10) -lt 0 -and $line.IndexOf([char]13) -lt 0) {{ $encoded=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($line)); $commandMarker=$global:__rivetCommandPrefix+$encoded+([char]7) }} }}; [Console]::Write($commandMarker+$global:__rivetReadyMarker); $promptText=& $global:__rivetOriginalPrompt; (@($promptText) -join '')+$global:__rivetPromptMarker }} }}"#
+        r#"if (-not $global:__RIVET_SHELL_INTEGRATION) {{ $global:__RIVET_SHELL_INTEGRATION=$true; $global:__rivetReadyMarker=([char]27)+']633;RivetReady:{token}'+([char]7); $global:__rivetPromptMarker=([char]27)+']633;RivetPrompt:{token}'+([char]7); $global:__rivetOriginalPrompt=(Get-Item Function:prompt).ScriptBlock; function global:prompt {{ [Console]::Write($global:__rivetReadyMarker); $promptText=& $global:__rivetOriginalPrompt; (@($promptText) -join '')+$global:__rivetPromptMarker }} }}"#
     )
 }
 
