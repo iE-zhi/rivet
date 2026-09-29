@@ -598,14 +598,15 @@ fn default_shell_command(
 
 /// 仅对白名单内的交互 shell 启用临时 Shell Integration。
 fn default_shell_integration_kind(shell_integration_token: Option<&str>) -> Option<String> {
+    shell_integration_token?;
+
     #[cfg(windows)]
     {
-        return shell_integration_token.map(|_| "powershell".to_string());
+        return Some("powershell".to_string());
     }
 
     #[cfg(unix)]
     {
-        let _ = shell_integration_token;
         let shell = env::var_os("SHELL")?;
         let shell = PathBuf::from(shell);
         let name = shell.file_name()?.to_str()?.to_ascii_lowercase();

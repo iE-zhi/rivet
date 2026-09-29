@@ -354,7 +354,11 @@ pub async fn open_ssh_session(
         return Err("SSH 认证被服务器拒绝".to_string());
     }
 
-    let mut shell_kind = detect_remote_shell(&session).await;
+    let mut shell_kind = if config.shell_integration_token.is_some() {
+        detect_remote_shell(&session).await
+    } else {
+        None
+    };
 
     let mut channel = open_pty_shell_channel(&session, &config, x11_config.as_ref()).await?;
     let mut initial_output = Vec::new();

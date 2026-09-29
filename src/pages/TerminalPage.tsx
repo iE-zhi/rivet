@@ -731,6 +731,11 @@ function useTerminalCommandHistoryInput(
   }, [hideMenu, resetInputTracking, terminalRef]);
 
 
+  /** 只有历史命令开启时才向后端提供 Integration token。 */
+  const getShellIntegrationToken = useCallback((): string | null => (
+    enabledRef.current ? integrationTokenRef.current : null
+  ), []);
+
   /** 后端负责安装 Integration；前端只保留 shell 类型用于差异化 Enter 跟踪。 */
   const setShellIntegrationKind = useCallback((shellKind: string | null) => {
     integrationKindRef.current = shellKind === "bash" || shellKind === "zsh" || shellKind === "powershell"
@@ -991,7 +996,7 @@ function useTerminalCommandHistoryInput(
     handleInput,
     handleKeyEvent,
     handleShellIntegrationOsc,
-    integrationToken: integrationTokenRef.current,
+    getShellIntegrationToken,
     setShellIntegrationKind,
     refreshMenuLayout,
     acceptCandidate,
@@ -1207,8 +1212,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
             x11LinuxXauthPath: session.connection.x11 ? linuxXauthPath : null,
             columns: Math.max(1, terminal.cols),
             rows: Math.max(1, terminal.rows),
-            shellIntegrationToken: commandHistory.integrationToken,
-          },
+            shellIntegrationToken: commandHistory.getShellIntegrationToken(),          },
         });
         if (cancelled) {
           void invoke("close_ssh_session", { sessionId: session.id }).catch(() => undefined);
@@ -1408,8 +1412,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
           sessionId: session.id,
           columns: Math.max(1, terminal.cols),
           rows: Math.max(1, terminal.rows),
-          shellIntegrationToken: commandHistory.integrationToken,
-          powershellMode: readWindowsPowerShellMode(),
+          shellIntegrationToken: commandHistory.getShellIntegrationToken(),          powershellMode: readWindowsPowerShellMode(),
         });
         if (cancelled) {
           void invoke("close_local_terminal", { sessionId: session.id }).catch(() => undefined);
