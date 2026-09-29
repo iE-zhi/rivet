@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { deserializeNotificationSettings, isNotificationSettings, NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings, type NotificationSettings } from "./preferences/notificationSettings";
 import { deserializeNavigationSettings, isNavigationSettings, NAVIGATION_SETTINGS_STORAGE_KEY, serializeNavigationSettings, type NavigationSettings } from "./preferences/navigationSettings";
+import { TERMINAL_ACTIVITY_BAR_SCROLLBAR_HIDDEN_STORAGE_KEY } from "./preferences/terminalSettings";
 import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
 import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
 import { deserializeSerialQuickCommands, isSerialQuickCommandGroups, SERIAL_QUICK_COMMANDS_STORAGE_KEY, serializeSerialQuickCommands, type SerialQuickCommandGroup } from "./pages/serialQuickCommands";
@@ -81,6 +82,7 @@ interface RivetSyncDocument {
     theme: "system" | "light" | "dark";
     font: "builtin" | "system";
     fontSize: "12" | "14" | "16" | "18";
+    terminalActivityBarScrollbarHidden: boolean;
     serialDefaults: SerialDefaults;
     useSerialDefaults: boolean;
     serialRxSettings: SerialRxSettings;
@@ -322,6 +324,11 @@ function readFontSize(): "12" | "14" | "16" | "18" {
   return value === "12" || value === "16" || value === "18" ? value : "14";
 }
 
+/** 读取终端活动栏滚动条隐藏偏好；旧配置缺失时默认隐藏。 */
+function readTerminalActivityBarScrollbarHidden(): boolean {
+  return readStorage(TERMINAL_ACTIVITY_BAR_SCROLLBAR_HIDDEN_STORAGE_KEY) !== "false";
+}
+
 function readTerminalConnectionsForSync(): SavedTerminalConnection[] {
   const currentConnections = readStorage(TERMINAL_CONNECTIONS_STORAGE_KEY);
   const legacyConnections = currentConnections === null ? readStorage(SSH_CONNECTIONS_STORAGE_KEY) : null;
@@ -338,6 +345,7 @@ function createSyncDocument(): RivetSyncDocument {
       theme: readTheme(),
       font: readFont(),
       fontSize: readFontSize(),
+      terminalActivityBarScrollbarHidden: readTerminalActivityBarScrollbarHidden(),
       serialDefaults: deserializeSerialDefaults(readStorage(SERIAL_DEFAULTS_STORAGE_KEY)),
       useSerialDefaults: deserializeSerialDefaultsEnabled(readStorage(SERIAL_DEFAULTS_ENABLED_STORAGE_KEY)),
       serialRxSettings: deserializeSerialRxSettings(readStorage(SERIAL_RX_SETTINGS_STORAGE_KEY)),
@@ -375,6 +383,7 @@ function createPristineSyncDocument(): RivetSyncDocument {
       theme: "system",
       font: "builtin",
       fontSize: "14",
+      terminalActivityBarScrollbarHidden: true,
       serialDefaults: deserializeSerialDefaults(null),
       useSerialDefaults: deserializeSerialDefaultsEnabled(null),
       serialRxSettings: deserializeSerialRxSettings(null),
@@ -439,6 +448,9 @@ function parseSyncDocument(content: string): RivetSyncDocument {
 
   const settings = parsed.settings;
   const fontSize = settings.fontSize === undefined ? "14" : settings.fontSize;
+  const terminalActivityBarScrollbarHidden = settings.terminalActivityBarScrollbarHidden === undefined
+    ? true
+    : settings.terminalActivityBarScrollbarHidden;
   const serialDefaults = settings.serialDefaults;
   const serialRxSettings = settings.serialRxSettings;
   const notificationSettings = settings.notificationSettings;
@@ -457,6 +469,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
     (settings.theme !== "system" && settings.theme !== "light" && settings.theme !== "dark") ||
     (settings.font !== "builtin" && settings.font !== "system") ||
     (fontSize !== "12" && fontSize !== "14" && fontSize !== "16" && fontSize !== "18") ||
+    typeof terminalActivityBarScrollbarHidden !== "boolean" ||
     typeof settings.useSerialDefaults !== "boolean" ||
     !isSerialDefaults(serialDefaults) ||
     !isSerialRxSettings(serialRxSettings) ||
@@ -477,6 +490,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
       theme: settings.theme,
       font: settings.font,
       fontSize,
+      terminalActivityBarScrollbarHidden,
       serialDefaults: { ...serialDefaults },
       useSerialDefaults: settings.useSerialDefaults,
       serialRxSettings: { ...serialRxSettings },
@@ -511,6 +525,7 @@ function applySyncDocument(document: RivetSyncDocument, keyPaths: Record<string,
     [APP_PREFERENCE_STORAGE_KEYS.theme, document.settings.theme],
     [APP_PREFERENCE_STORAGE_KEYS.font, document.settings.font],
     [APP_PREFERENCE_STORAGE_KEYS.fontSize, document.settings.fontSize],
+    [TERMINAL_ACTIVITY_BAR_SCROLLBAR_HIDDEN_STORAGE_KEY, document.settings.terminalActivityBarScrollbarHidden ? "true" : "false"],
     [SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults(document.settings.serialDefaults)],
     [SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, document.settings.useSerialDefaults ? "true" : "false"],
     [SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings(document.settings.serialRxSettings)],

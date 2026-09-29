@@ -54,6 +54,8 @@ interface TerminalPageProps {
   pageActive: boolean;
   /** 当前全局基础字号，直接用于 xterm。 */
   fontSize: number;
+  /** 是否隐藏顶部活动栏的自绘横向滚动条；滚动能力保持可用。 */
+  hideActivityBarScrollbar: boolean;
   /** 当前本机 X Server TCP 地址，由设置页统一管理。 */
   x11ServerAddress: string;
   /** Linux 本机 xauth 可执行文件路径。 */
@@ -1771,7 +1773,7 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
 }
 
 /** Rivet 终端页面：Tab 之内使用递归 pane 树管理本地、SSH 与串口终端。 */
-export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x11ServerAddress, linuxXauthPath, onRequestActivate, titlebarHost }: TerminalPageProps) {
+export default function TerminalPage({ locale, themeKey, pageActive, fontSize, hideActivityBarScrollbar, x11ServerAddress, linuxXauthPath, onRequestActivate, titlebarHost }: TerminalPageProps) {
   const copy = COPY[locale];
   const { notify } = useNotification();
   const [initialWorkspace] = useState(() => createInitialTerminalWorkspace(copy.terminal));
@@ -2802,6 +2804,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, x
         className="terminal-tabs"
         viewportClassName="terminal-tabs-viewport"
         height="35px"
+        hideTrack={hideActivityBarScrollbar}
         viewportLabel={locale === "zh" ? "终端会话标签" : "Terminal session tabs"}
       >
         <div className="terminal-tabs-row">

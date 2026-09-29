@@ -29,6 +29,8 @@ export interface HorizontalScrollbarProps
   minThumbSize?: number;
   /** 可滚动视口附加类名。 */
   viewportClassName?: string;
+  /** 隐藏自绘轨道和滑块；滚轮、触控板和键盘滚动仍保持可用。 */
+  hideTrack?: boolean;
   /** 可访问名称；提供后允许键盘聚焦滚动区域。 */
   viewportLabel?: string;
 }
@@ -42,6 +44,7 @@ export function HorizontalScrollbar({
   height,
   minThumbSize = 28,
   viewportClassName = "",
+  hideTrack = false,
   viewportLabel,
   className = "",
   style,
@@ -207,7 +210,7 @@ export function HorizontalScrollbar({
 
       <div
         ref={trackRef}
-        className={`rivet-horizontal-scrollbar-track ${metrics.visible ? "" : "is-hidden"}`.trim()}
+        className={`rivet-horizontal-scrollbar-track ${hideTrack || !metrics.visible ? "is-hidden" : ""}`.trim()}
         onPointerDown={onTrackPointerDown}
         aria-hidden="true"
       >

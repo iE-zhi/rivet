@@ -12,6 +12,7 @@ import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STO
 import { deserializeNotificationSettings, isNotificationSettings, NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings, type NotificationSettings } from "./preferences/notificationSettings";
 import { deserializeNavigationSettings, isNavigationSettings, NAVIGATION_SETTINGS_STORAGE_KEY, serializeNavigationSettings, type NavigationSettings } from "./preferences/navigationSettings";
 import { DEFAULT_LINUX_XAUTH_PATH, deserializeX11ServerAddress, deserializeXauthPath, LINUX_XAUTH_PATH_STORAGE_KEY, X11_SERVER_ADDRESS_STORAGE_KEY } from "./preferences/sshSettings";
+import { readTerminalActivityBarScrollbarHidden, TERMINAL_ACTIVITY_BAR_SCROLLBAR_HIDDEN_STORAGE_KEY } from "./preferences/terminalSettings";
 
 const TerminalPage = lazy(() => import("./pages/TerminalPage"));
 
@@ -216,6 +217,8 @@ export default function App() {
   const [x11ServerAddress, setX11ServerAddress] = useState(readX11ServerAddressPreference);
   /** Linux 本机 xauth 可执行文件路径；仅保存在当前设备。 */
   const [linuxXauthPath, setLinuxXauthPath] = useState(readLinuxXauthPathPreference);
+  /** 终端顶部活动栏默认隐藏自绘横向滚动条，但仍保留滚轮和触控板滚动。 */
+  const [terminalActivityBarScrollbarHidden, setTerminalActivityBarScrollbarHidden] = useState(readTerminalActivityBarScrollbarHidden);
   /** 系统外观状态仅在主题模式为 system 时决定最终颜色方案。 */
   const [systemPrefersDark, setSystemPrefersDark] = useState(readSystemPrefersDark);
   /** 首屏采用排序后的第一个可见工具页；全部隐藏时进入始终可访问的设置页。 */
@@ -350,6 +353,14 @@ export default function App() {
     }
   }, [linuxXauthPath]);
 
+  /** 终端活动栏滚动条偏好参与跨设备同步，切换后立即由已挂载终端页读取。 */
+  useEffect(() => {
+    persistPreference(
+      TERMINAL_ACTIVITY_BAR_SCROLLBAR_HIDDEN_STORAGE_KEY,
+      terminalActivityBarScrollbarHidden ? "true" : "false",
+    );
+  }, [terminalActivityBarScrollbarHidden]);
+
   /** 同步或恢复配置后原地刷新持久化 React 状态，保留当前页面与活动会话。 */
   useEffect(() => {
     const handleDocumentApplied = () => {
@@ -362,6 +373,7 @@ export default function App() {
       setSerialRxSettings(readSerialRxSettingsPreference());
       setNotificationSettings(readNotificationSettingsPreference());
       setNavigationSettings(readNavigationSettingsPreference());
+      setTerminalActivityBarScrollbarHidden(readTerminalActivityBarScrollbarHidden());
     };
     window.addEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
     return () => window.removeEventListener(SYNC_DOCUMENT_APPLIED_EVENT, handleDocumentApplied);
@@ -570,12 +582,12 @@ export default function App() {
             {terminalMounted && (
               <div className="app-view terminal-view" hidden={page !== "terminal"}>
                 <Suspense fallback={null}>
-                  <TerminalPage locale={locale} themeKey={resolvedTheme} pageActive={page === "terminal"} fontSize={Number(fontSize)} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} onRequestActivate={activateTerminalPage} titlebarHost={terminalTitlebarHost} />
+                  <TerminalPage locale={locale} themeKey={resolvedTheme} pageActive={page === "terminal"} fontSize={Number(fontSize)} hideActivityBarScrollbar={terminalActivityBarScrollbarHidden} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} onRequestActivate={activateTerminalPage} titlebarHost={terminalTitlebarHost} />
                 </Suspense>
               </div>
             )}
             <div className="app-view settings-view" hidden={page !== "settings"}>
-              <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} fontSize={fontSize} onFontSizeChange={setFontSize} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} sync={sync} />
+              <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} fontSize={fontSize} onFontSizeChange={setFontSize} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} hideActivityBarScrollbar={terminalActivityBarScrollbarHidden} onHideActivityBarScrollbarChange={setTerminalActivityBarScrollbarHidden} sync={sync} />
             </div>
           </NotificationProvider>
         </div>

@@ -165,6 +165,8 @@ interface SettingsPageCopy {
   powerShellSettingsFailed: string;
   /** 历史命令设置组标题。 */
   historyGroupTitle: string;
+  /** 是否隐藏终端顶部活动栏滚动条。 */
+  hideActivityBarScrollbar: string;
   /** 是否启用历史命令。 */
   historyEnabled: string;
   /** 删除历史命令设置项。 */
@@ -308,6 +310,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     ],
     powerShellSettingsFailed: "保存默认 PowerShell 设置失败。",
     historyGroupTitle: "历史命令",
+    hideActivityBarScrollbar: "隐藏活动栏滚动条",
     historyEnabled: "是否启用历史命令",
     historyDelete: "删除历史命令",
     deleteHistory: "删除",
@@ -436,6 +439,7 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     ],
     powerShellSettingsFailed: "Failed to save the default PowerShell setting.",
     historyGroupTitle: "Command history",
+    hideActivityBarScrollbar: "Hide tab bar scrollbar",
     historyEnabled: "Enable command history",
     historyDelete: "Delete command history",
     deleteHistory: "Delete",
@@ -543,6 +547,10 @@ export interface SettingsPageProps {
   linuxXauthPath: string;
   /** 更新仅保存在本机的 Linux xauth 路径。 */
   onLinuxXauthPathChange: (path: string) => void;
+  /** 是否隐藏终端顶部活动栏的自绘横向滚动条。 */
+  hideActivityBarScrollbar: boolean;
+  /** 实时更新终端活动栏滚动条显示状态。 */
+  onHideActivityBarScrollbarChange: (hidden: boolean) => void;
   /** Git 托管同步控制器；常驻应用外壳并把交互集中展示在设置页。 */
   sync: RivetSyncController;
 }
@@ -646,7 +654,7 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
  * @param onX11ServerAddressChange 用户修改 X11 Server 地址后的回调。
  * @returns 设置侧栏和显示偏好分组。
  */
-export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, fontSize, onFontSizeChange, notificationSettings, onNotificationSettingsChange, navigationSettings, onNavigationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, x11ServerAddress, onX11ServerAddressChange, linuxXauthPath, onLinuxXauthPathChange, sync }: SettingsPageProps) {
+export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, fontSize, onFontSizeChange, notificationSettings, onNotificationSettingsChange, navigationSettings, onNavigationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, x11ServerAddress, onX11ServerAddressChange, linuxXauthPath, onLinuxXauthPathChange, hideActivityBarScrollbar, onHideActivityBarScrollbarChange, sync }: SettingsPageProps) {
   /** 取当前界面语言的文案和选项列表。 */
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 当前页面所有短时反馈均通过应用外壳中的全局通知发送。 */
@@ -1303,7 +1311,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
           <span>{copy.about}</span>
         </button>
       </nav>
-      <main className={`settings-main${activeCategory === "about" ? " settings-main-about" : ""}`} id="settings-display" aria-labelledby={activeCategory === "about" ? "settings-about-title" : activeCategory === "sync" ? "settings-sync-group-title" : activeCategory === "ssh" ? "settings-ssh-group-title" : "settings-group-title"}>
+      <main className={`settings-main${activeCategory === "about" ? " settings-main-about" : ""}`} id="settings-display" aria-labelledby={activeCategory === "about" ? "settings-about-title" : activeCategory === "sync" ? "settings-sync-group-title" : activeCategory === "ssh" ? "settings-terminal-display-group-title" : "settings-group-title"}>
         <SettingsContentFrame
           about={activeCategory === "about"}
           label={activeCategory === "display" ? copy.display : activeCategory === "serial" ? copy.serial : activeCategory === "ssh" ? copy.ssh : activeCategory === "sync" ? copy.sync : copy.about}
@@ -1471,6 +1479,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
             </>
           ) : activeCategory === "ssh" ? (
             <>
+
               {windowsPlatform ? (
                 <section className="settings-section" aria-labelledby="settings-powershell-group-title">
                   <h1 className="settings-section-title" id="settings-powershell-group-title">{copy.powershellGroupTitle}</h1>
@@ -1592,6 +1601,19 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                         </Button>
                       )}
                     </div>
+                  </div>
+                </div>
+              </section>
+              <section className="settings-section" aria-labelledby="settings-terminal-display-group-title">
+                <h1 className="settings-section-title" id="settings-terminal-display-group-title">{copy.display}</h1>
+                <div className="settings-list">
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.hideActivityBarScrollbar}</span>
+                    <Switch
+                      checked={hideActivityBarScrollbar}
+                      onCheckedChange={onHideActivityBarScrollbarChange}
+                      ariaLabel={copy.hideActivityBarScrollbar}
+                    />
                   </div>
                 </div>
               </section>

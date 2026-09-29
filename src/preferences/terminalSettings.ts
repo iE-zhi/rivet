@@ -1,6 +1,9 @@
 /** Windows 本地终端默认 PowerShell 选择，仅保存在当前设备。 */
 export const WINDOWS_POWERSHELL_MODE_STORAGE_KEY = "rivet.terminal.windowsPowerShellMode";
 
+/** 终端顶部活动栏滚动条隐藏偏好；参与应用设置跨设备同步。 */
+export const TERMINAL_ACTIVITY_BAR_SCROLLBAR_HIDDEN_STORAGE_KEY = "rivet.terminal.activityBarScrollbarHidden";
+
 /** Windows 本地终端 PowerShell 选择策略。 */
 export type WindowsPowerShellMode = "auto" | "ps7" | "ps5";
 
@@ -33,3 +36,13 @@ export function setWindowsPowerShellMode(mode: WindowsPowerShellMode): boolean {
     return false;
   }
 }
+
+/** 读取终端活动栏滚动条隐藏偏好；缺失或损坏时默认隐藏。 */
+export function readTerminalActivityBarScrollbarHidden(): boolean {
+  try {
+    return window.localStorage.getItem(TERMINAL_ACTIVITY_BAR_SCROLLBAR_HIDDEN_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
