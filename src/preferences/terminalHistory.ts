@@ -175,7 +175,7 @@ export function recordTerminalCommand(command: string): boolean {
   }
 }
 
-/** 精确匹配优先，其余包含检索词的候选保持最近优先顺序。 */
+/** 精确匹配优先，其余仅按命令前缀匹配并保持最近优先顺序。 */
 export function findTerminalCommandHistoryMatches(
   history: readonly string[],
   query: string,
@@ -191,7 +191,7 @@ export function findTerminalCommandHistoryMatches(
       exactMatch = command;
       continue;
     }
-    if (terminalCommandHistoryIndex(command).includes(queryIndex)) {
+    if (terminalCommandHistoryIndex(command).startsWith(queryIndex)) {
       matches.push(command);
     }
   }

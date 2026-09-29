@@ -518,6 +518,11 @@ function terminalCommandHistoryMenuLayout(
 
 const RIVET_SHELL_INTEGRATION_OSC = 633;
 type TerminalShellKind = "bash" | "zsh" | "powershell";
+const TERMINAL_EXTERNAL_INPUT_EVENT = "rivet:terminal-external-input";
+interface TerminalExternalInputDetail {
+  sessionId: string;
+  data: string;
+}
 
 function decodeTerminalCommandBase64(encoded: string): string | null {
   if (encoded.length === 0 || encoded.length > 16 * 1024) return null;
@@ -562,6 +567,7 @@ function useTerminalCommandHistoryInput(
   terminalRef: React.RefObject<XtermTerminal | null>,
   containerRef: React.RefObject<HTMLDivElement | null>,
   sendInput: (data: string) => void,
+  sessionId: string,
 ) {
   const [menu, setMenu] = useState<TerminalCommandHistoryMenuState>(EMPTY_TERMINAL_COMMAND_HISTORY_MENU);
   const menuRef = useRef(menu);
@@ -574,6 +580,8 @@ function useTerminalCommandHistoryInput(
   const shellLineResyncPendingRef = useRef(false);
   const inputStartRef = useRef<TerminalCommandInputStart | null>(null);
   const suppressCandidateEnterRef = useRef(false);
+  const compositionActiveRef = useRef(false);
+  const compositionCommitPendingRef = useRef(false);
   const integrationKindRef = useRef<TerminalShellKind | null>(null);
   const integrationTokenRef = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -660,7 +668,7 @@ function useTerminalCommandHistoryInput(
     if (!promptActiveRef.current) return;
     const candidate = menuRef.current.commands[index];
     const query = inputRef.current.join("");
-    if (!candidate || !terminalCommandHistoryIndex(candidate).includes(terminalCommandHistoryIndex(query))) return;
+    if (!candidate || !terminalCommandHistoryIndex(candidate).startsWith(terminalCommandHistoryIndex(query))) return;
 
     if (candidate.startsWith(query)) {
       const suffix = candidate.slice(query.length);
@@ -756,6 +764,16 @@ function useTerminalCommandHistoryInput(
     }
     if (event.type !== "keydown") return true;
     if (!enabledRef.current || !promptActiveRef.current) return true;
+
+    if (event.isComposing || compositionActiveRef.current || event.keyCode === 229) {
+      hideMenu();
+      return true;
+    }
+    if (event.key === "Enter" && compositionCommitPendingRef.current) {
+      compositionCommitPendingRef.current = false;
+      hideMenu();
+      return true;
+    }
 
     if (shellLineResyncPendingRef.current && event.key !== "Tab") {
       resyncInputTrackingFromTerminal();
@@ -981,6 +999,32 @@ function useTerminalCommandHistoryInput(
     refreshSuggestions();
   }, [hideMenu, refreshSuggestions, resyncInputTrackingFromTerminal]);
 
+  const handleCompositionStart = useCallback(() => {
+    compositionActiveRef.current = true;
+    compositionCommitPendingRef.current = false;
+    hideMenu();
+  }, [hideMenu]);
+
+  const handleCompositionEnd = useCallback((data: string) => {
+    compositionActiveRef.current = false;
+    compositionCommitPendingRef.current = true;
+    if (data.length > 0) handleInput(data);
+    window.setTimeout(() => {
+      compositionCommitPendingRef.current = false;
+    }, 0);
+  }, [handleInput]);
+
+  useEffect(() => {
+    const handleExternalInput = (event: Event) => {
+      const detail = (event as CustomEvent<TerminalExternalInputDetail>).detail;
+      if (!detail || detail.sessionId !== sessionId || detail.data.length === 0) return;
+      handleInput(detail.data);
+      hideMenu();
+    };
+    window.addEventListener(TERMINAL_EXTERNAL_INPUT_EVENT, handleExternalInput);
+    return () => window.removeEventListener(TERMINAL_EXTERNAL_INPUT_EVENT, handleExternalInput);
+  }, [handleInput, hideMenu, sessionId]);
+
   useEffect(() => {
     const syncHistory = () => {
       enabledRef.current = readTerminalCommandHistoryEnabled();
@@ -998,6 +1042,8 @@ function useTerminalCommandHistoryInput(
   return {
     menu,
     handleInput,
+    handleCompositionStart,
+    handleCompositionEnd,
     handleKeyEvent,
     handleShellIntegrationOsc,
     getShellIntegrationToken,
@@ -1108,7 +1154,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       terminalRef.current?.writeln(`\r\n[SSH] ${String(error)}`);
     });
   }, [session.id]);
-  const commandHistory = useTerminalCommandHistoryInput(terminalRef, containerRef, sendInput);
+  const commandHistory = useTerminalCommandHistoryInput(terminalRef, containerRef, sendInput, session.id);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1142,10 +1188,10 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       const text = event.clipboardData?.getData("text/plain") ?? "";
       if (text) commandHistory.handleInput(text);
     };
-    const handleCompositionEnd = (event: CompositionEvent) => {
-      if (event.data) commandHistory.handleInput(event.data);
-    };
+    const handleCompositionStart = () => commandHistory.handleCompositionStart();
+    const handleCompositionEnd = (event: CompositionEvent) => commandHistory.handleCompositionEnd(event.data);
     terminal.textarea?.addEventListener("paste", handlePaste);
+    terminal.textarea?.addEventListener("compositionstart", handleCompositionStart);
     terminal.textarea?.addEventListener("compositionend", handleCompositionEnd);
     const resizeObserver = new ResizeObserver(() => {
       if (!container.isConnected) return;
@@ -1274,6 +1320,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       inputDisposable.dispose();
       shellIntegrationDisposable.dispose();
       terminal.textarea?.removeEventListener("paste", handlePaste);
+      terminal.textarea?.removeEventListener("compositionstart", handleCompositionStart);
       terminal.textarea?.removeEventListener("compositionend", handleCompositionEnd);
       resizeDisposable.dispose();
       scrollDisposable.dispose();
@@ -1284,7 +1331,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.refreshMenuLayout, commandHistory.setShellIntegrationKind, linuxXauthPath, onStateChange, sendInput, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
+  }, [commandHistory.handleCompositionEnd, commandHistory.handleCompositionStart, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.refreshMenuLayout, commandHistory.setShellIntegrationKind, linuxXauthPath, onStateChange, sendInput, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -1362,7 +1409,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
       terminalRef.current?.writeln(`\r\n[LOCAL] ${String(error)}`);
     });
   }, [session.id]);
-  const commandHistory = useTerminalCommandHistoryInput(terminalRef, containerRef, sendInput);
+  const commandHistory = useTerminalCommandHistoryInput(terminalRef, containerRef, sendInput, session.id);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1396,10 +1443,10 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
       const text = event.clipboardData?.getData("text/plain") ?? "";
       if (text) commandHistory.handleInput(text);
     };
-    const handleCompositionEnd = (event: CompositionEvent) => {
-      if (event.data) commandHistory.handleInput(event.data);
-    };
+    const handleCompositionStart = () => commandHistory.handleCompositionStart();
+    const handleCompositionEnd = (event: CompositionEvent) => commandHistory.handleCompositionEnd(event.data);
     terminal.textarea?.addEventListener("paste", handlePaste);
+    terminal.textarea?.addEventListener("compositionstart", handleCompositionStart);
     terminal.textarea?.addEventListener("compositionend", handleCompositionEnd);
     const resizeObserver = new ResizeObserver(() => {
       if (!container.isConnected) return;
@@ -1485,6 +1532,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
       inputDisposable.dispose();
       shellIntegrationDisposable.dispose();
       terminal.textarea?.removeEventListener("paste", handlePaste);
+      terminal.textarea?.removeEventListener("compositionstart", handleCompositionStart);
       terminal.textarea?.removeEventListener("compositionend", handleCompositionEnd);
       resizeDisposable.dispose();
       scrollDisposable.dispose();
@@ -1495,7 +1543,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.refreshMenuLayout, commandHistory.setShellIntegrationKind, onStateChange, sendInput, session.id, syncScrollMetrics]);
+  }, [commandHistory.handleCompositionEnd, commandHistory.handleCompositionStart, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.refreshMenuLayout, commandHistory.setShellIntegrationKind, onStateChange, sendInput, session.id, syncScrollMetrics]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -1564,7 +1612,7 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
       terminalRef.current?.writeln(`\r\n[SERIAL] ${String(error)}`);
     });
   }, [session.id]);
-  const commandHistory = useTerminalCommandHistoryInput(terminalRef, containerRef, sendInput);
+  const commandHistory = useTerminalCommandHistoryInput(terminalRef, containerRef, sendInput, session.id);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1597,10 +1645,10 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
       const text = event.clipboardData?.getData("text/plain") ?? "";
       if (text) commandHistory.handleInput(text);
     };
-    const handleCompositionEnd = (event: CompositionEvent) => {
-      if (event.data) commandHistory.handleInput(event.data);
-    };
+    const handleCompositionStart = () => commandHistory.handleCompositionStart();
+    const handleCompositionEnd = (event: CompositionEvent) => commandHistory.handleCompositionEnd(event.data);
     terminal.textarea?.addEventListener("paste", handlePaste);
+    terminal.textarea?.addEventListener("compositionstart", handleCompositionStart);
     terminal.textarea?.addEventListener("compositionend", handleCompositionEnd);
     const resizeObserver = new ResizeObserver(() => {
       if (!container.isConnected) return;
@@ -1707,6 +1755,7 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
       inputDisposable.dispose();
       shellIntegrationDisposable.dispose();
       terminal.textarea?.removeEventListener("paste", handlePaste);
+      terminal.textarea?.removeEventListener("compositionstart", handleCompositionStart);
       terminal.textarea?.removeEventListener("compositionend", handleCompositionEnd);
       scrollDisposable.dispose();
       cursorDisposable.dispose();
@@ -1716,7 +1765,7 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.refreshMenuLayout, onStateChange, sendInput, session.connection, session.id, syncScrollMetrics]);
+  }, [commandHistory.handleCompositionEnd, commandHistory.handleCompositionStart, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.refreshMenuLayout, onStateChange, sendInput, session.connection, session.id, syncScrollMetrics]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -1902,13 +1951,15 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
 
     if (session.kind === "ssh") {
       await invoke("ssh_send_input", { sessionId: session.id, data });
-      return;
-    }
-    if (session.kind === "serial") {
+    } else if (session.kind === "serial") {
       await invoke("terminal_serial_send_input", { sessionId: session.id, data });
-      return;
+    } else {
+      await invoke("local_terminal_send_input", { sessionId: session.id, data });
     }
-    await invoke("local_terminal_send_input", { sessionId: session.id, data });
+
+    window.dispatchEvent(new CustomEvent<TerminalExternalInputDetail>(TERMINAL_EXTERNAL_INPUT_EVENT, {
+      detail: { sessionId: session.id, data: command },
+    }));
   }, [activeSession, locale]);
   const occupiedSerialPaths = useMemo(
     () =>
