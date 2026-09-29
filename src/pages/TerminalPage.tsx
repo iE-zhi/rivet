@@ -10,7 +10,7 @@ import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
 import { Button, Checkbox, GroupManager, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
-import { TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, deleteTerminalCommandHistory, findTerminalCommandHistoryMatches, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, recordTerminalCommand, terminalCommandHistoryIndex } from "../preferences/terminalHistory";
+import { MAX_TERMINAL_COMMAND_LENGTH, TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, deleteTerminalCommandHistory, findTerminalCommandHistoryMatches, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, recordTerminalCommand, terminalCommandHistoryIndex } from "../preferences/terminalHistory";
 import { readWindowsPowerShellMode } from "../preferences/terminalSettings";
 import {
   deserializeRecentConnectionIds,
@@ -507,7 +507,10 @@ function terminalCommandHistoryMenuLayout(
 
   const maximumWidth = Math.max(96, host.clientWidth - 24);
   const minimumWidth = Math.min(180, maximumWidth);
-  const longestLength = commands.reduce((length, command) => Math.max(length, Array.from(command).length), 0);
+  const longestLength = commands.reduce((length, command) => Math.max(
+    length,
+    ...command.split(/\r\n|\r|\n/).map((line) => Array.from(line).length),
+  ), 0);
   const desiredWidth = Math.ceil((longestLength + extraCharacters) * Math.max(cellWidth, 7) + 28);
   const width = Math.min(maximumWidth, Math.max(minimumWidth, desiredWidth));
   const left = Math.max(12, Math.min(cursorLeft, Math.max(12, host.clientWidth - width - 12)));
@@ -530,6 +533,26 @@ const TERMINAL_EXTERNAL_INPUT_EVENT = "rivet:terminal-external-input";
 interface TerminalExternalInputDetail {
   sessionId: string;
   data: string;
+}
+
+/** 解码 Shell Integration 传回的 UTF-8 Base64 完整命令。 */
+function decodeTerminalCommandBase64(encoded: string): string | null {
+  if (encoded.length === 0 || encoded.length > 64 * 1024) return null;
+  try {
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/** 编码 PowerShell PSReadLine 多行候选载荷。 */
+function encodeTerminalCommandBase64(command: string): string {
+  const bytes = new TextEncoder().encode(command);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 /** 只读取 Prompt 起点到真实光标；忽略右侧 PSReadLine/zsh-autosuggestions 等绘制的 ghost 文本。 */
@@ -586,6 +609,10 @@ function useTerminalCommandHistoryInput(
   const compositionCommitPendingRef = useRef(false);
   const pendingCompositionControlsRef = useRef<string[]>([]);
   const pendingSubmittedCommandRef = useRef<string | null>(null);
+  const pendingShellCommandRef = useRef<string | null>(null);
+  const pendingMultilineCommandRef = useRef<string | null>(null);
+  const pendingContinuationLineRef = useRef<string[]>([]);
+  const pendingMultilineAcceptedRef = useRef(false);
   const awaitingSubmittedPromptRef = useRef(false);
   const ignoreNextSubmitDataRef = useRef(false);
   const integrationTokenRef = useRef(
@@ -593,6 +620,8 @@ function useTerminalCommandHistoryInput(
       ? crypto.randomUUID().replaceAll("-", "")
       : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`,
   );
+  const shellIntegrationKindRef = useRef<string | null>(null);
+  const pendingHistoryCandidateRef = useRef<string | null>(null);
   const sendInputRef = useRef(sendInput);
   sendInputRef.current = sendInput;
 
@@ -701,13 +730,52 @@ function useTerminalCommandHistoryInput(
     }, 50);
   }, [hideMenu, refreshMenuLayout, refreshSuggestions, resyncInputTrackingFromTerminal]);
 
-  const acceptCandidate = useCallback((index: number) => {
-    if (!promptActiveRef.current) return;
+  const insertHistoryCandidate = useCallback((candidate: string): boolean => {
+    const terminal = terminalRef.current;
+    if (!terminal) return false;
+
+    if (!(candidate.includes("\n") || candidate.includes("\r"))) {
+      sendInputRef.current(candidate);
+      return true;
+    }
+
+    if (shellIntegrationKindRef.current === "powershell") {
+      const encoded = encodeTerminalCommandBase64(candidate);
+      sendInputRef.current(`__RIVET_PASTE__:${integrationTokenRef.current}:${encoded}\x18\x12`);
+      return true;
+    }
+
+    if (!terminal.modes.bracketedPasteMode) return false;
+    terminal.paste(candidate);
+    return true;
+  }, [terminalRef]);
+
+  const flushPendingHistoryCandidate = useCallback(() => {
+    const candidate = pendingHistoryCandidateRef.current;
+    if (candidate === null || !promptActiveRef.current) return;
+    if (!insertHistoryCandidate(candidate)) return;
+
+    pendingHistoryCandidateRef.current = null;
+    inputRef.current = Array.from(candidate);
+    cursorRef.current = inputRef.current.length;
+    trackingReliableRef.current = true;
+  }, [insertHistoryCandidate]);
+
+  const acceptCandidate = useCallback((index: number): boolean => {
+    if (!promptActiveRef.current) return false;
     const candidate = menuRef.current.commands[index];
     const query = inputRef.current.join("");
-    if (!candidate || !terminalCommandHistoryIndex(candidate).includes(terminalCommandHistoryIndex(query))) return;
+    const queryIndex = terminalCommandHistoryIndex(query);
+    if (!candidate || queryIndex.length === 0 || !terminalCommandHistoryIndex(candidate).includes(queryIndex)) {
+      return false;
+    }
 
-    if (candidate.startsWith(query)) {
+    const candidateIsMultiline = candidate.includes("\n") || candidate.includes("\r");
+
+    if (candidateIsMultiline) {
+      pendingHistoryCandidateRef.current = candidate;
+      sendInputRef.current("\x03");
+    } else if (candidate.startsWith(query)) {
       const suffix = candidate.slice(query.length);
       if (suffix.length > 0) sendInputRef.current(suffix);
     } else {
@@ -728,11 +796,14 @@ function useTerminalCommandHistoryInput(
       if (replacementInput.length > 0) sendInputRef.current(replacementInput);
     }
 
-    inputRef.current = Array.from(candidate);
-    cursorRef.current = inputRef.current.length;
-    trackingReliableRef.current = true;
+    if (pendingHistoryCandidateRef.current === null) {
+      inputRef.current = Array.from(candidate);
+      cursorRef.current = inputRef.current.length;
+      trackingReliableRef.current = true;
+    }
     hideMenu();
     terminalRef.current?.focus();
+    return true;
   }, [hideMenu, terminalRef]);
 
   const handleShellIntegrationOsc = useCallback((data: string): boolean => {
@@ -740,13 +811,42 @@ function useTerminalCommandHistoryInput(
     if (data === `RivetReady:${token}`) {
       return true;
     }
+
+    if (data === `RivetExecute:${token}`) {
+      if (awaitingSubmittedPromptRef.current) {
+        // bash PS0 只在完整命令已经解析完成、即将执行时出现；此后输入属于程序 stdin。
+        pendingMultilineAcceptedRef.current = true;
+      }
+      return true;
+    }
+
+    const commandPrefix = `RivetCommand:${token}:`;
+    if (data.startsWith(commandPrefix)) {
+      const command = decodeTerminalCommandBase64(data.slice(commandPrefix.length));
+      if (awaitingSubmittedPromptRef.current && command !== null) {
+        pendingShellCommandRef.current = command;
+      }
+      return true;
+    }
+
     if (data === `RivetPrompt:${token}`) {
       if (awaitingSubmittedPromptRef.current) {
         const submittedCommand = pendingSubmittedCommandRef.current;
-        if (enabledRef.current && submittedCommand) {
-          recordTerminalCommand(submittedCommand);
+        const shellCommand = pendingShellCommandRef.current;
+        const exactMultilineCommand = pendingMultilineAcceptedRef.current
+          ? pendingMultilineCommandRef.current
+          : null;
+        const command = submittedCommand !== null
+          ? submittedCommand
+          : exactMultilineCommand ?? shellCommand;
+        if (enabledRef.current && command) {
+          recordTerminalCommand(command);
         }
         pendingSubmittedCommandRef.current = null;
+        pendingShellCommandRef.current = null;
+        pendingMultilineCommandRef.current = null;
+        pendingContinuationLineRef.current = [];
+        pendingMultilineAcceptedRef.current = false;
         awaitingSubmittedPromptRef.current = false;
         ignoreNextSubmitDataRef.current = false;
       }
@@ -767,18 +867,27 @@ function useTerminalCommandHistoryInput(
       } else {
         inputStartRef.current = null;
       }
+      if (pendingHistoryCandidateRef.current !== null) {
+        window.setTimeout(flushPendingHistoryCandidate, 0);
+        window.setTimeout(flushPendingHistoryCandidate, 30);
+      }
+
       hideMenu();
       return true;
     }
 
     return false;
-  }, [hideMenu, terminalRef]);
+  }, [flushPendingHistoryCandidate, hideMenu, terminalRef]);
 
 
   /** 只有历史命令开启时才向后端提供 Integration token。 */
   const getShellIntegrationToken = useCallback((): string | null => (
     enabledRef.current ? integrationTokenRef.current : null
   ), []);
+
+  const setShellIntegrationKind = useCallback((kind: string | null) => {
+    shellIntegrationKindRef.current = kind;
+  }, []);
 
   /** 候选框使用自己的按键状态机；非 shell prompt 输入完全交还给终端。 */
   const handleKeyEvent = useCallback((event: KeyboardEvent): boolean => {
@@ -875,14 +984,16 @@ function useTerminalCommandHistoryInput(
           // 候选仅展示、用户尚未进入选择时，Enter 永远执行当前输入。
           hideMenu();
         } else {
-          event.preventDefault();
-          event.stopPropagation();
-          suppressCandidateEnterRef.current = true;
-          window.setTimeout(() => {
-            suppressCandidateEnterRef.current = false;
-          }, 0);
-          acceptCandidate(menuRef.current.selectedIndex);
-          return false;
+          if (acceptCandidate(menuRef.current.selectedIndex)) {
+            event.preventDefault();
+            event.stopPropagation();
+            suppressCandidateEnterRef.current = true;
+            window.setTimeout(() => {
+              suppressCandidateEnterRef.current = false;
+            }, 0);
+            return false;
+          }
+          hideMenu();
         }
       }
       if (
@@ -951,6 +1062,10 @@ function useTerminalCommandHistoryInput(
       pendingSubmittedCommandRef.current = trackingReliableRef.current
         ? inputRef.current.join("")
         : null;
+      pendingShellCommandRef.current = null;
+      pendingMultilineCommandRef.current = pendingSubmittedCommandRef.current;
+      pendingContinuationLineRef.current = [];
+      pendingMultilineAcceptedRef.current = false;
       awaitingSubmittedPromptRef.current = true;
       ignoreNextSubmitDataRef.current = true;
       promptActiveRef.current = false;
@@ -1070,9 +1185,32 @@ function useTerminalCommandHistoryInput(
       hideMenu();
       return;
     }
-    if (data.includes("\r") || data.includes("\n") || data.includes("\x1b")) {
+    if (data.includes("\x1b")) {
       trackingReliableRef.current = false;
       hideMenu();
+      return;
+    }
+
+    if (data.includes("\r") || data.includes("\n")) {
+      const terminal = terminalRef.current;
+      if (!terminal?.modes.bracketedPasteMode) {
+        trackingReliableRef.current = false;
+        hideMenu();
+        return;
+      }
+
+      const normalized = data.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+      if (inputRef.current.join("").length + normalized.length > MAX_TERMINAL_COMMAND_LENGTH) {
+        trackingReliableRef.current = false;
+        hideMenu();
+        return;
+      }
+      for (const character of Array.from(normalized)) {
+        inputRef.current.splice(cursorRef.current, 0, character);
+        cursorRef.current += 1;
+      }
+      trackingReliableRef.current = true;
+      refreshSuggestions();
       return;
     }
 
@@ -1113,17 +1251,77 @@ function useTerminalCommandHistoryInput(
     }, 0);
   }, [hideMenu, terminalRef]);
 
-  /** Enter 提交后，若下一个 Prompt 前又收到用户输入，说明不是一次完整的单行 Shell 提交。 */
+  /** Enter 后继续跟踪续行；bash 的 Execute 标记确认后冻结，其他 Shell 回退到原生命令标记。 */
   const handleTerminalData = useCallback((data: string) => {
-    if (!awaitingSubmittedPromptRef.current || data.length === 0) return;
+    if (
+      !awaitingSubmittedPromptRef.current
+      || pendingMultilineAcceptedRef.current
+      || data.length === 0
+    ) {
+      return;
+    }
 
     if (ignoreNextSubmitDataRef.current) {
       ignoreNextSubmitDataRef.current = false;
       if (data === "\r" || data === "\n" || data === "\r\n") return;
     }
 
-    // 例如多行续写、交互程序输入或执行期间 Ctrl+C：宁可漏记，也不把不完整命令写入历史。
+    // 第一次 Enter 之后仍有输入，已经不能再把首行快照视为完整命令。
     pendingSubmittedCommandRef.current = null;
+    if (pendingMultilineCommandRef.current === null) return;
+
+    if (data.includes("\x1b")) {
+      // 光标移动、补全等复杂 Shell 编辑交给原生命令标记兜底，避免自行猜测行编辑结果。
+      pendingMultilineCommandRef.current = null;
+      pendingContinuationLineRef.current = [];
+      return;
+    }
+
+    const normalized = data.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+    const line = pendingContinuationLineRef.current;
+    for (const character of Array.from(normalized)) {
+      if (character === "\n") {
+        const continuationLine = line.join("");
+        if (
+          pendingMultilineCommandRef.current.length + 1 + continuationLine.length
+          > MAX_TERMINAL_COMMAND_LENGTH
+        ) {
+          pendingMultilineCommandRef.current = null;
+          line.length = 0;
+          return;
+        }
+        pendingMultilineCommandRef.current += `\n${continuationLine}`;
+        line.length = 0;
+        continue;
+      }
+      if (character === "\x7f" || character === "\b") {
+        line.pop();
+        continue;
+      }
+      if (character === "\x15") {
+        line.length = 0;
+        continue;
+      }
+      if (character === "\x17") {
+        while (line.length > 0 && /\s/.test(line[line.length - 1] ?? "")) line.pop();
+        while (line.length > 0 && !/\s/.test(line[line.length - 1] ?? "")) line.pop();
+        continue;
+      }
+      if (character.charCodeAt(0) < 0x20) {
+        pendingMultilineCommandRef.current = null;
+        line.length = 0;
+        return;
+      }
+      line.push(character);
+      if (
+        pendingMultilineCommandRef.current.length + line.length + 1
+        > MAX_TERMINAL_COMMAND_LENGTH
+      ) {
+        pendingMultilineCommandRef.current = null;
+        line.length = 0;
+        return;
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -1167,6 +1365,7 @@ function useTerminalCommandHistoryInput(
     handleKeyEvent,
     handleShellIntegrationOsc,
     getShellIntegrationToken,
+    setShellIntegrationKind,
     refreshMenuLayout,
     acceptCandidate,
   };
@@ -1352,7 +1551,8 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       try {
         fit.fit();
         syncScrollMetrics();
-        await invoke("open_ssh_session", {
+        commandHistory.setShellIntegrationKind(null);
+        const shellIntegrationKind = await invoke<string | null>("open_ssh_session", {
           config: {
             sessionId: session.id,
             host: session.connection.host,
@@ -1370,6 +1570,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
             shellIntegrationToken: commandHistory.getShellIntegrationToken(),
           },
         });
+        commandHistory.setShellIntegrationKind(shellIntegrationKind);
         if (cancelled) {
           void invoke("close_ssh_session", { sessionId: session.id }).catch(() => undefined);
           return;
@@ -1453,7 +1654,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [commandHistory.handleCompositionEnd, commandHistory.handleCompositionStart, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.handleTerminalData, commandHistory.handleTerminalOutputParsed, commandHistory.refreshMenuLayout, linuxXauthPath, onStateChange, sendInput, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
+  }, [commandHistory.handleCompositionEnd, commandHistory.handleCompositionStart, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.handleTerminalData, commandHistory.handleTerminalOutputParsed, commandHistory.refreshMenuLayout, commandHistory.setShellIntegrationKind, linuxXauthPath, onStateChange, sendInput, session.connection, session.id, session.secrets, syncScrollMetrics, x11ServerAddress]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -1626,12 +1827,15 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
         }
         fit.fit();
         syncScrollMetrics();
-        await invoke("open_local_terminal", {
+        commandHistory.setShellIntegrationKind(null);
+        const shellIntegrationKind = await invoke<string | null>("open_local_terminal", {
           sessionId: session.id,
           columns: Math.max(1, terminal.cols),
           rows: Math.max(1, terminal.rows),
-          shellIntegrationToken: commandHistory.getShellIntegrationToken(),          powershellMode: readWindowsPowerShellMode(),
+          shellIntegrationToken: commandHistory.getShellIntegrationToken(),
+          powershellMode: readWindowsPowerShellMode(),
         });
+        commandHistory.setShellIntegrationKind(shellIntegrationKind);
         if (cancelled) {
           void invoke("close_local_terminal", { sessionId: session.id }).catch(() => undefined);
           return;
@@ -1668,7 +1872,7 @@ function LocalSessionTerminal({ session, active, visible, themeKey, locale, font
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [commandHistory.handleCompositionEnd, commandHistory.handleCompositionStart, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.handleTerminalData, commandHistory.handleTerminalOutputParsed, commandHistory.refreshMenuLayout, onStateChange, sendInput, session.id, syncScrollMetrics]);
+  }, [commandHistory.handleCompositionEnd, commandHistory.handleCompositionStart, commandHistory.handleInput, commandHistory.handleKeyEvent, commandHistory.handleShellIntegrationOsc, commandHistory.handleTerminalData, commandHistory.handleTerminalOutputParsed, commandHistory.refreshMenuLayout, commandHistory.setShellIntegrationKind, onStateChange, sendInput, session.id, syncScrollMetrics]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

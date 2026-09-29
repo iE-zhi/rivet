@@ -521,8 +521,12 @@
 
 .terminal-history-menu-item {
   display: flex;
-  align-items: center;
+  height: auto;
+  min-height: 30px;
+  align-items: flex-start;
   gap: 10px;
+  padding-top: 5px;
+  padding-bottom: 5px;
   overflow: hidden;
 }
 
@@ -530,8 +534,9 @@
   min-width: 0;
   flex: 1;
   overflow: hidden;
+  line-height: 20px;
   text-overflow: ellipsis;
-  white-space: pre;
+  white-space: pre-wrap;
 }
 
 .terminal-history-delete-confirm {

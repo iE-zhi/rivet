@@ -579,7 +579,7 @@ fn default_shell_command(
             shell_integration::validate_token(token)?;
             command.arg("-NoExit");
             command.arg("-Command");
-            command.arg(powershell_shell_integration_bootstrap(token));
+            command.arg(shell_integration::powershell_bootstrap(token)?);
         }
         return Ok(command);
     }
@@ -664,14 +664,6 @@ fn select_windows_powershell(mode: Option<&str>) -> Result<PathBuf, String> {
         "ps5" => Ok(PathBuf::from("powershell.exe")),
         _ => Err("默认 PowerShell 设置无效".to_string()),
     }
-}
-
-#[cfg(windows)]
-/// 生成仅作用于当前 PowerShell 进程的 Shell Integration 初始化脚本。
-fn powershell_shell_integration_bootstrap(token: &str) -> String {
-    format!(
-        r#"if (-not $global:__RIVET_SHELL_INTEGRATION) {{ $global:__RIVET_SHELL_INTEGRATION=$true; $global:__rivetReadyMarker=([char]27)+']633;RivetReady:{token}'+([char]7); $global:__rivetPromptMarker=([char]27)+']633;RivetPrompt:{token}'+([char]7); $global:__rivetOriginalPrompt=(Get-Item Function:prompt).ScriptBlock; function global:prompt {{ [Console]::Write($global:__rivetReadyMarker); $promptText=& $global:__rivetOriginalPrompt; (@($promptText) -join '')+$global:__rivetPromptMarker }} }}"#
-    )
 }
 
 /// 枚举当前进程树，只要 shell 仍有任意直接或间接子进程就返回 true。
