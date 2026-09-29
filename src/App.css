@@ -154,16 +154,17 @@ button, input, textarea { font: inherit; }
   transition: opacity var(--r-overlay-fade-duration) ease, visibility var(--r-overlay-fade-duration) ease;
 }
 .quick-command-panel.is-open { opacity: 1; visibility: visible; pointer-events: auto; }
+.app-shell[data-theme="light"] .quick-command-panel { background: var(--r-bg); }
 
 .quick-command-header {
   display: flex;
-  height: 46px;
-  flex: 0 0 46px;
+  height: 42px;
+  flex: 0 0 42px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 9px 0 13px;
   border-bottom: 1px solid var(--r-border);
-  background: var(--r-surface);
+  background: inherit;
 }
 .quick-command-header strong { font-size: var(--r-font-size-base); font-weight: 700; }
 .quick-command-header-actions { display: flex; align-items: center; gap: 3px; }
@@ -171,19 +172,20 @@ button, input, textarea { font: inherit; }
 .quick-command-more-button,
 .quick-command-send {
   display: grid;
+  width: 28px;
+  height: 28px;
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 5px;
   background: transparent;
-  color: var(--r-muted);
+  color: var(--r-subtle);
   cursor: pointer;
 }
-.quick-command-add-button { width: 30px; height: 30px; }
 .quick-command-add-button:hover,
 .quick-command-add-button.is-active,
-.quick-command-more-button:hover,
-.quick-command-send:hover:not(:disabled) { background: var(--r-surface-2); color: var(--r-text); }
+.quick-command-more-button:hover { background: var(--r-surface-2); color: var(--r-text); }
+.quick-command-send:hover:not(:disabled) { background: var(--r-border); color: var(--r-text); }
 .quick-command-add-button.is-active { color: var(--r-primary-light); }
 .quick-command-add-button:focus-visible,
 .quick-command-more-button:focus-visible,
@@ -197,7 +199,7 @@ button, input, textarea { font: inherit; }
   overflow: visible;
   padding: 0 14px;
   border-bottom: 0 solid var(--r-border);
-  background: var(--r-surface);
+  background: inherit;
   opacity: 0;
   visibility: hidden;
   transition: max-height .2s ease, opacity .15s ease, padding .2s ease, border-width .2s ease;
@@ -232,52 +234,53 @@ button, input, textarea { font: inherit; }
 
 .quick-command-scroll { min-height: 0; flex: 1; }
 .quick-command-scroll-viewport { height: 100%; }
-.quick-command-content { padding: 12px 13px 14px; }
+.quick-command-content { padding: 0 0 7px; }
 .quick-command-empty { display: grid; min-height: 110px; place-items: center; color: var(--r-muted); font-size: var(--r-font-size-base); }
 
 .quick-command-group {
   position: relative;
-  margin-bottom: 10px;
-  border: 1px solid var(--r-border);
-  border-radius: 8px;
-  background: var(--r-bg);
+  border-bottom: 1px solid var(--r-border);
 }
-.quick-command-group:last-child { margin-bottom: 0; }
-.quick-command-group-header { display: flex; height: 40px; align-items: center; padding: 0 6px 0 10px; }
+.quick-command-group-header {
+  display: flex;
+  height: 34px;
+  align-items: center;
+}
 .quick-command-group-toggle {
   display: flex;
   min-width: 0;
+  height: 34px;
   flex: 1;
   align-items: center;
   gap: 7px;
-  padding: 0;
+  padding: 0 11px;
   border: 0;
   background: transparent;
-  color: var(--r-text);
+  color: var(--r-subtle);
   font-size: var(--r-font-size-base);
-  font-weight: 650;
+  font-weight: 400;
   text-align: left;
   cursor: pointer;
 }
-.quick-command-group-chevron-icon { color: var(--r-muted); transition: transform .14s ease; }
+.quick-command-group-toggle:hover { background: var(--r-surface-2); }
+.quick-command-group-chevron-icon { color: var(--r-muted); transition: transform .15s ease; }
 .quick-command-group.is-collapsed .quick-command-group-chevron-icon { transform: rotate(-90deg); }
-.quick-command-group-count { color: var(--r-muted); font-size: var(--r-font-size-secondary); font-weight: 400; }
+.quick-command-group-count { margin-left: auto; color: var(--r-muted); font-size: var(--r-font-size-secondary); font-weight: 400; }
 
-.quick-command-more-wrap { position: relative; }
-.quick-command-more-button { width: 27px; height: 27px; }
-.quick-command-list { border-top: 1px solid var(--r-border); }
+.quick-command-more-wrap { position: relative; flex: 0 0 auto; }
+.quick-command-group-header > .quick-command-more-wrap { flex: 0 0 34px; padding-right: 6px; }
+.quick-command-list { border-top: 0; }
 .quick-command-row {
-  display: grid;
-  min-height: 52px;
-  grid-template-columns: minmax(0, 1fr) 28px 27px;
+  display: flex;
+  min-height: 48px;
   align-items: center;
-  padding: 5px 6px 5px 11px;
-  border-bottom: 0;
+  gap: 5px;
+  padding: 5px 7px 5px 17px;
 }
-.quick-command-list > div:not(:last-child) .quick-command-row { border-bottom: 1px solid color-mix(in srgb, var(--r-border) 72%, transparent); }
-.quick-command-row:hover { background: color-mix(in srgb, var(--r-surface-2) 70%, transparent); }
+.quick-command-row:hover { background: var(--r-surface-2); }
 .quick-command-main {
   min-width: 0;
+  flex: 1;
   padding: 0;
   border: 0;
   background: transparent;
@@ -287,28 +290,26 @@ button, input, textarea { font: inherit; }
 }
 .quick-command-main:disabled,
 .quick-command-send:disabled { opacity: .45; cursor: default; }
-.quick-command-name { display: block; overflow: hidden; font-size: var(--r-font-size-base); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.quick-command-value { display: block; overflow: hidden; margin-top: 3px; color: var(--r-muted); font-size: var(--r-font-size-secondary); text-overflow: ellipsis; white-space: nowrap; }
-.quick-command-send { width: 27px; height: 27px; }
+.quick-command-name { display: block; overflow: hidden; font-size: var(--r-font-size-base); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.quick-command-value { display: block; overflow: hidden; margin-top: 2px; color: var(--r-muted); font-size: var(--r-font-size-secondary); text-overflow: ellipsis; white-space: nowrap; }
 
 .quick-command-delete-confirm {
   display: flex;
-  min-height: 42px;
+  min-height: 38px;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 7px 9px;
+  padding: 6px 9px 6px 17px;
   border-top: 1px solid color-mix(in srgb, var(--r-danger) 20%, var(--r-border));
-  background: color-mix(in srgb, var(--r-danger) 6%, var(--r-bg));
+  background: color-mix(in srgb, var(--r-danger) 5%, var(--r-bg));
   color: var(--r-danger);
   font-size: var(--r-font-size-secondary);
 }
 .quick-command-group-delete-confirm { border-bottom: 1px solid color-mix(in srgb, var(--r-danger) 20%, var(--r-border)); }
-.quick-command-group-delete-confirm + .quick-command-list { border-top: 0; }
 .quick-command-delete-confirm > div { display: flex; flex: 0 0 auto; gap: 5px; }
 .quick-command-delete-confirm button {
-  height: 25px;
-  padding: 0 8px;
+  height: 24px;
+  padding: 0 7px;
   border: 1px solid var(--r-border);
   border-radius: 5px;
   background: var(--r-surface);
@@ -319,7 +320,6 @@ button, input, textarea { font: inherit; }
 .quick-command-delete-confirm button.is-danger { border-color: var(--r-danger); background: var(--r-danger); color: #fff; }
 .quick-command-delete-confirm button:hover:not(:disabled) { background: var(--r-surface-2); }
 .quick-command-delete-confirm button.is-danger:hover:not(:disabled) { border-color: var(--r-danger-hover); background: var(--r-danger-hover); color: #fff; }
-
 .rivet-button { position: relative; }
 .app-shell[data-theme="light"] { color-scheme: light; }
 .app-shell[data-theme="dark"] { color-scheme: dark; }
