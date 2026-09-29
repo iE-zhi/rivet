@@ -2828,6 +2828,18 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
           <header className="terminal-pane-header">
             <span className={`terminal-session-dot state-${session.state}`} />
             <span className="terminal-pane-title">{sessionTitle(session)}</span>
+            {(session.kind === "ssh" || session.kind === "serial") && session.state === "closed" ? (
+              <button
+                type="button"
+                className="terminal-pane-retry"
+                aria-label={copy.retryConnection}
+                title={copy.retryConnection}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => retryClosedSession(session.id)}
+              >
+                <SvgIcon name="retry" size={12} />
+              </button>
+            ) : null}
             <button
               type="button"
               className="terminal-pane-close"
@@ -2979,7 +2991,8 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
                 )}
                 <span className="terminal-tab-title">{tab.title}</span>
               </button>
-              {tabSession &&
+              {countTerminalPanes(tab.root) === 1 &&
+              tabSession &&
               (tabSession.kind === "ssh" || tabSession.kind === "serial") &&
               tabSession.state === "closed" ? (
                 <button

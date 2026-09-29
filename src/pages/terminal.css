@@ -120,6 +120,7 @@
 }
 
 .terminal-tab-retry,
+.terminal-pane-retry,
 .terminal-tab-close,
 .terminal-pane-close {
   display: grid;
@@ -136,10 +137,12 @@
 }
 
 .terminal-tab-close { opacity: .55; }
-.terminal-tab-retry { color: var(--r-subtle); }
+.terminal-tab-retry,
+.terminal-pane-retry { color: var(--r-subtle); }
 .terminal-tab:hover .terminal-tab-close,
 .terminal-tab.active .terminal-tab-close { opacity: 1; }
 .terminal-tab-retry:hover,
+.terminal-pane-retry:hover,
 .terminal-tab-close:hover,
 .terminal-pane-close:hover { background: var(--r-border); color: var(--r-text); }
 
@@ -164,6 +167,7 @@
 
 .terminal-tab-main:focus-visible,
 .terminal-tab-retry:focus-visible,
+.terminal-pane-retry:focus-visible,
 .terminal-tab-close:focus-visible,
 .terminal-new-tab:focus-visible,
 .terminal-pane-close:focus-visible,
