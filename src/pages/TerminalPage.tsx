@@ -854,9 +854,12 @@ function useTerminalCommandHistoryInput(
     }
 
     if (data === `RivetExecute:${token}`) {
-      if (enabledRef.current && promptActiveRef.current) {
-        const terminal = terminalRef.current;
-        const command = terminal ? readTerminalCommandFromBuffer(terminal, inputStartRef.current) : null;
+      if (
+        enabledRef.current
+        && promptActiveRef.current
+        && trackingReliableRef.current
+      ) {
+        const command = inputRef.current.join("");
         if (command) recordTerminalCommand(command);
       }
       promptActiveRef.current = false;
