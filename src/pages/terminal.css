@@ -546,6 +546,11 @@
   white-space: nowrap;
 }
 
+/* 未选中的历史候选保持透明背景，鼠标悬浮不改变键盘选择提示。 */
+.terminal-history-menu-item:hover:not(:disabled):not(.is-selected) {
+  background: transparent;
+}
+
 .terminal-history-menu-item.is-selected {
   background: var(--r-surface-2);
   color: var(--r-text);
