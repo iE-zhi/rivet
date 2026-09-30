@@ -1,6 +1,6 @@
 [package]
 name = "rivet"
-version = "0.2.1"
+version = "0.2.2"
 description = "Rivet cross-platform serial console"
 authors = ["Rivet"]
 edition = "2021"

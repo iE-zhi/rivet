@@ -75,7 +75,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: Rivet v__VERSION__
           releaseBody: |
-            ## v0.2.1 更新内容
+            ## v0.2.2 更新内容
 
             - 修复 Unix 本地终端历史命令记录，避免依赖 Shell 执行标记导致漏记或状态不同步。
             - 收敛 Windows / Linux / macOS 的终端历史状态机，统一通过 Prompt 生命周期确认命令提交，降低多平台行为差异。
