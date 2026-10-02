@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rivet SSH 高级功能 UI</title>
+
+<!--
+  Rivet SSH 高级功能 UI 参考。
+  现有界面直接复用项目正式 CSS、字体和 SVG 资源，避免复制样式后产生视觉漂移。
+  新增功能只在本文件定义必要的增量样式。
+-->
+<link rel="stylesheet" href="../node_modules/@fontsource-variable/jetbrains-mono/wght.css">
+<link rel="stylesheet" href="../node_modules/lxgw-wenkai-webfont/lxgwwenkai-regular.css">
+<link rel="stylesheet" href="../node_modules/lxgw-wenkai-webfont/lxgwwenkai-bold.css">
+<link rel="stylesheet" href="../src/App.css">
+<link rel="stylesheet" href="../src/pages/terminal.css">
+
+<style>
+html,body{background:#e7e9ed}
+body.prototype-dark-canvas{background:#282828}
+
+/* 与 SvgIcon.tsx 相同：直接使用项目正式 SVG，通过 mask 继承 currentColor。 */
+.proto-icon{
+  display:inline-block;
+  flex:0 0 auto;
+  width:var(--icon-size,17px);
+  height:var(--icon-size,17px);
+  background-color:currentColor;
+  -webkit-mask-image:var(--icon-url);
+  mask-image:var(--icon-url);
+  -webkit-mask-position:center;
+  mask-position:center;
+  -webkit-mask-repeat:no-repeat;
+  mask-repeat:no-repeat;
+  -webkit-mask-size:contain;
+  mask-size:contain;
+}
+.i-back{--icon-url:url("data:image/svg+xml,%3C%3Fxml%20version%3D%221.0%22%20standalone%3D%22no%22%3F%3E%3C!DOCTYPE%20svg%20PUBLIC%20%22-%2F%2FW3C%2F%2FDTD%20SVG%201.1%2F%2FEN%22%20%22http%3A%2F%2Fwww.w3.org%2FGraphics%2FSVG%2F1.1%2FDTD%2Fsvg11.dtd%22%3E%3Csvg%20t%3D%221790903332220%22%20class%3D%22icon%22%20viewBox%3D%220%200%201024%201024%22%20version%3D%221.1%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20p-id%3D%225358%22%20xmlns%3Axlink%3D%22http%3A%2F%2Fwww.w3.org%2F1999%2Fxlink%22%20width%3D%22200%22%20height%3D%22200%22%3E%3Cpath%20d%3D%22M238.336%20512l374.528%20374.528%2060.330667-60.330667-313.984-314.453333%20310.954666-310.912-60.330666-60.330667z%22%20fill%3D%22%23525A65%22%20p-id%3D%225359%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E")}
+.i-check{--icon-url:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20d%3D%22m2%206%202.5%202.5L10%203%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E")}
+.i-chevron{--icon-url:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20d%3D%22m2.5%204.5%203.5%203.5%203.5-3.5%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E")}
+.i-close{--icon-url:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22m6%206%2012%2012M18%206%206%2018%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E")}
+.i-folder{--icon-url:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%0A%20%20%3Cpath%20d%3D%22M3%206.5h6l2%202h10v10.5H3z%22%2F%3E%0A%3C%2Fsvg%3E")}
+.i-more{--icon-url:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22%23000%22%3E%3Ccircle%20cx%3D%225%22%20cy%3D%2212%22%20r%3D%221.6%22%2F%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%221.6%22%2F%3E%3Ccircle%20cx%3D%2219%22%20cy%3D%2212%22%20r%3D%221.6%22%2F%3E%3C%2Fsvg%3E")}
+.i-port{--icon-url:url("data:image/svg+xml,%3C%3Fxml%20version%3D%221.0%22%20standalone%3D%22no%22%3F%3E%3C!DOCTYPE%20svg%20PUBLIC%20%22-%2F%2FW3C%2F%2FDTD%20SVG%201.1%2F%2FEN%22%20%22http%3A%2F%2Fwww.w3.org%2FGraphics%2FSVG%2F1.1%2FDTD%2Fsvg11.dtd%22%3E%3Csvg%20t%3D%221790903126783%22%20class%3D%22icon%22%20viewBox%3D%220%200%201199%201024%22%20version%3D%221.1%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20p-id%3D%224335%22%20xmlns%3Axlink%3D%22http%3A%2F%2Fwww.w3.org%2F1999%2Fxlink%22%20width%3D%22234.1796875%22%20height%3D%22200%22%3E%3Cpath%20d%3D%22M1188.152672%201020.091603H7.816794V7.816794h1184.244275l-3.908397%201012.274809z%20m-1141.251909-39.083969h1106.076336V46.900763H46.900763v934.106871z%22%20p-id%3D%224336%22%3E%3C%2Fpath%3E%3Cpath%20d%3D%22M1024%20863.755725H175.877863V402.564885h144.610687V238.412214h85.984732v-78.167939h390.839695v85.984733h78.167939v152.427481h148.519084v465.099236z%20m-812.946565-39.083969h773.862596v-383.022901h-148.519084V289.221374h-78.167939V203.236641h-312.671756v78.167939H359.572519v164.152672H214.961832l-3.908397%20379.114504z%22%20p-id%3D%224337%22%3E%3C%2Fpath%3E%3Cpath%20d%3D%22M328.305344%20601.89313h54.717557v160.244275H328.305344zM488.549618%20601.89313h54.717558v160.244275h-54.717558zM652.70229%20601.89313h54.717557v160.244275h-54.717557zM812.946565%20601.89313h54.717557v160.244275h-54.717557z%22%20p-id%3D%224338%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E")}
+.i-plus{--icon-url:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M12%205v14M5%2012h14%22%2F%3E%3C%2Fsvg%3E")}
+.i-serial{--icon-url:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%201024%201024%22%20width%3D%2224%22%20height%3D%2224%22%3E%3Cpath%20d%3D%22M674.683871%20294.18529v126.414452h26.954323v76.469677c-3.765677%208.588387-21.80129%2039.704774-89.187097%2057.410065-40.365419%2010.603355-70.35871%2022.82529-92.226065%2034.122322V186.467097h60.449033L489.141677%2019.75329%20397.543226%20186.467097h62.530064v496.243613c-18.828387-11.660387-44.75871-24.311742-79.772903-35.24542-56.154839-17.573161-69.863226-48.392258-72.604903-56.683355v-82.580645c16.218839-11.330065%2026.954323-30.72%2026.954322-52.719484%200-34.915097-26.92129-63.223742-60.118709-63.223741-33.230452%200-60.11871%2028.308645-60.11871%2063.223741%200%2024.708129%2013.477161%2046.08%2033.131355%2056.485162v85.652645l0.429419%202.642581c0.594581%203.633548%204.426323%2023.056516%2021.140645%2045.584516%2021.041548%2028.341677%2052.686452%2049.284129%2094.042839%2062.199742%2070.35871%2021.999484%2073.43071%2030.918194%2092.424258%2049.44929a59.458065%2059.458065%200%200%200%204.492387%203.435355v75.214451c-35.608774%2013.047742-61.14271%2048.623484-61.142709%2090.508387%200%2052.983742%2040.827871%2095.892645%2091.235096%2095.892646%2050.374194%200%2091.235097-42.941935%2091.235097-95.892646%200-41.884903-25.566968-77.460645-61.175742-90.508387v-174.575483c12.354065-9.381161%2043.965935-29.266581%20106.826323-45.78271%20116.108387-30.521806%20132.624516-99.427097%20134.110968-107.156645l0.627612-3.138065v-84.892903h33.164388V294.18529h-120.23742z%22%2F%3E%3C%2Fsvg%3E")}
+.i-setting{--icon-url:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%201024%201024%22%3E%0A%20%20%3Cpath%20fill%3D%22currentColor%22%20d%3D%22M577.173333%20138.666667v38.986666A92.8%2092.8%200%200%200%20629.333333%20260.693333a276.106667%20276.106667%200%200%201%2037.92%2022.293334%2091.733333%2091.733333%200%200%200%2099.04%204.266666l32.693334-19.04%2065.706666%20114.773334-33.493333%2019.52a92.693333%2092.693333%200%200%200-45.386667%2087.413333c0.693333%207.84%201.013333%2015.093333%201.013334%2022.08s-0.32%2014.24-1.013334%2022.08a92.693333%2092.693333%200%200%200%2045.386667%2087.413333l33.493333%2019.52-65.706666%20114.773334-32.693334-19.04a91.733333%2091.733333%200%200%200-99.04%204.266666%20276.106667%20276.106667%200%200%201-37.92%2022.293334%2092.8%2092.8%200%200%200-52.266666%2083.04V885.333333H446.826667v-38.986666A92.8%2092.8%200%200%200%20394.666667%20763.306667a276.106667%20276.106667%200%200%201-37.92-22.293334%2091.733333%2091.733333%200%200%200-99.04-4.266666l-32.693334%2019.04-65.813333-114.773334%2033.493333-19.52a92.693333%2092.693333%200%200%200%2045.386667-87.413333c-0.693333-7.84-1.013333-15.093333-1.013333-22.08s0.32-14.24%201.013333-22.08a92.693333%2092.693333%200%200%200-45.386667-87.413333l-33.493333-19.52%2065.706667-114.773334%2032.693333%2019.04a91.733333%2091.733333%200%200%200%2099.04-4.266666A276.106667%20276.106667%200%200%201%20394.666667%20260.693333a92.8%2092.8%200%200%200%2052.266666-83.04V138.666667h130.346667M512%20692.48a182.08%20182.08%200%200%200%2040.426667-4.533333%20178.826667%20178.826667%200%200%200%20134.666666-135.573334%20181.333333%20181.333333%200%200%200-35.36-153.653333A178.453333%20178.453333%200%200%200%20512%20331.52a182.08%20182.08%200%200%200-40.426667%204.533333%20178.826667%20178.826667%200%200%200-134.666666%20135.573334%20181.333333%20181.333333%200%200%200%2035.36%20153.653333%20178.453333%20178.453333%200%200%200%20139.733333%2067.2M634.666667%2064H389.6a17.546667%2017.546667%200%200%200-17.44%2017.6v96a17.546667%2017.546667%200%200%201-10.026667%2016%20352.746667%20352.746667%200%200%200-48.32%2028.373333%2017.6%2017.6%200%200%201-9.813333%203.093334%2017.013333%2017.013333%200%200%201-8.533333-2.346667l-82.666667-48a17.12%2017.12%200%200%200-8.693333-2.4A17.386667%2017.386667%200%200%200%20188.746667%20181.333333l-122.666667%20213.866667a17.706667%2017.706667%200%200%200%206.4%2024.053333l82.346667%2048a17.493333%2017.493333%200%200%201%208.533333%2016.746667c-0.746667%209.333333-1.226667%2018.72-1.226667%2028.266667s0.48%2018.933333%201.226667%2028.266666a17.6%2017.6%200%200%201-8.533333%2016.746667l-82.346667%2048a17.706667%2017.706667%200%200%200-6.4%2024.053333l122.666667%20213.866667a17.333333%2017.333333%200%200%200%2015.093333%208.8%2017.066667%2017.066667%200%200%200%208.693333-2.346667l82.666667-48a16.48%2016.48%200%200%201%208.533333-2.346666%2017.6%2017.6%200%200%201%2010.08%203.253333%20352.746667%20352.746667%200%200%200%2048.32%2028.373333%2017.546667%2017.546667%200%200%201%2010.026667%2016v96a17.546667%2017.546667%200%200%200%2017.44%2017.6H634.666667a17.546667%2017.546667%200%200%200%2017.44-17.6v-96a17.546667%2017.546667%200%200%201%2010.026666-16%20352.746667%20352.746667%200%200%200%2048.32-28.373333%2017.6%2017.6%200%200%201%2010.08-3.253333%2016.48%2016.48%200%200%201%208.533334%202.346666l82.666666%2048a17.066667%2017.066667%200%200%200%208.693334%202.346667%2017.333333%2017.333333%200%200%200%2015.093333-8.8l122.133333-213.866667a17.706667%2017.706667%200%200%200-6.4-24.053333l-82.346666-48a17.6%2017.6%200%200%201-8.533334-16.746667c0.746667-9.333333%201.226667-18.72%201.226667-28.266666s-0.48-18.933333-1.226667-28.266667a17.493333%2017.493333%200%200%201%208.533334-16.746667l82.346666-48a17.706667%2017.706667%200%200%200%206.4-24.053333L835.253333%20181.333333a17.386667%2017.386667%200%200%200-15.093333-8.853333%2017.12%2017.12%200%200%200-8.693333%202.4l-82.666667%2048a17.013333%2017.013333%200%200%201-8.533333%202.346667%2017.6%2017.6%200%200%201-10.08-3.253334%20352.746667%20352.746667%200%200%200-48.32-28.373333%2017.546667%2017.546667%200%200%201-10.026667-16v-96A17.546667%2017.546667%200%200%200%20634.666667%2064zM512%20617.813333a105.973333%20105.973333%200%200%201-24-208.96%20109.973333%20109.973333%200%200%201%2024-2.666666%20105.973333%20105.973333%200%200%201%2024%20208.96%20109.973333%20109.973333%200%200%201-24%202.666666z%22%20%2F%3E%0A%3C%2Fsvg%3E")}
+.i-split-h{--icon-url:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%223%22%20y%3D%224%22%20width%3D%2218%22%20height%3D%2216%22%20rx%3D%222%22%2F%3E%3Cpath%20d%3D%22M12%204v16%22%2F%3E%3C%2Fsvg%3E")}
+.i-split-v{--icon-url:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%223%22%20y%3D%224%22%20width%3D%2218%22%20height%3D%2216%22%20rx%3D%222%22%2F%3E%3Cpath%20d%3D%22M3%2012h18%22%2F%3E%3C%2Fsvg%3E")}
+.i-terminal{--icon-url:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%0A%20%20%3Crect%20x%3D%223%22%20y%3D%224%22%20width%3D%2218%22%20height%3D%2214%22%20rx%3D%222%22%20%2F%3E%0A%20%20%3Cpath%20d%3D%22m7%209%203%203-3%203m5%200h4%22%20%2F%3E%0A%3C%2Fsvg%3E")}
+
+/* 文档静态终端，仅承载认证交互预览。 */
+.prototype-terminal{
+  position:absolute;
+  inset:0;
+  padding:12px;
+  overflow:hidden;
+  color:var(--r-terminal-text);
+  font-family:var(--rivet-font-family);
+  font-size:var(--r-font-size-base);
+  line-height:1.55;
+  white-space:pre-wrap;
+}
+.prototype-terminal-user{color:var(--r-terminal-rx)}
+.prototype-terminal-path{color:var(--r-terminal-info)}
+.prototype-terminal-muted{color:var(--r-muted)}
+.prototype-terminal-cursor{
+  display:inline-block;
+  width:7px;
+  height:14px;
+  vertical-align:-2px;
+  background:var(--r-terminal-text);
+}
+.prototype-auth-line{display:flex;align-items:center;min-height:22px}
+.prototype-auth-input{
+  width:180px;
+  height:22px;
+  padding:0 2px;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:var(--r-terminal-text);
+  font:inherit;
+  line-height:inherit;
+  caret-color:var(--r-terminal-text);
+}
+.prototype-auth-input:focus{box-shadow:none}
+
+/* panel-view 只负责原型多级页面切换；正式面板内部同样是纵向 flex 布局。 */
+.panel-view{
+  display:flex;
+  min-height:0;
+  flex:1;
+  flex-direction:column;
+}
+.panel-view[hidden]{display:none}
+
+/* 高级选项入口沿用 terminal-group-header 的高度、间距和交互。 */
+.ssh-advanced-toggle{
+  display:flex;
+  width:calc(100% + 24px);
+  height:34px;
+  margin:8px -12px 0;
+  align-items:center;
+  gap:7px;
+  padding:0 11px;
+  border:0;
+  border-top:1px solid var(--r-border);
+  border-bottom:1px solid var(--r-border);
+  background:transparent;
+  color:var(--r-subtle);
+  cursor:pointer;
+  text-align:left;
+}
+.ssh-advanced-toggle:hover{background:var(--r-surface-2)}
+.ssh-advanced-toggle strong{
+  color:var(--r-text);
+  font-size:var(--r-font-size-base);
+  font-weight:600;
+}
+.ssh-advanced-toggle small{
+  margin-left:auto;
+  color:var(--r-muted);
+  font-size:var(--r-font-size-secondary);
+}
+.ssh-advanced-chevron{transition:transform .15s ease}
+.ssh-advanced-toggle.is-collapsed .ssh-advanced-chevron{transform:rotate(-90deg)}
+.ssh-advanced-body{padding-top:11px}
+.ssh-advanced-body[hidden]{display:none}
+
+/* 跳板机行使用正式 Switch 尺寸，说明文字沿用基础/次级字号。 */
+.ssh-jump-row{
+  display:flex;
+  min-height:34px;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:7px;
+}
+.ssh-jump-copy{
+  display:flex;
+  min-width:0;
+  flex:1;
+  flex-direction:column;
+}
+.ssh-jump-copy strong{
+  color:var(--r-text);
+  font-size:var(--r-font-size-base);
+  font-weight:500;
+}
+.ssh-jump-copy small{
+  margin-top:2px;
+  color:var(--r-muted);
+  font-size:var(--r-font-size-secondary);
+}
+.ssh-jump-field{margin-bottom:11px}
+.ssh-jump-field[hidden]{display:none}
+
+/* 端口转发入口与 terminal-connection-row 同尺寸，不使用卡片。 */
+.ssh-forward-entry{
+  display:flex;
+  width:calc(100% + 24px);
+  min-height:44px;
+  align-items:center;
+  gap:10px;
+  margin:3px -12px 0;
+  padding:5px 11px 5px 17px;
+  border:0;
+  border-top:1px solid var(--r-border);
+  border-bottom:1px solid var(--r-border);
+  background:transparent;
+  color:inherit;
+  cursor:pointer;
+  text-align:left;
+}
+.ssh-forward-entry:hover{background:var(--r-surface-2)}
+.ssh-forward-entry-copy{
+  display:flex;
+  min-width:0;
+  flex:1;
+  flex-direction:column;
+}
+.ssh-forward-entry-copy strong{
+  color:var(--r-text);
+  font-size:var(--r-font-size-base);
+  font-weight:600;
+}
+.ssh-forward-entry-copy small{
+  margin-top:2px;
+  overflow:hidden;
+  color:var(--r-muted);
+  font-size:var(--r-font-size-secondary);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.ssh-forward-entry-count{
+  flex:0 0 auto;
+  color:var(--r-muted);
+  font-size:var(--r-font-size-secondary);
+}
+
+/* 嵌套页面标题返回键保持 terminal-icon-button 尺寸。 */
+.ssh-subpage-title{
+  display:flex;
+  min-width:0;
+  align-items:center;
+  gap:5px;
+}
+
+/* 转发列表完全复用连接列表行、类型图标、更多菜单和删除确认。 */
+.ssh-forward-list{min-height:0;flex:1}
+.ssh-forward-list .terminal-connection-row{padding-right:7px}
+.ssh-forward-list .terminal-connection-type{
+  color:var(--r-primary-light);
+  font-weight:700;
+  font-size:var(--r-font-size-secondary);
+}
+.ssh-forward-list .terminal-more-wrap{z-index:2}
+.ssh-forward-menu[hidden]{display:none}
+.ssh-forward-delete[hidden]{display:none}
+
+/* 转发编辑表单继续使用 terminal-field 及其 34px 控件。 */
+.ssh-forward-form{
+  display:flex;
+  min-height:0;
+  flex:1;
+  flex-direction:column;
+}
+.ssh-forward-form-viewport>div{padding:12px}
+.ssh-forward-field-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 76px;
+  gap:8px;
+}
+
+/* 模拟 VerticalScrollbar 结构，尺寸直接来自正式组件。 */
+.prototype-scroll{
+  position:relative;
+  min-height:0;
+  flex:1;
+  overflow:hidden;
+}
+.prototype-scroll-viewport{
+  width:100%;
+  height:100%;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-right:5px;
+  scrollbar-width:none;
+  overscroll-behavior:contain;
+}
+.prototype-scroll-viewport::-webkit-scrollbar{display:none;width:0;height:0}
+.prototype-scroll-track{
+  position:absolute;
+  top:4px;
+  right:2px;
+  bottom:4px;
+  width:8px;
+  border-radius:999px;
+  background:var(--r-scrollbar-track);
+}
+.prototype-scroll-thumb{
+  position:absolute;
+  left:2px;
+  top:0;
+  width:5px;
+  min-height:24px;
+  border-radius:999px;
+  background:var(--r-scrollbar-thumb);
+}
+
+/* 原型状态入口不属于正式 UI；只通过 URL query 使用，不在界面显示。 */
+</style>
+</head>
+
+<body>
+<div id="root">
+  <div class="app-shell rivet-ui" id="app" data-theme="light" data-font="builtin" data-font-size="14">
+    <header class="app-titlebar">
+      <div class="app-titlebar-logo" aria-label="Rivet" title="Rivet">
+        <img src="../src-tauri/icons/128x128.png" alt="" aria-hidden="true">
+      </div>
+
+      <div class="app-titlebar-host app-titlebar-terminal-host">
+        <header class="terminal-tabbar">
+          <div class="terminal-tabs">
+            <div class="terminal-tabs-viewport">
+              <div class="terminal-tabs-row">
+                <div class="terminal-tab active">
+                  <button type="button" class="terminal-tab-main">
+                    <span class="terminal-session-dot state-connected"></span>
+                    <span class="terminal-tab-title">agile@10.28.228.244</span>
+                  </button>
+                  <button type="button" class="terminal-tab-close" aria-label="关闭会话">
+                    <span class="proto-icon i-close" style="--icon-size:11px"></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <button type="button" class="terminal-new-tab">
+            <span class="proto-icon i-plus" style="--icon-size:16px"></span>
+          </button>
+        </header>
+      </div>
+
+      <div class="app-titlebar-drag"></div>
+      <div class="app-window-controls">
+        <button type="button" class="app-window-button" aria-label="最小化">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </button>
+        <button type="button" class="app-window-button" aria-label="最大化/还原">
+          <svg viewBox="0 0 16 16" fill="none"><rect x="3.25" y="3.25" width="9.5" height="9.5" rx=".5" stroke="currentColor" stroke-width="1.1"/></svg>
+        </button>
+        <button type="button" class="app-window-button app-window-close" aria-label="关闭">
+          <svg viewBox="0 0 16 16" fill="none"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <nav class="rail" aria-label="主导航">
+        <a class="rail-link" href="#serial-page" aria-label="串口" title="串口">
+          <span class="proto-icon i-serial" style="--icon-size:24px"></span>
+        </a>
+        <a class="rail-link active" href="#terminal-page" aria-current="page" aria-label="终端" title="终端">
+          <span class="proto-icon i-terminal" style="--icon-size:23px"></span>
+        </a>
+        <span class="rail-spacer"></span>
+        <a class="rail-link settings-rail-link" href="#settings-display" aria-label="设置" title="设置">
+          <span class="proto-icon i-setting"></span>
+        </a>
+      </nav>
+
+      <div class="app-content">
+        <div class="app-view terminal-view">
+          <main class="terminal-page">
+            <section class="terminal-workspace">
+              <section class="terminal-tab-workspace active">
+                <section class="terminal-pane active" style="left:0;top:0;width:100%;height:100%">
+                  <div class="terminal-pane-body">
+                    <div class="prototype-terminal" id="terminalOutput"><span class="prototype-terminal-user">agile@N305</span>:<span class="prototype-terminal-path">~</span>$ uname -a
+Linux N305 6.1.0-rt #1 SMP PREEMPT_RT x86_64 GNU/Linux
+
+<span class="prototype-terminal-user">agile@N305</span>:<span class="prototype-terminal-path">~</span>$ <span class="prototype-terminal-cursor"></span></div>
+                  </div>
+                </section>
+              </section>
+
+              <aside class="terminal-connection-panel open" id="connectionPanel">
+                <!-- 编辑连接：结构、尺寸、字段顺序与当前 TerminalPage.tsx 对齐。 -->
+                <section class="panel-view" id="connectionView">
+                  <header class="terminal-connection-header">
+                    <strong>编辑终端连接</strong>
+                  </header>
+
+                  <form class="terminal-connection-form">
+                    <div class="prototype-scroll terminal-connection-form-scroll">
+                      <div class="prototype-scroll-viewport terminal-connection-form-viewport">
+                        <div>
+                          <label class="terminal-field">
+                            <span>类型</span>
+                            <div class="rivet-select">
+                              <button class="rivet-select-trigger" type="button">
+                                SSH
+                                <span class="proto-icon i-chevron rivet-select-chevron" style="--icon-size:12px"></span>
+                              </button>
+                            </div>
+                          </label>
+
+                          <label class="terminal-field">
+                            <span>连接名称</span>
+                            <input class="rivet-input" value="N305 开发板">
+                          </label>
+
+                          <div class="terminal-field">
+                            <span>分组</span>
+                            <div class="quick-command-group-picker">
+                              <input class="rivet-input quick-command-group-input" value="开发板">
+                              <span class="proto-icon i-chevron quick-command-group-chevron" style="--icon-size:12px"></span>
+                            </div>
+                          </div>
+
+                          <div class="terminal-field-grid">
+                            <label class="terminal-field">
+                              <span>主机</span>
+                              <input class="rivet-input" value="10.28.228.244">
+                            </label>
+                            <label class="terminal-field">
+                              <span>端口</span>
+                              <input class="rivet-input" inputmode="numeric" value="22">
+                            </label>
+                          </div>
+
+                          <label class="terminal-field">
+                            <span>用户名</span>
+                            <input class="rivet-input" value="agile">
+                          </label>
+
+                          <label class="terminal-field">
+                            <span>认证方式</span>
+                            <div class="rivet-select" id="authSelect">
+                              <button class="rivet-select-trigger" type="button">
+                                <span id="authLabel">SSH Agent</span>
+                                <span class="proto-icon i-chevron rivet-select-chevron" style="--icon-size:12px"></span>
+                              </button>
+                              <div class="rivet-select-menu" id="authMenu" hidden>
+                                <button class="rivet-select-option" type="button" data-value="password">密码</button>
+                                <button class="rivet-select-option" type="button" data-value="privateKey">私钥</button>
+                                <button class="rivet-select-option is-selected" type="button" data-value="agent">SSH Agent</button>
+                              </div>
+                            </div>
+                          </label>
+
+                          <div id="passwordAuth" hidden>
+                            <label class="terminal-field">
+                              <span>密码</span>
+                              <input class="rivet-input" type="password" value="">
+                            </label>
+                          </div>
+
+                          <div id="keyAuth" hidden>
+                            <label class="terminal-field">
+                              <span>私钥</span>
+                              <div class="terminal-key-path-control">
+                                <input class="rivet-input" value="C:\Users\zhi\.ssh\id_ed25519" readonly>
+                                <button type="button" class="rivet-button rivet-button-secondary terminal-key-path-button" aria-label="选择私钥">
+                                  <span class="proto-icon i-folder" style="--icon-size:16px"></span>
+                                </button>
+                              </div>
+                            </label>
+                            <label class="terminal-field">
+                              <span>私钥密码</span>
+                              <input class="rivet-input" type="password" value="">
+                            </label>
+                          </div>
+
+                          <div id="agentAuth"></div>
+
+                          <label class="rivet-choice terminal-x11-option">
+                            <input class="rivet-checkbox" type="checkbox">
+                            <span class="proto-icon i-check rivet-checkbox-icon" style="--icon-size:12px"></span>
+                            <span>X11 转发</span>
+                          </label>
+
+                          <button class="ssh-advanced-toggle" id="advancedToggle" type="button">
+                            <span class="proto-icon i-chevron ssh-advanced-chevron" style="--icon-size:11px"></span>
+                            <strong>高级选项</strong>
+                            <small>跳板机 · 端口转发</small>
+                          </button>
+
+                          <div class="ssh-advanced-body" id="advancedBody">
+                            <div class="ssh-jump-row">
+                              <span class="ssh-jump-copy">
+                                <strong>跳板机</strong>
+                                <small>通过已保存的 SSH 连接访问目标主机</small>
+                              </span>
+                              <button class="rivet-switch is-on" id="jumpSwitch" type="button" aria-label="启用跳板机"></button>
+                            </div>
+
+                            <label class="terminal-field ssh-jump-field" id="jumpField">
+                              <span>跳板连接</span>
+                              <div class="rivet-select">
+                                <button class="rivet-select-trigger" type="button">
+                                  Gateway · root@10.28.228.1:22
+                                  <span class="proto-icon i-chevron rivet-select-chevron" style="--icon-size:12px"></span>
+                                </button>
+                              </div>
+                            </label>
+
+                            <button class="ssh-forward-entry" id="openForward" type="button">
+                              <span class="terminal-connection-type">
+                                <span class="proto-icon i-port" style="--icon-size:15px"></span>
+                              </span>
+                              <span class="ssh-forward-entry-copy">
+                                <strong>端口转发</strong>
+                              </span>
+                              <span class="ssh-forward-entry-count" id="forwardCount">3</span>
+                              <span class="proto-icon i-chevron" style="--icon-size:11px;transform:rotate(-90deg)"></span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="prototype-scroll-track"><div class="prototype-scroll-thumb" style="height:42%;top:42%"></div></div>
+                    </div>
+
+                    <footer class="terminal-form-footer">
+                      <button type="button" class="rivet-button rivet-button-secondary">取消</button>
+                      <button type="submit" class="rivet-button rivet-button-primary">保存</button>
+                    </footer>
+                  </form>
+                </section>
+
+                <!-- 端口转发列表：复用终端连接列表的行、菜单、删除确认样式。 -->
+                <section class="panel-view" id="forwardView" hidden>
+                  <header class="terminal-connection-header">
+                    <div class="ssh-subpage-title">
+                      <button class="terminal-icon-button" id="backConnection" type="button" aria-label="返回">
+                        <span class="proto-icon i-back" style="--icon-size:14px"></span>
+                      </button>
+                      <strong>端口转发</strong>
+                    </div>
+                    <div class="terminal-connection-header-actions">
+                      <button class="terminal-icon-button" id="addForward" type="button" aria-label="添加端口转发">
+                        <span class="proto-icon i-plus" style="--icon-size:16px"></span>
+                      </button>
+                    </div>
+                  </header>
+
+                  <div class="prototype-scroll ssh-forward-list">
+                    <div class="prototype-scroll-viewport">
+                      <div id="forwardItems">
+                        <div class="terminal-connection-item ssh-forward-item" data-forward="local">
+                          <div class="terminal-connection-row">
+                            <button class="terminal-connection-main" type="button" data-action="edit">
+                              <span class="terminal-connection-type">L</span>
+                              <span>
+                                <strong>本地转发</strong>
+                                <small>127.0.0.1:8080 → 10.0.0.20:80</small>
+                              </span>
+                            </button>
+                            <div class="terminal-more-wrap">
+                              <button class="terminal-icon-button" type="button" data-action="more" aria-label="更多操作">
+                                <span class="proto-icon i-more" style="--icon-size:16px"></span>
+                              </button>
+                              <div class="rivet-popup-menu is-align-end ssh-forward-menu" hidden>
+                                <button class="rivet-popup-menu-item" type="button" data-action="edit-menu">编辑</button>
+                                <button class="rivet-popup-menu-item is-danger" type="button" data-action="delete">删除</button>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="terminal-delete-confirm ssh-forward-delete" hidden>
+                            <span>删除“本地转发”？</span>
+                            <div class="terminal-delete-actions">
+                              <button type="button" data-action="cancel-delete">取消</button>
+                              <button type="button" class="danger" data-action="confirm-delete">删除</button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="terminal-connection-item ssh-forward-item" data-forward="remote">
+                          <div class="terminal-connection-row">
+                            <button class="terminal-connection-main" type="button" data-action="edit">
+                              <span class="terminal-connection-type">R</span>
+                              <span>
+                                <strong>远程转发</strong>
+                                <small>0.0.0.0:2222 → 127.0.0.1:22</small>
+                              </span>
+                            </button>
+                            <div class="terminal-more-wrap">
+                              <button class="terminal-icon-button" type="button" data-action="more" aria-label="更多操作">
+                                <span class="proto-icon i-more" style="--icon-size:16px"></span>
+                              </button>
+                              <div class="rivet-popup-menu is-align-end ssh-forward-menu" hidden>
+                                <button class="rivet-popup-menu-item" type="button" data-action="edit-menu">编辑</button>
+                                <button class="rivet-popup-menu-item is-danger" type="button" data-action="delete">删除</button>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="terminal-delete-confirm ssh-forward-delete" hidden>
+                            <span>删除“远程转发”？</span>
+                            <div class="terminal-delete-actions">
+                              <button type="button" data-action="cancel-delete">取消</button>
+                              <button type="button" class="danger" data-action="confirm-delete">删除</button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="terminal-connection-item ssh-forward-item" data-forward="dynamic">
+                          <div class="terminal-connection-row">
+                            <button class="terminal-connection-main" type="button" data-action="edit">
+                              <span class="terminal-connection-type">D</span>
+                              <span>
+                                <strong>动态转发</strong>
+                                <small>127.0.0.1:1080 · SOCKS5</small>
+                              </span>
+                            </button>
+                            <div class="terminal-more-wrap">
+                              <button class="terminal-icon-button" type="button" data-action="more" aria-label="更多操作">
+                                <span class="proto-icon i-more" style="--icon-size:16px"></span>
+                              </button>
+                              <div class="rivet-popup-menu is-align-end ssh-forward-menu" hidden>
+                                <button class="rivet-popup-menu-item" type="button" data-action="edit-menu">编辑</button>
+                                <button class="rivet-popup-menu-item is-danger" type="button" data-action="delete">删除</button>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="terminal-delete-confirm ssh-forward-delete" hidden>
+                            <span>删除“动态转发”？</span>
+                            <div class="terminal-delete-actions">
+                              <button type="button" data-action="cancel-delete">取消</button>
+                              <button type="button" class="danger" data-action="confirm-delete">删除</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <!-- 添加/编辑端口转发。 -->
+                <section class="panel-view" id="forwardEditor" hidden>
+                  <header class="terminal-connection-header">
+                    <div class="ssh-subpage-title">
+                      <button class="terminal-icon-button" id="backForwardList" type="button" aria-label="返回">
+                        <span class="proto-icon i-back" style="--icon-size:14px"></span>
+                      </button>
+                      <strong>添加端口转发</strong>
+                    </div>
+                  </header>
+
+                  <form class="ssh-forward-form">
+                    <div class="prototype-scroll">
+                      <div class="prototype-scroll-viewport ssh-forward-form-viewport">
+                        <div>
+                          <label class="terminal-field">
+                            <span>类型</span>
+                            <div class="rivet-select">
+                              <button class="rivet-select-trigger" type="button">
+                                本地转发（Local）
+                                <span class="proto-icon i-chevron rivet-select-chevron" style="--icon-size:12px"></span>
+                              </button>
+                            </div>
+                          </label>
+
+                          <div class="ssh-forward-field-grid">
+                            <label class="terminal-field">
+                              <span>监听地址</span>
+                              <input class="rivet-input" value="127.0.0.1">
+                            </label>
+                            <label class="terminal-field">
+                              <span>端口</span>
+                              <input class="rivet-input" value="8080">
+                            </label>
+                          </div>
+
+                          <div class="ssh-forward-field-grid">
+                            <label class="terminal-field">
+                              <span>目标主机</span>
+                              <input class="rivet-input" value="10.0.0.20">
+                            </label>
+                            <label class="terminal-field">
+                              <span>端口</span>
+                              <input class="rivet-input" value="80">
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <footer class="terminal-form-footer">
+                      <button type="button" class="rivet-button rivet-button-secondary" id="cancelForwardEdit">取消</button>
+                      <button type="button" class="rivet-button rivet-button-primary">保存</button>
+                    </footer>
+                  </form>
+                </section>
+              </aside>
+            </section>
+
+            <footer class="terminal-bottom-toolbar">
+              <button type="button" class="terminal-connection-handle active">
+                <span class="proto-icon i-chevron terminal-handle-chevron" style="--icon-size:11px"></span>
+                <span class="proto-icon i-terminal" style="--icon-size:14px"></span>
+                <span>终端连接</span>
+              </button>
+
+              <div class="terminal-toolbar-right">
+                <button class="terminal-toolbar-button" type="button" aria-label="左右分屏">
+                  <span class="proto-icon i-split-h" style="--icon-size:16px"></span>
+                </button>
+                <button class="terminal-toolbar-button" type="button" aria-label="上下分屏">
+                  <span class="proto-icon i-split-v" style="--icon-size:16px"></span>
+                </button>
+                <span class="terminal-toolbar-divider"></span>
+                <button class="terminal-toolbar-button" type="button" aria-label="SFTP">
+                  <span class="proto-icon i-folder" style="--icon-size:16px"></span>
+                </button>
+              </div>
+            </footer>
+          </main>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const app=document.getElementById("app");
+const connectionPanel=document.getElementById("connectionPanel");
+const connectionView=document.getElementById("connectionView");
+const forwardView=document.getElementById("forwardView");
+const forwardEditor=document.getElementById("forwardEditor");
+const terminalOutput=document.getElementById("terminalOutput");
+
+function setPanelView(view){
+  [connectionView,forwardView,forwardEditor].forEach((node)=>node.hidden=node!==view);
+}
+
+document.getElementById("openForward").onclick=()=>setPanelView(forwardView);
+document.getElementById("backConnection").onclick=()=>setPanelView(connectionView);
+document.getElementById("addForward").onclick=()=>setPanelView(forwardEditor);
+document.getElementById("backForwardList").onclick=()=>setPanelView(forwardView);
+document.getElementById("cancelForwardEdit").onclick=()=>setPanelView(forwardView);
+
+const authSelect=document.getElementById("authSelect");
+const authMenu=document.getElementById("authMenu");
+const authLabel=document.getElementById("authLabel");
+const authBlocks={
+  password:document.getElementById("passwordAuth"),
+  privateKey:document.getElementById("keyAuth"),
+  agent:document.getElementById("agentAuth")
+};
+authSelect.querySelector(".rivet-select-trigger").onclick=()=>{
+  authMenu.hidden=!authMenu.hidden;
+};
+authMenu.querySelectorAll(".rivet-select-option").forEach((option)=>{
+  option.onclick=()=>{
+    const value=option.dataset.value;
+    authLabel.textContent=option.textContent;
+    authMenu.querySelectorAll(".rivet-select-option").forEach((item)=>item.classList.toggle("is-selected",item===option));
+    Object.entries(authBlocks).forEach(([key,node])=>node.hidden=key!==value);
+    authMenu.hidden=true;
+  };
+});
+
+const advancedToggle=document.getElementById("advancedToggle");
+advancedToggle.onclick=()=>{
+  advancedToggle.classList.toggle("is-collapsed");
+  document.getElementById("advancedBody").hidden=advancedToggle.classList.contains("is-collapsed");
+};
+
+const jumpSwitch=document.getElementById("jumpSwitch");
+jumpSwitch.onclick=()=>{
+  jumpSwitch.classList.toggle("is-on");
+  document.getElementById("jumpField").hidden=!jumpSwitch.classList.contains("is-on");
+};
+
+function closeForwardMenus(except=null){
+  document.querySelectorAll(".ssh-forward-item").forEach((item)=>{
+    if(item===except) return;
+    item.querySelector(".ssh-forward-menu").hidden=true;
+    item.querySelector('[data-action="more"]').classList.remove("active");
+  });
+}
+
+function updateForwardCount(){
+  document.getElementById("forwardCount").textContent=String(document.querySelectorAll(".ssh-forward-item").length);
+}
+
+document.querySelectorAll(".ssh-forward-item").forEach((item)=>{
+  const menu=item.querySelector(".ssh-forward-menu");
+  const more=item.querySelector('[data-action="more"]');
+  const deleteConfirm=item.querySelector(".ssh-forward-delete");
+
+  item.querySelector('[data-action="edit"]').onclick=()=>setPanelView(forwardEditor);
+  item.querySelector('[data-action="edit-menu"]').onclick=()=>{
+    menu.hidden=true;
+    more.classList.remove("active");
+    setPanelView(forwardEditor);
+  };
+  more.onclick=(event)=>{
+    event.stopPropagation();
+    const open=menu.hidden;
+    closeForwardMenus(item);
+    menu.hidden=!open;
+    more.classList.toggle("active",open);
+  };
+  item.querySelector('[data-action="delete"]').onclick=()=>{
+    menu.hidden=true;
+    more.classList.remove("active");
+    deleteConfirm.hidden=false;
+  };
+  item.querySelector('[data-action="cancel-delete"]').onclick=()=>deleteConfirm.hidden=true;
+  item.querySelector('[data-action="confirm-delete"]').onclick=()=>{
+    item.remove();
+    updateForwardCount();
+  };
+});
+
+document.addEventListener("mousedown",(event)=>{
+  if(!event.target.closest("#authSelect")) authMenu.hidden=true;
+  if(!event.target.closest(".ssh-forward-item")) closeForwardMenus();
+});
+
+function showTerminalAuth(){
+  connectionPanel.style.display="none";
+  terminalOutput.innerHTML='<span class="prototype-terminal-muted">Connecting to agile@10.28.228.244...</span>\n<span class="prototype-terminal-muted">SSH Agent authentication accepted.</span>\n<div class="prototype-auth-line"><span>Verification code: </span><input id="terminalAuthInput" class="prototype-auth-input" type="password" inputmode="numeric" autocomplete="one-time-code" aria-label="Verification code"></div>';
+  const input=document.getElementById("terminalAuthInput");
+  input.focus();
+  input.onkeydown=(event)=>{
+    if(event.key!=="Enter") return;
+    event.preventDefault();
+    terminalOutput.innerHTML='<span class="prototype-terminal-muted">Connecting to agile@10.28.228.244...</span>\n<span class="prototype-terminal-muted">SSH Agent authentication accepted.</span>\nVerification code: ••••••\n<span class="prototype-terminal-muted">Authentication successful.</span>\n\n<span class="prototype-terminal-user">agile@N305</span>:<span class="prototype-terminal-path">~</span>$ <span class="prototype-terminal-cursor"></span>';
+  };
+}
+
+const params=new URLSearchParams(location.search);
+if(params.get("theme")==="dark"){
+  app.dataset.theme="dark";
+  document.body.classList.add("prototype-dark-canvas");
+}
+if(params.get("focus")==="advanced"){
+  const viewport=document.querySelector(".terminal-connection-form-viewport");
+  viewport.scrollTop=viewport.scrollHeight;
+}
+if(params.get("jump")==="off"){
+  jumpSwitch.classList.remove("is-on");
+  document.getElementById("jumpField").hidden=true;
+}
+if(params.get("view")==="forward") setPanelView(forwardView);
+if(params.get("view")==="editor") setPanelView(forwardEditor);
+if(params.get("view")==="2fa") showTerminalAuth();
+if(params.get("delete")){
+  setPanelView(forwardView);
+  const item=document.querySelector('[data-forward="'+params.get("delete")+'"]');
+  if(item) item.querySelector(".ssh-forward-delete").hidden=false;
+}
+</script>
+</body>
+</html>
