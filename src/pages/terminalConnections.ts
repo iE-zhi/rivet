@@ -1,9 +1,10 @@
 import { DEFAULT_SERIAL_DEFAULTS, MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialFlowControl, type SerialParity } from "./serialDefaults.ts";
+import { areSshForwardRules, copySshForwardRule, type SshForwardRule } from "./sshAdvanced.ts";
 
 /** 已保存终端连接的协议类型。 */
 export type TerminalConnectionKind = "ssh" | "serial";
-/** SSH 连接认证方式；敏感认证数据不写入浏览器持久化模型。 */
-export type SshAuthType = "password" | "privateKey";
+/** SSH 首因素认证方式；验证码交互在连接时自动协商，秘密不写入此模型。 */
+export type SshAuthType = "password" | "privateKey" | "agent";
 
 /** 已保存终端连接的公共字段。 */
 interface SavedTerminalConnectionBase {
@@ -13,15 +14,26 @@ interface SavedTerminalConnectionBase {
   kind: TerminalConnectionKind;
 }
 
-/** 可安全持久化的 SSH 连接信息。 */
+/** 可同步/备份的 SSH 连接信息；认证秘密由独立加密存储拥有。 */
 export interface SavedSshConnection extends SavedTerminalConnectionBase {
+  /** 此记录只能作为 SSH 连接或跳板使用。 */
   kind: "ssh";
+  /** 目标主机名或 IP，最多 255 字符。 */
   host: string;
+  /** SSH TCP 端口，范围 1..65535。 */
   port: number;
+  /** 目标登录用户名，最多 128 字符。 */
   username: string;
+  /** 每个端点独立采用的认证方式。 */
   authType: SshAuthType;
+  /** 仅私钥方式使用的本机路径，最多 4096 字符。 */
   keyPath: string;
+  /** 是否为此目标请求 X11 转发，不继承跳板配置。 */
   x11: boolean;
+  /** 已保存跳板连接的 ID；缺省或空值表示直连。 */
+  jumpConnectionId?: string;
+  /** 会话建立时启用的规则；旧记录缺省表示无转发。 */
+  forwards?: SshForwardRule[];
 }
 
 /** 可安全持久化的串口终端连接信息；保存完整帧格式和流控参数。 */
@@ -89,10 +101,12 @@ function isPersistedSshConnection(value: unknown): boolean {
     typeof connection.username === "string" &&
     connection.username.trim().length > 0 &&
     connection.username.length <= 128 &&
-    (connection.authType === "password" || connection.authType === "privateKey") &&
+    (connection.authType === "password" || connection.authType === "privateKey" || connection.authType === "agent") &&
     typeof connection.keyPath === "string" &&
     connection.keyPath.length <= 4096 &&
-    (connection.x11 === undefined || typeof connection.x11 === "boolean")
+    (connection.x11 === undefined || typeof connection.x11 === "boolean") &&
+    (connection.jumpConnectionId === undefined || (typeof connection.jumpConnectionId === "string" && connection.jumpConnectionId.length <= 128)) &&
+    (connection.forwards === undefined || areSshForwardRules(connection.forwards))
   );
 }
 
@@ -130,6 +144,8 @@ function restoreConnection(connection: Record<string, unknown>): SavedTerminalCo
       authType: connection.authType as SshAuthType,
       keyPath: connection.keyPath as string,
       x11: connection.x11 === true,
+      ...(connection.jumpConnectionId === undefined ? {} : { jumpConnectionId: connection.jumpConnectionId as string }),
+      ...(connection.forwards === undefined ? {} : { forwards: (connection.forwards as SshForwardRule[]).map(copySshForwardRule) }),
     };
   }
   if (isPersistedSerialConnection(connection)) {
@@ -174,9 +190,15 @@ export function deserializeTerminalConnections(raw: string | null): SavedTermina
  * 序列化非敏感终端连接；SSH 密码和私钥口令由 Rivet 自有加密凭据文件保存，不进入 localStorage。
  * @param connections 已验证的终端连接列表。
  * @returns 可写入 localStorage 的 JSON。
+ * @throws 非法连接拒绝整次序列化，不覆盖已保存配置。
  */
 export function serializeTerminalConnections(connections: SavedTerminalConnection[]): string {
-  return JSON.stringify(connections);
+  // 序列化同样使用白名单复制，外部对象附带的秘密属性不能进入同步或备份。
+  return JSON.stringify(connections.map(/** 仅复制允许持久化的字段，非法记录拒绝整次保存。 */ (connection) => {
+    const restored = restoreConnection(connection as unknown as Record<string, unknown>);
+    if (!restored) throw new TypeError("Invalid terminal connection.");
+    return restored;
+  }));
 }
 
 /** 从 JSON 恢复最近使用连接 ID；去重、过滤非法值并限制为最近 20 条。 */

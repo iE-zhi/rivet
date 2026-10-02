@@ -44,6 +44,10 @@ import {
   type TerminalSplitDirection,
 } from "./terminalLayout";
 import type { Locale } from "./SerialPage";
+import SshAdvancedOptions from "./SshAdvancedOptions";
+import SshForwardPanel from "./SshForwardPanel";
+import SshAuthPrompt, { type SshAuthRequest } from "./SshAuthPrompt";
+import { areSshForwardRules, isSshHost, resolveSshJumpChain, type SshForwardRule } from "./sshAdvanced";
 import SftpPanel from "./SftpPanel";
 import TerminalQuickCommandPanel from "./TerminalQuickCommandPanel";
 
@@ -119,18 +123,29 @@ interface SerialClosedEvent {
   sessionId: string;
 }
 
+/** 连接编辑草稿；SSH 秘密仅在内存及自有加密凭据存储中存在。 */
 interface ConnectionFormState {
   kind: TerminalConnectionKind;
   name: string;
   group: string;
   host: string;
+  /** 尚未校验的十进制 TCP 端口文本。 */
   port: string;
   username: string;
   authType: SshAuthType;
+  /** 密码认证草稿，取消或保存后清空，不进入连接 JSON。 */
   password: string;
+  /** 私钥方式的本机路径，最多 4096 字符。 */
   keyPath: string;
+  /** 私钥口令草稿，取消或保存后清空。 */
   keyPassphrase: string;
   x11: boolean;
+  /** 是否启用已保存跳板连接。 */
+  jumpEnabled: boolean;
+  /** 草稿引用的跳板 ID，开关关闭时保存为空。 */
+  jumpConnectionId: string;
+  /** 尚未提交的非敏感转发规则。 */
+  forwards: SshForwardRule[];
   serialPath: string;
   serialBaudRate: string;
   serialDataBits: string;
@@ -155,6 +170,7 @@ type SessionTemplate =
   | { kind: "ssh"; connection: SavedSshConnection; secrets: SshConnectionSecrets }
   | { kind: "serial"; connection: SavedSerialConnection };
 
+/** 新连接默认直连且无端口转发，SSH 端口为 22。 */
 const EMPTY_FORM: ConnectionFormState = {
   kind: "ssh",
   name: "",
@@ -167,6 +183,9 @@ const EMPTY_FORM: ConnectionFormState = {
   keyPath: "",
   keyPassphrase: "",
   x11: false,
+  jumpEnabled: false,
+  jumpConnectionId: "",
+  forwards: [],
   serialPath: "",
   serialBaudRate: String(DEFAULT_SERIAL_DEFAULTS.baudRate),
   serialDataBits: String(DEFAULT_SERIAL_DEFAULTS.dataBits),
@@ -175,6 +194,7 @@ const EMPTY_FORM: ConnectionFormState = {
   serialFlowControl: DEFAULT_SERIAL_DEFAULTS.flowControl,
 };
 
+/** 终端及连接流程的中英文文案。 */
 const COPY = {
   zh: {
     terminal: "终端",
@@ -213,6 +233,9 @@ const COPY = {
     keyPickerFailed: "选择 SSH 私钥失败：",
     keyPassphrase: "私钥密码",
     x11: "X11 转发",
+    agentAuth: "SSH Agent",
+    invalidJump: "跳板连接不存在、存在循环或链过长",
+    forwardFailed: "SSH 端口转发失败：",
     device: "设备",
     baudRate: "波特率",
     dataBits: "数据位",
@@ -301,6 +324,9 @@ const COPY = {
     keyPickerFailed: "Failed to choose SSH private key: ",
     keyPassphrase: "Key passphrase",
     x11: "X11 forwarding",
+    agentAuth: "SSH Agent",
+    invalidJump: "Missing, cyclic, or excessive jump connections",
+    forwardFailed: "SSH port forwarding failed: ",
     device: "Device",
     baudRate: "Baud rate",
     dataBits: "Data bits",
@@ -1436,6 +1462,25 @@ function TerminalCommandHistoryMenu({
   );
 }
 
+/** 连接阶段的单跳参数，认证秘密不持久化到连接配置。 */
+interface SshRuntimeHop {
+  /** 目标主机。 */
+  host: string;
+  /** TCP 端口。 */
+  port: number;
+  /** 登录用户。 */
+  username: string;
+  /** 独立认证方式。 */
+  authType: SshAuthType;
+  /** 仅密码方式携带。 */
+  password: string | null;
+  /** 仅私钥方式携带。 */
+  keyPath: string | null;
+  /** 仅私钥方式携带的可选解密口令。 */
+  keyPassphrase: string | null;
+}
+
+/** SSH 终端视图参数及连接阶段的跳板解析接口。 */
 interface SessionTerminalProps {
   session: SshSession;
   active: boolean;
@@ -1445,11 +1490,13 @@ interface SessionTerminalProps {
   fontSize: number;
   x11ServerAddress: string;
   linuxXauthPath: string;
+  /** 连接和重连时读取当前连接库。 */
+  resolveJumpHosts: (connection: SavedSshConnection) => Promise<SshRuntimeHop[]>;
   onStateChange: (sessionId: string, state: TerminalSessionState) => void;
 }
 
 /** 挂载 SSH xterm，并把字节流、键盘输入和尺寸变化桥接到对应 Rust worker。 */
-function SessionTerminal({ session, active, visible, themeKey, locale, fontSize, x11ServerAddress, linuxXauthPath, onStateChange }: SessionTerminalProps) {
+function SessionTerminal({ session, active, visible, themeKey, locale, fontSize, x11ServerAddress, linuxXauthPath, resolveJumpHosts, onStateChange }: SessionTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -1457,6 +1504,13 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
   const connectingRef = useRef(false);
   const reconnectRef = useRef<(() => Promise<void>) | null>(null);
   const handledReconnectNonceRef = useRef(session.reconnectNonce);
+  /** 当前服务端认证轮次，结束或取消立即清空。 */
+  const [authRequest, setAuthRequest] = useState<SshAuthRequest | null>(null);
+  /** 使用最新连接库解析器，不因库变更重建活动连接。 */
+  const jumpResolverRef = useRef(resolveJumpHosts);
+  jumpResolverRef.current = resolveJumpHosts;
+  /** 仅清空已完成轮次。 */
+  const clearAuthRequest = (requestId: string) => setAuthRequest(/** 对照一次性标识撤销 UI。 */ (current) => current?.requestId === requestId ? null : current);
   const [closedExitStatus, setClosedExitStatus] = useState<number | null>(null);
   const { scrollMetrics, syncScrollMetrics, scrollTo } = useXtermScrollbar(terminalRef);
   const { notify } = useNotification();
@@ -1465,6 +1519,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
   const notifyRef = useRef(notify);
   notifyRef.current = notify;
 
+  /** 向已连接 PTY 发送用户字节，失败显示在终端。 */
   const sendInput = useCallback((data: string) => {
     if (!connectedRef.current) return;
     const bytes = Array.from(new TextEncoder().encode(data));
@@ -1474,6 +1529,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
   }, [session.id]);
   const commandHistory = useTerminalCommandHistoryInput(terminalRef, containerRef, sendInput, session.id);
 
+  /** 拥有终端、事件与连接资源，卸载时统一撤销。 */
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -1503,39 +1559,48 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       RIVET_SHELL_INTEGRATION_OSC,
       commandHistory.handleShellIntegrationOsc,
     );
+    /** 将纯文本粘贴交给历史输入状态处理。 */
     const handlePaste = (event: ClipboardEvent) => {
       const text = event.clipboardData?.getData("text/plain") ?? "";
       if (text) commandHistory.handleInput(text);
     };
+    /** 开始输入法组合，暂停历史补全。 */
     const handleCompositionStart = () => commandHistory.handleCompositionStart();
+    /** 合并输入法完成后的文本。 */
     const handleCompositionEnd = (event: CompositionEvent) => commandHistory.handleCompositionEnd(event.data);
     terminal.textarea?.addEventListener("paste", handlePaste);
     terminal.textarea?.addEventListener("compositionstart", handleCompositionStart);
     terminal.textarea?.addEventListener("compositionend", handleCompositionEnd);
-    const resizeObserver = new ResizeObserver(() => {
+    const resizeObserver = new ResizeObserver(/** 同步存活容器的终端尺寸和补全位置。 */ () => {
       if (!container.isConnected) return;
       fit.fit();
       syncScrollMetrics();
       commandHistory.refreshMenuLayout();
     });
     resizeObserver.observe(container);
-    const scrollDisposable = terminal.onScroll(() => {
+    const scrollDisposable = terminal.onScroll(/** 滚动时刷新滚动条与补全菜单。 */ () => {
       syncScrollMetrics();
       commandHistory.refreshMenuLayout();
     });
     const cursorDisposable = terminal.onCursorMove(commandHistory.refreshMenuLayout);
     const writeParsedDisposable = terminal.onWriteParsed(commandHistory.handleTerminalOutputParsed);
 
-    const inputDisposable = terminal.onData((data) => {
+    const inputDisposable = terminal.onData(/** 仅转发已连接会话的输入。 */ (data) => {
       if (!connectedRef.current) return;
       commandHistory.handleTerminalData(data);
       sendInput(data);
     });
-    const resizeDisposable = terminal.onResize(({ cols, rows }) => {
+    const resizeDisposable = terminal.onResize(/** 发送 PTY 字符尺寸，失败记录诊断。 */ ({ cols, rows }) => {
       if (!connectedRef.current) return;
-      void invoke("ssh_resize_session", { sessionId: session.id, columns: cols, rows }).catch(() => undefined);
+      void invoke("ssh_resize_session", { sessionId: session.id, columns: cols, rows }).catch(/** 资源关闭或尺寸同步失败不隐去诊断。 */ (error) => console.error("SSH request failed:", String(error)));
     });
 
+    /** 幂等请求关闭后端会话；允许连接阶段取消，失败只写诊断。 */
+    const closeBackend = () => {
+      if (isTauri()) void invoke("close_ssh_session", { sessionId: session.id }).catch(/** 保留资源清理失败诊断。 */ (error) => console.error("SSH close failed:", String(error)));
+    };
+
+    /** 注册完事件后连接；关闭期间撤销后端连接。 */
     const connect = async () => {
       if (cancelled || connectedRef.current || connectingRef.current) return;
       if (!isTauri()) {
@@ -1547,11 +1612,14 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       connectingRef.current = true;
       connectedRef.current = false;
       setClosedExitStatus(null);
+      setAuthRequest(null);
       onStateChange(session.id, "connecting");
       try {
         fit.fit();
         syncScrollMetrics();
         commandHistory.setShellIntegrationKind(null);
+        const jumpHosts = await jumpResolverRef.current(session.connection);
+        if (cancelled) return;
         const shellIntegrationKind = await invoke<string | null>("open_ssh_session", {
           config: {
             sessionId: session.id,
@@ -1562,6 +1630,8 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
             password: session.connection.authType === "password" ? session.secrets.password : null,
             keyPath: session.connection.authType === "privateKey" ? session.connection.keyPath : null,
             keyPassphrase: session.connection.authType === "privateKey" ? session.secrets.keyPassphrase || null : null,
+            jumpHosts,
+            forwards: session.connection.forwards ?? [],
             x11: session.connection.x11,
             x11ServerAddress: session.connection.x11 ? x11ServerAddress : null,
             x11LinuxXauthPath: session.connection.x11 ? linuxXauthPath : null,
@@ -1572,7 +1642,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
         });
         commandHistory.setShellIntegrationKind(shellIntegrationKind);
         if (cancelled) {
-          void invoke("close_ssh_session", { sessionId: session.id }).catch(() => undefined);
+          closeBackend();
           return;
         }
         connectedRef.current = true;
@@ -1590,39 +1660,59 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
     };
     reconnectRef.current = connect;
 
+    /** 注册事件；卸载期间迟到的监听立即释放，不加入活动列表。 */
+    const registerEvent = async <T,>(name: string, handler: (event: { payload: T }) => void) => {
+      if (cancelled) return;
+      const unlisten = await listen<T>(name, handler);
+      if (cancelled) unlisten();
+      else unlisteners.push(unlisten);
+    };
+    /** 先安装认证及数据监听，随后才启用后端连接。 */
     const start = async () => {
       try {
-        const dataUnlisten = await listen<SshDataEvent>("ssh:data", (event) => {
-          if (event.payload.sessionId === session.id) {
+        await registerEvent<SshAuthRequest>("ssh:auth-request", /** 仅接收当前会话的交互轮次。 */ (event) => {
+          if (!cancelled && event.payload.sessionId === session.id) setAuthRequest(event.payload);
+        });
+        await registerEvent<string>("ssh:auth-ended", /** 撤销已消费、超时或取消的轮次。 */ (event) => {
+          if (!cancelled) clearAuthRequest(event.payload);
+        });
+        await registerEvent<SshErrorEvent>("ssh:forward-error", /** 转发失败保留终端并给出诊断。 */ (event) => {
+          if (cancelled || event.payload.sessionId !== session.id) return;
+          terminal.writeln(`\r\n[SSH] ${event.payload.message}`);
+          notifyRef.current({ kind: "warning", message: `${copyRef.current.forwardFailed}${event.payload.message}` });
+        });
+        await registerEvent<SshDataEvent>("ssh:data", /** 转发当前会话字节。 */ (event) => {
+          if (!cancelled && event.payload.sessionId === session.id) {
             terminal.write(Uint8Array.from(event.payload.data), syncScrollMetrics);
           }
         });
-        const errorUnlisten = await listen<SshErrorEvent>("ssh:error", (event) => {
-          if (event.payload.sessionId !== session.id) return;
+        await registerEvent<SshErrorEvent>("ssh:error", /** 当前会话失败时更新状态并展示诊断。 */ (event) => {
+          if (cancelled || event.payload.sessionId !== session.id) return;
           connectingRef.current = false;
           connectedRef.current = false;
           onStateChange(session.id, "error");
           terminal.writeln(`\r\n\x1b[31m[SSH] ${event.payload.message}\x1b[0m`);
           notifyRef.current({ kind: "error", message: `${copyRef.current.connectFailed}${event.payload.message}` });
         });
-        const x11ErrorUnlisten = await listen<SshErrorEvent>("ssh:x11-error", (event) => {
-          if (event.payload.sessionId !== session.id) return;
+        await registerEvent<SshErrorEvent>("ssh:x11-error", /** X11 转发失败保留终端会话。 */ (event) => {
+          if (cancelled || event.payload.sessionId !== session.id) return;
           terminal.writeln(`\r\n\x1b[33m[X11] ${event.payload.message}\x1b[0m`);
           notifyRef.current({ kind: "warning", message: `${copyRef.current.x11Failed}${event.payload.message}` });
         });
-        const closedUnlisten = await listen<SshClosedEvent>("ssh:closed", (event) => {
-          if (event.payload.sessionId !== session.id) return;
+        await registerEvent<SshClosedEvent>("ssh:closed", /** 清理连接状态并记录远端退出码。 */ (event) => {
+          if (cancelled || event.payload.sessionId !== session.id) return;
           connectingRef.current = false;
           connectedRef.current = false;
           setClosedExitStatus(event.payload.exitStatus);
           terminal.write("\r\n", syncScrollMetrics);
           onStateChange(session.id, "closed");
         });
-        unlisteners = [dataUnlisten, errorUnlisten, x11ErrorUnlisten, closedUnlisten];
 
         if (cancelled) return;
         await connect();
       } catch (error) {
+        unlisteners.forEach(/** 监听安装失败时释放已注册事件。 */ (unlisten) => unlisten());
+        unlisteners = [];
         if (cancelled) return;
         connectingRef.current = false;
         connectedRef.current = false;
@@ -1633,6 +1723,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
     };
     void start();
 
+    /** 取消连接、撤销监听并释放终端与 DOM 资源。 */
     return () => {
       cancelled = true;
       connectedRef.current = false;
@@ -1648,8 +1739,8 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
       scrollDisposable.dispose();
       cursorDisposable.dispose();
       writeParsedDisposable.dispose();
-      unlisteners.forEach((unlisten) => unlisten());
-      void invoke("close_ssh_session", { sessionId: session.id }).catch(() => undefined);
+      unlisteners.forEach(/** 释放当前会话的所有已注册事件。 */ (unlisten) => unlisten());
+      closeBackend();
       terminal.dispose();
       terminalRef.current = null;
       fitRef.current = null;
@@ -1668,12 +1759,12 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
   }, [fontSize, syncScrollMetrics, themeKey, visible]);
 
   useEffect(() => {
-    if (active) {
+    if (active && !authRequest) {
       fitRef.current?.fit();
       terminalRef.current?.focus();
       syncScrollMetrics();
     }
-  }, [active, syncScrollMetrics]);
+  }, [active, authRequest, syncScrollMetrics]);
 
   useEffect(() => {
     if (session.reconnectNonce === handledReconnectNonceRef.current) return;
@@ -1683,6 +1774,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
 
   return (
     <div className="terminal-emulator rivet-vertical-scrollbar">
+      {authRequest && <SshAuthPrompt key={authRequest.requestId} request={authRequest} locale={locale} active={active && visible} onComplete={clearAuthRequest} />}
       <div ref={containerRef} className="terminal-emulator-xterm" />
       {session.state === "closed" ? (
         <div className="terminal-closed-status" role="status">
@@ -2154,6 +2246,10 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
   const [sftpOpen, setSftpOpen] = useState(false);
   const [quickCommandOpen, setQuickCommandOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  /** 转发子面板只编辑父连接草稿。 */
+  const [forwardPanelOpen, setForwardPanelOpen] = useState(false);
+  /** 高级分区在子面板往返期间保留展开状态。 */
+  const [advancedExpanded, setAdvancedExpanded] = useState(true);
   const [connectionGroupManageOpen, setConnectionGroupManageOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ConnectionFormState>(EMPTY_FORM);
@@ -2358,6 +2454,52 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
     }
   }, [copy.credentialLoadFailed, notify]);
 
+  /** 当前连接库快照，编辑连接不会触发活动 SSH 重建。 */
+  const connectionLibraryRef = useRef(connections);
+  connectionLibraryRef.current = connections;
+  /** 解析跳板链并只为密码/私钥端点读取加密凭据。 */
+  const resolveJumpHosts = useCallback(async (connection: SavedSshConnection): Promise<SshRuntimeHop[]> => {
+    let hops: SavedSshConnection[];
+    try {
+      hops = resolveSshJumpChain(connection, connectionLibraryRef.current).filter(/** 串口不可作为跳板。 */ (hop): hop is SavedSshConnection => hop.kind === "ssh");
+    } catch {
+      throw new Error(copy.invalidJump);
+    }
+    const resolved: SshRuntimeHop[] = [];
+    for (const hop of hops) {
+      const secrets = hop.authType === "password" || hop.authType === "privateKey" ? await loadConnectionSecrets(hop.id) : { password: "", keyPassphrase: "" };
+      if (!secrets) throw new Error(copy.credentialLoadFailed);
+      if (hop.authType === "password" && !secrets.password) throw new Error(copy.enterPassword);
+      resolved.push({ host: hop.host, port: hop.port, username: hop.username, authType: hop.authType, password: hop.authType === "password" ? secrets.password : null, keyPath: hop.authType === "privateKey" ? hop.keyPath : null, keyPassphrase: hop.authType === "privateKey" ? secrets.keyPassphrase || null : null });
+    }
+    return resolved;
+  }, [copy.invalidJump, copy.credentialLoadFailed, copy.enterPassword, loadConnectionSecrets]);
+  /** 排除自身、丢失引用和循环链；缺失的已选值由保存校验拒绝。 */
+  const jumpConnections = useMemo(() => connections.filter(/** 只提供可解析且不会回到正在编辑连接的 SSH 引用。 */ (connection): connection is SavedSshConnection => {
+    if (connection.kind !== "ssh" || connection.id === editingId) return false;
+    try { resolveSshJumpChain({ id: editingId ?? "", kind: "ssh", jumpConnectionId: connection.id }, connections); return true; }
+    catch { return false; }
+  }), [connections, editingId]);
+  /** 返回连接草稿并保留其余字段。 */
+  const backFromForwards = () => setForwardPanelOpen(false);
+  /** 更新当前草稿中的转发规则。 */
+  const updateForwards = (forwards: SshForwardRule[]) => setForm(/** 替换规则草稿。 */ (current) => ({ ...current, forwards }));
+  /** 更新跳板开关，不丢弃未启用的选择草稿。 */
+  const updateJumpEnabled = (jumpEnabled: boolean) => setForm(/** 保留其他连接字段。 */ (current) => ({ ...current, jumpEnabled }));
+  /** 更新当前草稿的跳板连接引用。 */
+  const updateJumpConnection = (jumpConnectionId: string) => setForm(/** 保留其他连接字段。 */ (current) => ({ ...current, jumpConnectionId }));
+  /** 取消编辑并清空本次未保存的认证秘密。 */
+  const cancelConnectionForm = () => {
+    pendingOpenRef.current = null;
+    setFormOpen(false);
+    setConnectionGroupPickerOpen(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setForwardPanelOpen(false);
+  };
+  /** 开启转发列表，不保存或创建监听。 */
+  const openForwards = () => { setConnectionGroupPickerOpen(false); setForwardPanelOpen(true); };
+
   /** 返回 pane 标题使用的会话名称。 */
   const sessionTitle = useCallback(
     (session: TerminalSession) => {
@@ -2453,7 +2595,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
         markRecent();
         return;
       }
-      const secrets = await loadConnectionSecrets(connection.id);
+      const secrets = connection.authType === "password" || connection.authType === "privateKey" ? await loadConnectionSecrets(connection.id) : { password: "", keyPassphrase: "" };
       if (secrets === null) return;
       if (connection.authType === "password" && !secrets.password) {
         pendingOpenRef.current = { connectionId: connection.id, picker: action };
@@ -2470,6 +2612,9 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
           keyPath: connection.keyPath,
           keyPassphrase: secrets.keyPassphrase,
           x11: connection.x11,
+          jumpEnabled: !!connection.jumpConnectionId,
+          jumpConnectionId: connection.jumpConnectionId ?? "",
+          forwards: connection.forwards?.map(/** 复制已保存的规则到草稿。 */ (rule) => ({ ...rule })) ?? [],
           serialPath: "",
           serialBaudRate: String(DEFAULT_SERIAL_DEFAULTS.baudRate),
           serialDataBits: String(DEFAULT_SERIAL_DEFAULTS.dataBits),
@@ -2757,7 +2902,10 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
     return options.length ? options : [{ value: "", label: copy.noSerialDevices }];
   }, [copy.noSerialDevices, form.serialPath, serialPorts]);
 
+  /** 新建连接草稿并复位子面板。 */
   const openCreateForm = () => {
+    setForwardPanelOpen(false);
+    setAdvancedExpanded(true);
     pendingOpenRef.current = null;
     setEditingId(null);
     setForm(EMPTY_FORM);
@@ -2770,7 +2918,10 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
     setDeleteGroupName(null);
   };
 
+  /** 恢复连接及其加密秘密到草稿，不修改活动会话。 */
   const openEditForm = async (connection: SavedTerminalConnection) => {
+    setForwardPanelOpen(false);
+    if (connection.kind === "ssh") setAdvancedExpanded(!!connection.jumpConnectionId || !!connection.forwards?.length);
     pendingOpenRef.current = null;
     setEditingId(connection.id);
     setConnectionGroupManageOpen(false);
@@ -2788,7 +2939,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
         serialFlowControl: connection.flowControl,
       });
     } else {
-      const secrets = (await loadConnectionSecrets(connection.id)) ?? {
+      const secrets = (connection.authType === "password" || connection.authType === "privateKey" ? await loadConnectionSecrets(connection.id) : null) ?? {
         password: "",
         keyPassphrase: "",
       };
@@ -2805,6 +2956,9 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
         keyPath: connection.keyPath,
         keyPassphrase: secrets.keyPassphrase,
         x11: connection.x11,
+        jumpEnabled: !!connection.jumpConnectionId,
+        jumpConnectionId: connection.jumpConnectionId ?? "",
+        forwards: connection.forwards?.map(/** 复制已保存的规则到草稿。 */ (rule) => ({ ...rule })) ?? [],
       });
     }
     setFormOpen(true);
@@ -2844,10 +2998,10 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
       form.group.length > 128;
     const sshInvalid =
       form.kind === "ssh" &&
-      (!form.host.trim() ||
-        form.host.length > 255 ||
+      (!isSshHost(form.host.trim()) ||
         !form.username.trim() ||
         form.username.length > 128 ||
+        /[\x00-\x1f\x7f]/.test(form.username) ||
         !Number.isInteger(port) ||
         port < 1 ||
         port > 65535 ||
@@ -2872,6 +3026,19 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
       return;
     }
 
+    if (form.kind === "ssh") {
+      try {
+        if (form.jumpEnabled && !form.jumpConnectionId) throw new Error(copy.invalidJump);
+        resolveSshJumpChain({ id: editingId ?? "", kind: "ssh", jumpConnectionId: form.jumpEnabled ? form.jumpConnectionId : "" }, connections);
+      } catch {
+        notify({ kind: "warning", message: copy.invalidJump });
+        return;
+      }
+      if (!areSshForwardRules(form.forwards)) {
+        notify({ kind: "warning", message: copy.invalidForm });
+        return;
+      }
+    }
     const id = editingId ?? createId("connection");
     const previous = editingId
       ? connections.find((connection) => connection.id === editingId) ?? null
@@ -2907,12 +3074,16 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
       };
       if (isTauri()) {
         try {
-          await invoke("save_ssh_secrets", {
-            connectionId: id,
-            authType: form.authType,
-            password: secrets.password,
-            keyPassphrase: secrets.keyPassphrase,
-          });
+          if (form.authType === "agent") {
+            await invoke("delete_ssh_secrets", { connectionId: id });
+          } else {
+            await invoke("save_ssh_secrets", {
+              connectionId: id,
+              authType: form.authType,
+              password: secrets.password,
+              keyPassphrase: secrets.keyPassphrase,
+            });
+          }
           notifySyncedSecretsChanged();
         } catch (error) {
           notify({ kind: "error", message: `${copy.credentialSaveFailed}${String(error)}` });
@@ -2930,6 +3101,8 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
         authType: form.authType,
         keyPath: form.authType === "privateKey" ? form.keyPath.trim() : "",
         x11: form.x11,
+        jumpConnectionId: form.jumpEnabled ? form.jumpConnectionId : "",
+        forwards: form.forwards,
       };
       secretsRef.current.set(id, secrets);
     }
@@ -3092,6 +3265,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
               fontSize={fontSize}
               x11ServerAddress={x11ServerAddress}
               linuxXauthPath={linuxXauthPath}
+              resolveJumpHosts={resolveJumpHosts}
               onStateChange={updateSessionState}
             />
           ) : session.kind === "serial" ? (
@@ -3305,7 +3479,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
         })}
 
         <aside className={`terminal-connection-panel ${connectionPanelOpen ? "open" : ""}`}>
-          <header className="terminal-connection-header">
+          {!(formOpen && forwardPanelOpen) && <header className="terminal-connection-header">
             <strong>
               {formOpen
                 ? (editingId ? copy.editConnection : copy.addConnection)
@@ -3330,9 +3504,9 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
                 </button>
               </div>
             )}
-          </header>
+          </header>}
 
-          {formOpen ? (
+          {formOpen && forwardPanelOpen ? <SshForwardPanel locale={locale} rules={form.forwards} onChange={updateForwards} onBack={backFromForwards} /> : formOpen ? (
             <form className="terminal-connection-form" onSubmit={saveConnection}>
               <VerticalScrollbar
                 className="terminal-connection-form-scroll"
@@ -3544,12 +3718,14 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
                       <span>{copy.authType}</span>
                       <Select
                         value={form.authType}
+                        ariaLabel={copy.authType}
                         options={[
                           { value: "password", label: copy.passwordAuth },
                           { value: "privateKey", label: copy.keyAuth },
+                          { value: "agent", label: copy.agentAuth },
                         ]}
-                        onChange={(value) =>
-                          setForm((current) => ({ ...current, authType: value as SshAuthType }))
+                        onChange={/** 切换认证方式，仅保留当前编辑草稿。 */ (value) =>
+                          setForm(/** 替换认证方式，其他字段在保存时按方式筛选。 */ (current) => ({ ...current, authType: value as SshAuthType }))
                         }
                       />
                     </label>
@@ -3566,7 +3742,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
                           autoComplete="off"
                         />
                       </label>
-                    ) : (
+                    ) : form.authType === "privateKey" ? (
                       <>
                         <label className="terminal-field">
                           <span>{copy.keyPath}</span>
@@ -3605,7 +3781,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
                           />
                         </label>
                       </>
-                    )}
+                    ) : null}
                     <Checkbox
                       className="terminal-x11-option"
                       checked={form.x11}
@@ -3615,6 +3791,18 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
                       }}
                       label={copy.x11}
                     />
+                    <SshAdvancedOptions
+                      locale={locale}
+                      expanded={advancedExpanded}
+                      onExpandedChange={setAdvancedExpanded}
+                      jumpEnabled={form.jumpEnabled}
+                      onJumpEnabledChange={updateJumpEnabled}
+                      jumpConnectionId={form.jumpConnectionId}
+                      jumpConnections={jumpConnections}
+                      onJumpConnectionChange={updateJumpConnection}
+                      forwardCount={form.forwards.length}
+                      onOpenForwards={openForwards}
+                    />
                   </>
                 )}
               </VerticalScrollbar>
@@ -3622,12 +3810,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => {
-                    pendingOpenRef.current = null;
-                    setFormOpen(false);
-                    setConnectionGroupPickerOpen(false);
-                    setEditingId(null);
-                  }}
+                  onClick={cancelConnectionForm}
                 >
                   {copy.cancel}
                 </Button>

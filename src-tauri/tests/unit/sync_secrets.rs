@@ -36,3 +36,22 @@ fn rejects_tampered_ciphertext() {
     encrypted.ciphertext.push('A');
     assert!(decrypt_bundle("github", "test-token", &encrypted).is_err());
 }
+
+/// Agent 记录不访问凭据存储，秘密指纹与空集合一致且可加密备份。
+#[test]
+fn advanced_authentication_exports_no_persistent_secrets() {
+    let document = r#"{"terminalConnections":[{"kind":"ssh","id":"agent","authType":"agent"}]}"#;
+    assert_eq!(
+        local_secret_revision(document).unwrap(),
+        local_secret_revision(r#"{"terminalConnections":[]}"#).unwrap()
+    );
+    assert!(encrypt_local_backup_secrets("portable-password", document).is_ok());
+}
+
+/// 已移除的独立交互认证类型必须拒绝导出，不能静默回退或读取密码。
+#[test]
+fn removed_authentication_type_is_rejected_by_secret_export() {
+    let document = r#"{"terminalConnections":[{"kind":"ssh","id":"removed","authType":"keyboardInteractive"}]}"#;
+    assert!(local_secret_revision(document).is_err());
+    assert!(encrypt_local_backup_secrets("portable-password", document).is_err());
+}

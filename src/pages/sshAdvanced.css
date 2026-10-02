@@ -1,0 +1,151 @@
+/* SSH 高级选项、转发子面板与终端认证布局，共享正式主题变量。 */
+.ssh-advanced-toggle{
+  display:flex;
+  width:calc(100% + 24px);
+  height:34px;
+  margin:8px -12px 0;
+  align-items:center;
+  gap:7px;
+  padding:0 11px;
+  border:0;
+  border-top:1px solid var(--r-border);
+  border-bottom:1px solid var(--r-border);
+  background:transparent;
+  color:var(--r-subtle);
+  cursor:pointer;
+  text-align:left;
+}
+.ssh-advanced-toggle:hover{background:var(--r-surface-2)}
+.ssh-advanced-toggle strong{
+  color:var(--r-text);
+  font-size:var(--r-font-size-base);
+  font-weight:600;
+}
+.ssh-advanced-toggle small{
+  margin-left:auto;
+  color:var(--r-muted);
+  font-size:var(--r-font-size-secondary);
+}
+.ssh-advanced-chevron{transition:transform .15s ease}
+.ssh-advanced-toggle.is-collapsed .ssh-advanced-chevron{transform:rotate(-90deg)}
+.ssh-advanced-body{padding-top:11px}
+.ssh-advanced-body[hidden]{display:none}
+
+
+.ssh-jump-row{
+  display:flex;
+  min-height:34px;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:7px;
+}
+.ssh-jump-copy{
+  display:flex;
+  min-width:0;
+  flex:1;
+  flex-direction:column;
+}
+.ssh-jump-copy strong{
+  color:var(--r-text);
+  font-size:var(--r-font-size-base);
+  font-weight:500;
+}
+.ssh-jump-copy small{
+  margin-top:2px;
+  color:var(--r-muted);
+  font-size:var(--r-font-size-secondary);
+}
+.ssh-jump-field{margin-bottom:11px}
+.ssh-jump-field[hidden]{display:none}
+
+
+.ssh-forward-entry{
+  display:flex;
+  width:calc(100% + 24px);
+  min-height:44px;
+  align-items:center;
+  gap:10px;
+  margin:3px -12px 0;
+  padding:5px 11px 5px 17px;
+  border:0;
+  border-top:1px solid var(--r-border);
+  border-bottom:1px solid var(--r-border);
+  background:transparent;
+  color:inherit;
+  cursor:pointer;
+  text-align:left;
+}
+.ssh-forward-entry:hover{background:var(--r-surface-2)}
+.ssh-forward-entry-copy{
+  display:flex;
+  min-width:0;
+  flex:1;
+  flex-direction:column;
+}
+.ssh-forward-entry-copy strong{
+  color:var(--r-text);
+  font-size:var(--r-font-size-base);
+  font-weight:600;
+}
+.ssh-forward-entry-copy small{
+  margin-top:2px;
+  overflow:hidden;
+  color:var(--r-muted);
+  font-size:var(--r-font-size-secondary);
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.ssh-forward-entry-count{
+  flex:0 0 auto;
+  color:var(--r-muted);
+  font-size:var(--r-font-size-secondary);
+}
+
+
+.ssh-subpage-title{
+  display:flex;
+  min-width:0;
+  align-items:center;
+  gap:5px;
+}
+
+
+.ssh-forward-list{min-height:0;flex:1}
+.ssh-forward-list .terminal-connection-row{padding-right:7px}
+.ssh-forward-list .terminal-connection-type{
+  color:var(--r-primary-light);
+  font-weight:700;
+  font-size:var(--r-font-size-secondary);
+}
+.ssh-forward-list .terminal-more-wrap{z-index:2}
+
+
+.ssh-forward-form{
+  display:flex;
+  min-height:0;
+  flex:1;
+  flex-direction:column;
+}
+.ssh-forward-form-viewport>div{padding:12px}
+.ssh-forward-field-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 76px;
+  gap:8px;
+}
+
+
+.ssh-advanced-toggle:focus-visible,.ssh-forward-entry:focus-visible{outline:2px solid var(--r-primary);outline-offset:-2px}
+.ssh-forward-list .terminal-empty{padding:12px;color:var(--r-muted)}
+/* 认证提示覆盖当前终端初始区域，沿用参考页的无边框行内输入。 */
+.ssh-auth-prompt{position:absolute;inset:0;z-index:5;padding:12px;background:var(--r-terminal-bg);color:var(--r-terminal-text);font:inherit;line-height:1.55}
+.ssh-auth-heading{color:var(--r-muted);overflow-wrap:anywhere;white-space:pre-wrap}
+.ssh-auth-instructions{white-space:pre-wrap;overflow-wrap:anywhere}
+.ssh-auth-line{display:flex;min-height:22px;align-items:center;flex-wrap:wrap}
+.ssh-auth-line>span{white-space:pre-wrap;overflow-wrap:anywhere}
+.ssh-auth-line .rivet-input.ssh-auth-input{width:180px;max-width:100%;height:22px;padding:0 2px;border:0;border-radius:0;outline:0;background:transparent;color:var(--r-terminal-text);font:inherit;line-height:inherit;caret-color:var(--r-terminal-text);box-shadow:none}
+.ssh-auth-line .rivet-input.ssh-auth-input:focus{border:0;outline:0;box-shadow:none}
+@media(prefers-reduced-motion:reduce){.ssh-advanced-chevron{transition:none}}
+
+.ssh-forward-panel{display:flex;min-height:0;flex:1;flex-direction:column}
+.ssh-forward-entry-chevron{transform:rotate(-90deg)}

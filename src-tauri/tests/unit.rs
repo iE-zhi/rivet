@@ -6,6 +6,12 @@
 mod credential_store;
 #[path = "../src/external_links.rs"]
 mod external_links;
+#[path = "../src/ssh_auth.rs"]
+mod ssh_auth;
+#[path = "../src/ssh_config.rs"]
+mod ssh_config;
+#[path = "../src/ssh_forward.rs"]
+mod ssh_forward;
 #[path = "../src/sync.rs"]
 mod sync;
 #[path = "../src/sync_secrets.rs"]
@@ -17,6 +23,8 @@ mod x11;
 mod credential_store_tests;
 #[path = "unit/external_links.rs"]
 mod external_links_tests;
+#[path = "unit/ssh_advanced.rs"]
+mod ssh_advanced_tests;
 #[path = "unit/sync_secrets.rs"]
 mod sync_secrets_tests;
 #[path = "unit/sync.rs"]

@@ -212,7 +212,7 @@ fn apply_secret_bundle(
     Ok(managed_key_paths)
 }
 
-/// 从当前同步文档和 Rivet 自有凭据文件构造稳定的秘密集合。
+/// 从同步文档与自有凭据文件构造秘密集合；Agent 只同步非敏感配置，未知认证类型拒绝导出。
 fn build_local_bundle(document: &str) -> Result<SecretBundle, String> {
     let document: Value =
         serde_json::from_str(document).map_err(|error| format!("解析本机同步文档失败：{error}"))?;
@@ -235,6 +235,10 @@ fn build_local_bundle(document: &str) -> Result<SecretBundle, String> {
             .ok_or_else(|| format!("SSH 连接 {id} 缺少认证方式"))?;
         if id.is_empty() || id.len() > 128 {
             return Err("SSH 同步连接 ID 无效".to_string());
+        }
+        // Agent 没有可移植秘密，不读取历史密码或导出本机身份。
+        if auth_type == "agent" {
+            continue;
         }
         if !matches!(auth_type, "password" | "privateKey") {
             return Err(format!("SSH 连接 {id} 的认证方式无效"));

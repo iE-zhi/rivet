@@ -1,4 +1,6 @@
 import type { CSSProperties } from "react";
+import backIcon from "../../assets/svg/back.svg?url";
+import portIcon from "../../assets/svg/port.svg?url";
 import checkIcon from "../../assets/svg/check.svg?url";
 import chevronIcon from "../../assets/svg/chevron.svg?url";
 import closeIcon from "../../assets/svg/close.svg?url";
@@ -31,7 +33,7 @@ import unplugIcon from "../../assets/svg/unplug.svg?url";
 import waveIcon from "../../assets/svg/wave.svg?url";
 
 /** 可共用的单色图标标识；SVG 通过 CSS mask 继承所在位置的文字颜色。 */
-export type SvgIconName = "check" | "chevron" | "close" | "cmd" | "copy" | "display" | "download" | "file" | "folder" | "globe" | "group" | "info" | "list" | "more" | "plus" | "plug" | "refresh" | "retry" | "search" | "send" | "serial" | "setting" | "show" | "split-horizontal" | "split-vertical" | "terminal" | "unplug" | "unshow" | "upload" | "wave";
+export type SvgIconName = "back" | "port" | "check" | "chevron" | "close" | "cmd" | "copy" | "display" | "download" | "file" | "folder" | "globe" | "group" | "info" | "list" | "more" | "plus" | "plug" | "refresh" | "retry" | "search" | "send" | "serial" | "setting" | "show" | "split-horizontal" | "split-vertical" | "terminal" | "unplug" | "unshow" | "upload" | "wave";
 
 /** SVG 图标组件参数；尺寸以 CSS 像素计，默认 17px。 */
 export interface SvgIconProps {
@@ -45,6 +47,8 @@ export interface SvgIconProps {
 
 /** 图标标识到 Vite 资源 URL 的映射，供组件以 CSS mask 共享着色。 */
 const SVG_ICON_SOURCES: Record<SvgIconName, string> = {
+  back: backIcon,
+  port: portIcon,
   check: checkIcon,
   chevron: chevronIcon,
   close: closeIcon,

@@ -9,6 +9,9 @@ mod serial;
 mod sftp;
 mod shell_integration;
 mod ssh;
+mod ssh_auth;
+mod ssh_config;
+mod ssh_forward;
 mod sync;
 mod sync_secrets;
 mod terminal_serial;
@@ -50,6 +53,7 @@ pub fn run() -> tauri::Result<()> {
             terminal_serial::close_terminal_serial_session,
             ssh::pick_ssh_private_key,
             ssh::open_ssh_session,
+            ssh::ssh_auth_respond,
             ssh::ssh_send_input,
             ssh::ssh_resize_session,
             ssh::close_ssh_session,
