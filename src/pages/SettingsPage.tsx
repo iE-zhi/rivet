@@ -9,6 +9,7 @@ import type { NavigationItemId, NavigationSettings } from "../preferences/naviga
 import { isValidX11ServerAddress, isValidXauthPath, MAX_X11_SERVER_ADDRESS_LENGTH, MAX_XAUTH_PATH_LENGTH } from "../preferences/sshSettings";
 import { TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, clearTerminalCommandHistory, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, setTerminalCommandHistoryEnabled } from "../preferences/terminalHistory";
 import { isWindowsPlatform, isWindowsPowerShellMode, readWindowsPowerShellMode, setWindowsPowerShellMode } from "../preferences/terminalSettings";
+import { MAX_SSH_KEEPALIVE_FAILURES, MAX_SSH_KEEPALIVE_INTERVAL_SECONDS, type SshKeepaliveSettings } from "../preferences/sshKeepalive";
 import { DEFAULT_BACKUP_SELECTION, type BackupSelection, type RivetSyncController, type SyncProvider } from "../rivetSync";
 import AboutPanel from "./AboutPanel";
 
@@ -155,6 +156,14 @@ interface SettingsPageCopy {
   receiveGroupTitle: string;
   /** SSH 设置组标题。 */
   sshGroupTitle: string;
+  /** SSH 保活分组标题。 */
+  keepaliveGroupTitle: string;
+  /** 保活空闲间隔，单位秒。 */
+  keepaliveInterval: string;
+  /** 连续无响应探测次数。 */
+  keepaliveFailures: string;
+  /** 超出对应范围时的输入反馈。 */
+  invalidKeepalive: string;
   /** Windows PowerShell 设置组标题。 */
   powershellGroupTitle: string;
   /** Windows 本地终端默认 PowerShell。 */
@@ -301,6 +310,10 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serialGroupTitle: "默认通信参数",
     receiveGroupTitle: "接收分包",
     sshGroupTitle: "X11",
+    keepaliveGroupTitle: "SSH 保活",
+    keepaliveInterval: "间隔（秒）",
+    keepaliveFailures: "失败次数",
+    invalidKeepalive: "间隔范围为 1~3600 秒，失败次数范围为 1~100。",
     powershellGroupTitle: "PowerShell",
     defaultPowerShell: "默认 PowerShell",
     powerShellOptions: [
@@ -430,6 +443,10 @@ const SETTINGS_PAGE_COPY: Record<Locale, SettingsPageCopy> = {
     serialGroupTitle: "Default communication parameters",
     receiveGroupTitle: "Receive grouping",
     sshGroupTitle: "X11",
+    keepaliveGroupTitle: "SSH Keepalive",
+    keepaliveInterval: "Interval (seconds)",
+    keepaliveFailures: "Failure count",
+    invalidKeepalive: "Use an interval of 1–3600 seconds and a failure count of 1–100.",
     powershellGroupTitle: "PowerShell",
     defaultPowerShell: "Default PowerShell",
     powerShellOptions: [
@@ -539,6 +556,10 @@ export interface SettingsPageProps {
   serialRxSettings: SerialRxSettings;
   /** 更新经过范围校验的 RX 分包参数；不受默认通信参数开关影响。 */
   onSerialRxSettingsChange: (settings: SerialRxSettings) => void;
+  /** 后续 SSH 会话采用的应用级保活参数。 */
+  sshKeepalive: SshKeepaliveSettings;
+  /** 提交已校验的保活参数，并持久化及同步。 */
+  onSshKeepaliveChange: (settings: SshKeepaliveSettings) => void;
   /** 当前 SSH X11 转发使用的本机 X Server 地址。 */
   x11ServerAddress: string;
   /** 更新并持久化 X11 Server 地址。 */
@@ -650,11 +671,13 @@ function parseBoundedInteger(value: string, minimum: number, maximum: number): n
  * @param onUseSerialDefaultsChange 用户切换默认通信参数开关后的回调。
  * @param serialRxSettings 当前的接收显示分包参数。
  * @param onSerialRxSettingsChange 用户修改接收分包参数后的回调。
+ * @param sshKeepalive 后续 SSH 会话的保活间隔和失败次数。
+ * @param onSshKeepaliveChange 用户提交合法保活参数后的回调。
  * @param x11ServerAddress 当前 X11 Server 地址。
  * @param onX11ServerAddressChange 用户修改 X11 Server 地址后的回调。
  * @returns 设置侧栏和显示偏好分组。
  */
-export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, fontSize, onFontSizeChange, notificationSettings, onNotificationSettingsChange, navigationSettings, onNavigationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, x11ServerAddress, onX11ServerAddressChange, linuxXauthPath, onLinuxXauthPathChange, hideActivityBarScrollbar, onHideActivityBarScrollbarChange, sync }: SettingsPageProps) {
+export default function SettingsPage({ locale, onLocaleChange, theme, onThemeChange, font, onFontChange, fontSize, onFontSizeChange, notificationSettings, onNotificationSettingsChange, navigationSettings, onNavigationSettingsChange, serialDefaults, onSerialDefaultsChange, useSerialDefaults, onUseSerialDefaultsChange, serialRxSettings, onSerialRxSettingsChange, sshKeepalive, onSshKeepaliveChange, x11ServerAddress, onX11ServerAddressChange, linuxXauthPath, onLinuxXauthPathChange, hideActivityBarScrollbar, onHideActivityBarScrollbarChange, sync }: SettingsPageProps) {
   /** 取当前界面语言的文案和选项列表。 */
   const copy = SETTINGS_PAGE_COPY[locale];
   /** 当前页面所有短时反馈均通过应用外壳中的全局通知发送。 */
@@ -699,6 +722,40 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   /** Windows 默认 PowerShell 只保存在当前设备。 */
   const windowsPlatform = isWindowsPlatform();
   const [windowsPowerShellMode, setWindowsPowerShellModeState] = useState(readWindowsPowerShellMode);
+  /** 保活数字草稿允许暂时为空；仅失焦后提交合法整数。 */
+  const [keepaliveDraft, setKeepaliveDraft] = useState({ intervalSeconds: String(sshKeepalive.intervalSeconds), maxFailures: String(sshKeepalive.maxFailures) });
+  /** 各字段独立标记输入范围错误。 */
+  const [keepaliveInvalid, setKeepaliveInvalid] = useState({ intervalSeconds: false, maxFailures: false });
+
+  /** 同步或恢复应用级参数后刷新草稿，活动 SSH 连接保持自己的参数。 */
+  useEffect(() => {
+    setKeepaliveDraft({ intervalSeconds: String(sshKeepalive.intervalSeconds), maxFailures: String(sshKeepalive.maxFailures) });
+    setKeepaliveInvalid({ intervalSeconds: false, maxFailures: false });
+  }, [sshKeepalive.intervalSeconds, sshKeepalive.maxFailures]);
+
+  /** 修改单项文本草稿并立即标记范围；不把无效文本提交到持久化状态。 */
+  const handleKeepaliveChange = (field: keyof SshKeepaliveSettings, value: string) => {
+    const maximum = field === "intervalSeconds" ? MAX_SSH_KEEPALIVE_INTERVAL_SECONDS : MAX_SSH_KEEPALIVE_FAILURES;
+    const valid = parseBoundedInteger(value, 1, maximum) !== null;
+    setKeepaliveDraft(/** 仅替换正在编辑的字段，保留另一项草稿。 */ (current) => ({ ...current, [field]: value }));
+    setKeepaliveInvalid(/** 两项错误状态相互独立。 */ (current) => ({ ...current, [field]: !valid }));
+  };
+
+  /** 失焦提交范围内整数；错误通知后恢复最后一个有效值。 */
+  const commitKeepalive = (field: keyof SshKeepaliveSettings) => {
+    const text = keepaliveDraft[field];
+    const maximum = field === "intervalSeconds" ? MAX_SSH_KEEPALIVE_INTERVAL_SECONDS : MAX_SSH_KEEPALIVE_FAILURES;
+    const value = parseBoundedInteger(text, 1, maximum);
+    if (value === null) {
+      notify({ kind: "error", message: copy.invalidKeepalive });
+      setKeepaliveDraft(/** 无效值恢复到已提交的应用参数。 */ (current) => ({ ...current, [field]: String(sshKeepalive[field]) }));
+      setKeepaliveInvalid(/** 恢复有效值后清除该字段的错误状态。 */ (current) => ({ ...current, [field]: false }));
+      return;
+    }
+    setKeepaliveDraft(/** 显示规范化整数，清除前导零和空白。 */ (current) => ({ ...current, [field]: String(value) }));
+    setKeepaliveInvalid(/** 提交合法参数后清除该字段的错误。 */ (current) => ({ ...current, [field]: false }));
+    onSshKeepaliveChange({ ...sshKeepalive, [field]: value });
+  };
   useEffect(() => {
     const syncTerminalHistoryState = () => {
       const commands = readTerminalCommandHistory();
@@ -1479,7 +1536,6 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
             </>
           ) : activeCategory === "ssh" ? (
             <>
-
               {windowsPlatform ? (
                 <section className="settings-section" aria-labelledby="settings-powershell-group-title">
                   <h1 className="settings-section-title" id="settings-powershell-group-title">{copy.powershellGroupTitle}</h1>
@@ -1563,6 +1619,29 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
                       >
                         Mac
                       </a>
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <section className="settings-section" aria-labelledby="settings-keepalive-group-title">
+                <h1 className="settings-section-title" id="settings-keepalive-group-title">{copy.keepaliveGroupTitle}</h1>
+                <div className="settings-list">
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.keepaliveInterval}</span>
+                    <div className="settings-row-control">
+                      <Input className="settings-input" aria-label={copy.keepaliveInterval} aria-invalid={keepaliveInvalid.intervalSeconds}
+                        inputMode="numeric" maxLength={String(MAX_SSH_KEEPALIVE_INTERVAL_SECONDS).length} value={keepaliveDraft.intervalSeconds}
+                        onChange={/** 编辑秒数草稿，不改变当前连接。 */ (event) => handleKeepaliveChange("intervalSeconds", event.currentTarget.value)}
+                        onBlur={/** 校验后持久化空闲间隔。 */ () => commitKeepalive("intervalSeconds")} />
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-row-label">{copy.keepaliveFailures}</span>
+                    <div className="settings-row-control">
+                      <Input className="settings-input" aria-label={copy.keepaliveFailures} aria-invalid={keepaliveInvalid.maxFailures}
+                        inputMode="numeric" maxLength={String(MAX_SSH_KEEPALIVE_FAILURES).length} value={keepaliveDraft.maxFailures}
+                        onChange={/** 编辑连续失败次数草稿。 */ (event) => handleKeepaliveChange("maxFailures", event.currentTarget.value)}
+                        onBlur={/** 校验后持久化连续失败上限。 */ () => commitKeepalive("maxFailures")} />
                     </div>
                   </div>
                 </div>

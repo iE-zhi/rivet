@@ -12,6 +12,7 @@ import "./terminal.css";
 import { Button, Checkbox, GroupManager, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
 import { MAX_TERMINAL_COMMAND_LENGTH, TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, deleteTerminalCommandHistory, findTerminalCommandHistoryMatches, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, recordTerminalCommand, terminalCommandHistoryIndex } from "../preferences/terminalHistory";
 import { readWindowsPowerShellMode } from "../preferences/terminalSettings";
+import type { SshKeepaliveSettings } from "../preferences/sshKeepalive";
 import {
   deserializeRecentConnectionIds,
   deserializeTerminalConnections,
@@ -52,6 +53,7 @@ import SftpPanel from "./SftpPanel";
 import TerminalQuickCommandPanel from "./TerminalQuickCommandPanel";
 import { terminalCommandHistoryMenuLayout, type TerminalHistoryMenuLayout } from "./terminalHistoryLayout";
 
+/** 终端页面的应用级偏好及窗口宿主接口；活动会话保留自己的连接资源。 */
 interface TerminalPageProps {
   locale: Locale;
   themeKey: "light" | "dark";
@@ -61,6 +63,8 @@ interface TerminalPageProps {
   fontSize: number;
   /** 是否隐藏顶部活动栏的自绘横向滚动条；滚动能力保持可用。 */
   hideActivityBarScrollbar: boolean;
+  /** 新建或重连 SSH 会话时使用的保活参数。 */
+  sshKeepalive: SshKeepaliveSettings;
   /** 当前本机 X Server TCP 地址，由设置页统一管理。 */
   x11ServerAddress: string;
   /** Linux 本机 xauth 可执行文件路径。 */
@@ -1490,13 +1494,15 @@ interface SessionTerminalProps {
   fontSize: number;
   x11ServerAddress: string;
   linuxXauthPath: string;
+  /** 仅连接及重连时复制到后端，不重建活动会话。 */
+  sshKeepalive: SshKeepaliveSettings;
   /** 连接和重连时读取当前连接库。 */
   resolveJumpHosts: (connection: SavedSshConnection) => Promise<SshRuntimeHop[]>;
   onStateChange: (sessionId: string, state: TerminalSessionState) => void;
 }
 
 /** 挂载 SSH xterm，并把字节流、键盘输入和尺寸变化桥接到对应 Rust worker。 */
-function SessionTerminal({ session, active, visible, themeKey, locale, fontSize, x11ServerAddress, linuxXauthPath, resolveJumpHosts, onStateChange }: SessionTerminalProps) {
+function SessionTerminal({ session, active, visible, themeKey, locale, fontSize, x11ServerAddress, linuxXauthPath, sshKeepalive, resolveJumpHosts, onStateChange }: SessionTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -1509,6 +1515,9 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
   /** 使用最新连接库解析器，不因库变更重建活动连接。 */
   const jumpResolverRef = useRef(resolveJumpHosts);
   jumpResolverRef.current = resolveJumpHosts;
+  /** 后续连接读取最新偏好，持久化失败时仍能使用当前内存设置。 */
+  const keepaliveRef = useRef(sshKeepalive);
+  keepaliveRef.current = sshKeepalive;
   /** 仅清空已完成轮次。 */
   const clearAuthRequest = (requestId: string) => setAuthRequest(/** 对照一次性标识撤销 UI。 */ (current) => current?.requestId === requestId ? null : current);
   const [closedExitStatus, setClosedExitStatus] = useState<number | null>(null);
@@ -1632,6 +1641,7 @@ function SessionTerminal({ session, active, visible, themeKey, locale, fontSize,
             keyPassphrase: session.connection.authType === "privateKey" ? session.secrets.keyPassphrase || null : null,
             jumpHosts,
             forwards: session.connection.forwards ?? [],
+            keepalive: { ...keepaliveRef.current },
             x11: session.connection.x11,
             x11ServerAddress: session.connection.x11 ? x11ServerAddress : null,
             x11LinuxXauthPath: session.connection.x11 ? linuxXauthPath : null,
@@ -2232,7 +2242,7 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
 }
 
 /** Rivet 终端页面：Tab 之内使用递归 pane 树管理本地、SSH 与串口终端。 */
-export default function TerminalPage({ locale, themeKey, pageActive, fontSize, hideActivityBarScrollbar, x11ServerAddress, linuxXauthPath, onRequestActivate, titlebarHost }: TerminalPageProps) {
+export default function TerminalPage({ locale, themeKey, pageActive, fontSize, hideActivityBarScrollbar, x11ServerAddress, linuxXauthPath, sshKeepalive, onRequestActivate, titlebarHost }: TerminalPageProps) {
   const copy = COPY[locale];
   const { notify } = useNotification();
   const [initialWorkspace] = useState(() => createInitialTerminalWorkspace(copy.terminal));
@@ -3265,6 +3275,7 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
               fontSize={fontSize}
               x11ServerAddress={x11ServerAddress}
               linuxXauthPath={linuxXauthPath}
+              sshKeepalive={sshKeepalive}
               resolveJumpHosts={resolveJumpHosts}
               onStateChange={updateSessionState}
             />

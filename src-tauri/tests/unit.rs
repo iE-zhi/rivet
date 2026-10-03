@@ -25,6 +25,8 @@ mod credential_store_tests;
 mod external_links_tests;
 #[path = "unit/ssh_advanced.rs"]
 mod ssh_advanced_tests;
+#[path = "unit/ssh_keepalive.rs"]
+mod ssh_keepalive_tests;
 #[path = "unit/sync_secrets.rs"]
 mod sync_secrets_tests;
 #[path = "unit/sync.rs"]

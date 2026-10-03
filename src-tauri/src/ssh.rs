@@ -73,6 +73,9 @@ pub struct SshConnectConfig {
     /// 随会话启停的非敏感端口转发规则，最多 32 条。
     #[serde(default)]
     pub forwards: Vec<ForwardRule>,
+    /// 本次会话及全部跳板的保活参数；缺省为 30 秒和 3 次。
+    #[serde(default)]
+    pub keepalive: ssh_config::SshKeepaliveConfig,
     /// X11 转发连接的本机 X Server TCP 地址；仅在启用 X11 时使用。
     pub x11_server_address: Option<String>,
     /// Linux 本机 xauth 可执行文件路径；仅在启用 X11 时使用。
@@ -243,10 +246,39 @@ struct ClientHandler {
     session_id: String,
     /// 精确匹配的远程监听规则、有界队列和共享配额。
     remote: RemoteForwardAcceptor,
+    /// 任一跳保活超时通知终端 worker；仅保存当前会话的首个失败。
+    keepalive_failure: watch::Sender<Option<String>>,
 }
 
 impl client::Handler for ClientHandler {
     type Error = ClientHandlerError;
+
+    /// 保活超时通知会话清理路径；正常关闭不产生错误，其他协议错误向上返回。
+    async fn disconnected(
+        &mut self,
+        reason: client::DisconnectReason<Self::Error>,
+    ) -> Result<(), Self::Error> {
+        match reason {
+            client::DisconnectReason::Error(error) => {
+                if matches!(
+                    &error,
+                    ClientHandlerError::Ssh(russh::Error::KeepaliveTimeout)
+                ) {
+                    // 原子保留各跳中首个保活超时；不会覆盖已有诊断。
+                    self.keepalive_failure.send_if_modified(|failure| {
+                        if failure.is_some() {
+                            return false;
+                        }
+                        *failure =
+                            Some(format!("SSH Keepalive 超时（{}:{}）", self.host, self.port));
+                        true
+                    });
+                }
+                Err(error)
+            }
+            client::DisconnectReason::ReceivedDisconnect(_) => Ok(()),
+        }
+    }
 
     /// 校验服务端主机密钥；未知主机首次写入 known_hosts，已记录主机发生变更时拒绝连接。
     async fn check_server_key(
@@ -412,6 +444,8 @@ async fn establish_session(
     };
 
     let (remote_sender, remote_receiver) = mpsc::channel(MAX_FORWARD_CONNECTIONS);
+    // 同一会话各跳共用首个超时通知，worker 随后统一回收转发、PTY 和连接链。
+    let (keepalive_failure, mut keepalive_errors) = watch::channel(None);
     let forward_permits = Arc::new(Semaphore::new(MAX_FORWARD_CONNECTIONS));
     let mut chain = ConnectionChain {
         handles: Vec::new(),
@@ -437,6 +471,7 @@ async fn establish_session(
             port: hop.port,
             app: app.clone(),
             session_id: session_id.clone(),
+            keepalive_failure: keepalive_failure.clone(),
             x11: if is_target { x11_config.clone() } else { None },
             remote: RemoteForwardAcceptor {
                 rules: if is_target {
@@ -455,7 +490,7 @@ async fn establish_session(
         };
         // 各跳使用独立 SSH 握手及主机密钥检查，内层流只能经上一跳的 direct-tcpip 通道。
         let connection = async {
-            let client_config = Arc::new(client::Config::default());
+            let client_config = Arc::new(config.keepalive.client_config()?);
             if let Some(previous) = chain.handles.last() {
                 let channel = previous
                     .channel_open_direct_tcpip(&hop.host, u32::from(hop.port), "127.0.0.1", 0)
@@ -522,6 +557,8 @@ async fn establish_session(
 
     let sessions = Arc::clone(&service.sessions);
     tauri::async_runtime::spawn(async move {
+        // worker 拥有发送端守卫，正常 transport 关闭不会被当作保活失败。
+        let _keepalive_failure_guard = keepalive_failure;
         let mut cancellation = cancellation;
         let mut sftp_sender = None;
         let context = SshWorkerContext {
@@ -533,6 +570,12 @@ async fn establish_session(
         let result = tokio::select! {
             biased;
             _ = wait_for_cancellation(&mut cancellation) => Ok(None),
+            result = keepalive_errors.changed() => {
+                match result {
+                    Ok(()) => Err(keepalive_errors.borrow().clone().unwrap_or_else(|| "SSH Keepalive 连接已关闭".into())),
+                    Err(_) => Err("SSH Keepalive 连接已关闭".into()),
+                }
+            },
             result = run_session_worker(context, &session, &mut channel, command_receiver, &mut forwarding, &mut sftp_sender) => result,
         };
         forwarding.shutdown().await;
@@ -929,6 +972,7 @@ async fn run_session_worker(
 
 /// 校验所有外部连接参数，避免无效地址和异常尺寸进入网络层。
 fn validate_connect_config(config: &SshConnectConfig) -> Result<(), String> {
+    config.keepalive.validate()?;
     if config.session_id.trim().is_empty() || config.session_id.len() > MAX_SESSION_ID_BYTES {
         return Err("SSH 会话标识无效".to_string());
     }

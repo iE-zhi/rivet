@@ -13,6 +13,7 @@ import { deserializeNotificationSettings, isNotificationSettings, NOTIFICATION_S
 import { deserializeNavigationSettings, isNavigationSettings, NAVIGATION_SETTINGS_STORAGE_KEY, serializeNavigationSettings, type NavigationSettings } from "./preferences/navigationSettings";
 import { DEFAULT_LINUX_XAUTH_PATH, deserializeX11ServerAddress, deserializeXauthPath, LINUX_XAUTH_PATH_STORAGE_KEY, X11_SERVER_ADDRESS_STORAGE_KEY } from "./preferences/sshSettings";
 import { readTerminalActivityBarScrollbarHidden, TERMINAL_ACTIVITY_BAR_SCROLLBAR_HIDDEN_STORAGE_KEY } from "./preferences/terminalSettings";
+import { readSshKeepaliveSettings, SSH_KEEPALIVE_STORAGE_KEY, serializeSshKeepaliveSettings } from "./preferences/sshKeepalive";
 
 const TerminalPage = lazy(() => import("./pages/TerminalPage"));
 
@@ -215,6 +216,8 @@ export default function App() {
   const [navigationSettings, setNavigationSettings] = useState<NavigationSettings>(readNavigationSettingsPreference);
   /** SSH X11 转发连接本机 X Server 时使用的地址。 */
   const [x11ServerAddress, setX11ServerAddress] = useState(readX11ServerAddressPreference);
+  /** 应用级 SSH 保活参数；仅后续连接及重连读取更新值。 */
+  const [sshKeepalive, setSshKeepalive] = useState(readSshKeepaliveSettings);
   /** Linux 本机 xauth 可执行文件路径；仅保存在当前设备。 */
   const [linuxXauthPath, setLinuxXauthPath] = useState(readLinuxXauthPathPreference);
   /** 终端顶部活动栏默认隐藏自绘横向滚动条，但仍保留滚轮和触控板滚动。 */
@@ -325,6 +328,11 @@ export default function App() {
     persistPreference(SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings(serialRxSettings));
   }, [serialRxSettings]);
 
+  /** 合法保活参数参与偏好持久化、同步及本地备份。 */
+  useEffect(() => {
+    persistPreference(SSH_KEEPALIVE_STORAGE_KEY, serializeSshKeepaliveSettings(sshKeepalive));
+  }, [sshKeepalive]);
+
   /** 三类通知开关独立持久化；关闭只抑制弹窗，不影响业务流程和终端日志。 */
   useEffect(() => {
     persistPreference(NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings(notificationSettings));
@@ -363,6 +371,7 @@ export default function App() {
 
   /** 同步或恢复配置后原地刷新持久化 React 状态，保留当前页面与活动会话。 */
   useEffect(() => {
+    /** 同步或恢复后重新读取偏好，刷新界面及后续连接配置。 */
     const handleDocumentApplied = () => {
       setLocale(readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.locale, isLocale, "zh"));
       setTheme(readStoredPreference(APP_PREFERENCE_STORAGE_KEYS.theme, isThemeMode, "system"));
@@ -371,6 +380,7 @@ export default function App() {
       setSerialDefaults(readSerialDefaultsPreference());
       setUseSerialDefaults(readSerialDefaultsEnabledPreference());
       setSerialRxSettings(readSerialRxSettingsPreference());
+      setSshKeepalive(readSshKeepaliveSettings());
       setNotificationSettings(readNotificationSettingsPreference());
       setNavigationSettings(readNavigationSettingsPreference());
       setTerminalActivityBarScrollbarHidden(readTerminalActivityBarScrollbarHidden());
@@ -582,12 +592,12 @@ export default function App() {
             {terminalMounted && (
               <div className="app-view terminal-view" hidden={page !== "terminal"}>
                 <Suspense fallback={null}>
-                  <TerminalPage locale={locale} themeKey={resolvedTheme} pageActive={page === "terminal"} fontSize={Number(fontSize)} hideActivityBarScrollbar={terminalActivityBarScrollbarHidden} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} onRequestActivate={activateTerminalPage} titlebarHost={terminalTitlebarHost} />
+                  <TerminalPage locale={locale} themeKey={resolvedTheme} pageActive={page === "terminal"} fontSize={Number(fontSize)} hideActivityBarScrollbar={terminalActivityBarScrollbarHidden} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} sshKeepalive={sshKeepalive} onRequestActivate={activateTerminalPage} titlebarHost={terminalTitlebarHost} />
                 </Suspense>
               </div>
             )}
             <div className="app-view settings-view" hidden={page !== "settings"}>
-              <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} fontSize={fontSize} onFontSizeChange={setFontSize} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} hideActivityBarScrollbar={terminalActivityBarScrollbarHidden} onHideActivityBarScrollbarChange={setTerminalActivityBarScrollbarHidden} sync={sync} />
+              <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} fontSize={fontSize} onFontSizeChange={setFontSize} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} sshKeepalive={sshKeepalive} onSshKeepaliveChange={setSshKeepalive} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} hideActivityBarScrollbar={terminalActivityBarScrollbarHidden} onHideActivityBarScrollbarChange={setTerminalActivityBarScrollbarHidden} sync={sync} />
             </div>
           </NotificationProvider>
         </div>

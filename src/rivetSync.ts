@@ -3,6 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { deserializeNotificationSettings, isNotificationSettings, NOTIFICATION_SETTINGS_STORAGE_KEY, serializeNotificationSettings, type NotificationSettings } from "./preferences/notificationSettings";
 import { deserializeNavigationSettings, isNavigationSettings, NAVIGATION_SETTINGS_STORAGE_KEY, serializeNavigationSettings, type NavigationSettings } from "./preferences/navigationSettings";
 import { TERMINAL_ACTIVITY_BAR_SCROLLBAR_HIDDEN_STORAGE_KEY } from "./preferences/terminalSettings";
+import { DEFAULT_SSH_KEEPALIVE_SETTINGS, deserializeSshKeepaliveSettings, isSshKeepaliveSettings, SSH_KEEPALIVE_STORAGE_KEY, serializeSshKeepaliveSettings, type SshKeepaliveSettings } from "./preferences/sshKeepalive";
 import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
 import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
 import { deserializeSerialQuickCommands, isSerialQuickCommandGroups, SERIAL_QUICK_COMMANDS_STORAGE_KEY, serializeSerialQuickCommands, type SerialQuickCommandGroup } from "./pages/serialQuickCommands";
@@ -83,6 +84,8 @@ interface RivetSyncDocument {
     font: "builtin" | "system";
     fontSize: "12" | "14" | "16" | "18";
     terminalActivityBarScrollbarHidden: boolean;
+    /** 全部后续 SSH 连接采用的保活参数，不包含凭据。 */
+    sshKeepalive: SshKeepaliveSettings;
     serialDefaults: SerialDefaults;
     useSerialDefaults: boolean;
     serialRxSettings: SerialRxSettings;
@@ -346,6 +349,7 @@ function createSyncDocument(): RivetSyncDocument {
       font: readFont(),
       fontSize: readFontSize(),
       terminalActivityBarScrollbarHidden: readTerminalActivityBarScrollbarHidden(),
+      sshKeepalive: deserializeSshKeepaliveSettings(readStorage(SSH_KEEPALIVE_STORAGE_KEY)),
       serialDefaults: deserializeSerialDefaults(readStorage(SERIAL_DEFAULTS_STORAGE_KEY)),
       useSerialDefaults: deserializeSerialDefaultsEnabled(readStorage(SERIAL_DEFAULTS_ENABLED_STORAGE_KEY)),
       serialRxSettings: deserializeSerialRxSettings(readStorage(SERIAL_RX_SETTINGS_STORAGE_KEY)),
@@ -375,6 +379,7 @@ function canonicalizeSyncDocument(document: RivetSyncDocument): RivetSyncDocumen
   };
 }
 
+/** 创建默认空文档，用于判断初始状态及备份中未选择的数据分组。 */
 function createPristineSyncDocument(): RivetSyncDocument {
   return {
     version: 1,
@@ -384,6 +389,7 @@ function createPristineSyncDocument(): RivetSyncDocument {
       font: "builtin",
       fontSize: "14",
       terminalActivityBarScrollbarHidden: true,
+      sshKeepalive: { ...DEFAULT_SSH_KEEPALIVE_SETTINGS },
       serialDefaults: deserializeSerialDefaults(null),
       useSerialDefaults: deserializeSerialDefaultsEnabled(null),
       serialRxSettings: deserializeSerialRxSettings(null),
@@ -452,6 +458,8 @@ function parseSyncDocument(content: string): RivetSyncDocument {
     ? true
     : settings.terminalActivityBarScrollbarHidden;
   const serialDefaults = settings.serialDefaults;
+  // 旧同步文档缺省保活时启用默认值；显式非法字段拒绝整次应用。
+  const sshKeepalive = settings.sshKeepalive === undefined ? { ...DEFAULT_SSH_KEEPALIVE_SETTINGS } : settings.sshKeepalive;
   const serialRxSettings = settings.serialRxSettings;
   const notificationSettings = settings.notificationSettings;
   const syncNotifications = settings.syncNotifications === undefined
@@ -470,6 +478,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
     (settings.font !== "builtin" && settings.font !== "system") ||
     (fontSize !== "12" && fontSize !== "14" && fontSize !== "16" && fontSize !== "18") ||
     typeof terminalActivityBarScrollbarHidden !== "boolean" ||
+    !isSshKeepaliveSettings(sshKeepalive) ||
     typeof settings.useSerialDefaults !== "boolean" ||
     !isSerialDefaults(serialDefaults) ||
     !isSerialRxSettings(serialRxSettings) ||
@@ -491,6 +500,7 @@ function parseSyncDocument(content: string): RivetSyncDocument {
       font: settings.font,
       fontSize,
       terminalActivityBarScrollbarHidden,
+      sshKeepalive: { ...sshKeepalive },
       serialDefaults: { ...serialDefaults },
       useSerialDefaults: settings.useSerialDefaults,
       serialRxSettings: { ...serialRxSettings },
@@ -526,6 +536,7 @@ function applySyncDocument(document: RivetSyncDocument, keyPaths: Record<string,
     [APP_PREFERENCE_STORAGE_KEYS.font, document.settings.font],
     [APP_PREFERENCE_STORAGE_KEYS.fontSize, document.settings.fontSize],
     [TERMINAL_ACTIVITY_BAR_SCROLLBAR_HIDDEN_STORAGE_KEY, document.settings.terminalActivityBarScrollbarHidden ? "true" : "false"],
+    [SSH_KEEPALIVE_STORAGE_KEY, serializeSshKeepaliveSettings(document.settings.sshKeepalive)],
     [SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults(document.settings.serialDefaults)],
     [SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, document.settings.useSerialDefaults ? "true" : "false"],
     [SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings(document.settings.serialRxSettings)],

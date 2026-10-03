@@ -2,6 +2,58 @@
 
 use serde::Deserialize;
 use std::collections::HashSet;
+use std::time::Duration;
+
+/// SSH 无服务端数据时的默认探测间隔，单位秒。
+const DEFAULT_KEEPALIVE_INTERVAL_SECONDS: u64 = 30;
+/// 默认允许连续无响应的探测次数。
+const DEFAULT_KEEPALIVE_MAX_FAILURES: usize = 3;
+/// 保活间隔最大值，单位秒；最小值为 1 秒。
+const MAX_KEEPALIVE_INTERVAL_SECONDS: u64 = 3600;
+/// 连续无响应探测次数最大值；最小值为 1 次。
+const MAX_KEEPALIVE_FAILURES: usize = 100;
+
+/// 连接阶段的 SSH 协议保活配置；各跳独立计时，由 russh 拥有计数和定时器。
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SshKeepaliveConfig {
+    /// 空闲探测间隔，1..=3600 秒。
+    pub interval_seconds: u64,
+    /// 允许连续无响应的探测次数，1..=100；服务端数据重置计数。
+    pub max_failures: usize,
+}
+
+impl Default for SshKeepaliveConfig {
+    /// 缺省配置启用每 30 秒探测，连续无响应上限为 3 次。
+    fn default() -> Self {
+        Self {
+            interval_seconds: DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
+            max_failures: DEFAULT_KEEPALIVE_MAX_FAILURES,
+        }
+    }
+}
+
+impl SshKeepaliveConfig {
+    /// 拒绝零值、过高探测频率及无界失败次数；非法配置不得进入网络层。
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if !(1..=MAX_KEEPALIVE_INTERVAL_SECONDS).contains(&self.interval_seconds)
+            || !(1..=MAX_KEEPALIVE_FAILURES).contains(&self.max_failures)
+        {
+            return Err("SSH Keepalive 间隔范围为 1..3600 秒，失败次数范围为 1..100".into());
+        }
+        Ok(())
+    }
+
+    /// 创建已校验的协议配置；超时自动释放 transport，不向 PTY 注入字节。
+    pub(crate) fn client_config(&self) -> Result<russh::client::Config, String> {
+        self.validate()?;
+        Ok(russh::client::Config {
+            keepalive_interval: Some(Duration::from_secs(self.interval_seconds)),
+            keepalive_max: self.max_failures,
+            ..Default::default()
+        })
+    }
+}
 
 /// 单个连接最多启用 32 条转发规则。
 pub(crate) const MAX_FORWARD_RULES: usize = 32;
