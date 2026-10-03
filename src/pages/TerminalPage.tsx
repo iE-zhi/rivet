@@ -50,6 +50,7 @@ import SshAuthPrompt, { type SshAuthRequest } from "./SshAuthPrompt";
 import { areSshForwardRules, isSshHost, resolveSshJumpChain, type SshForwardRule } from "./sshAdvanced";
 import SftpPanel from "./SftpPanel";
 import TerminalQuickCommandPanel from "./TerminalQuickCommandPanel";
+import { terminalCommandHistoryMenuLayout, type TerminalHistoryMenuLayout } from "./terminalHistoryLayout";
 
 interface TerminalPageProps {
   locale: Locale;
@@ -486,14 +487,14 @@ function useXtermScrollbar(terminalRef: React.RefObject<XtermTerminal | null>) {
   return { scrollMetrics, syncScrollMetrics, scrollTo };
 }
 
-interface TerminalCommandHistoryMenuState {
+/** 当前会话的候选列表、选择及定位状态；仅由界面线程更新，不持久化。 */
+interface TerminalCommandHistoryMenuState extends TerminalHistoryMenuLayout {
+  /** 按匹配顺序排列的完整历史命令。 */
   commands: string[];
+  /** 选中的候选索引，-1 表示未选择。 */
   selectedIndex: number;
+  /** 等待再次确认删除的候选索引，null 表示没有待确认项。 */
   deleteConfirmIndex: number | null;
-  left: number;
-  top: number;
-  width: number;
-  anchorHeight: number;
 }
 
 interface TerminalCommandInputStart {
@@ -501,6 +502,7 @@ interface TerminalCommandInputStart {
   column: number;
 }
 
+/** 未显示候选时的初始状态；几何占位值不用于渲染。 */
 const EMPTY_TERMINAL_COMMAND_HISTORY_MENU: TerminalCommandHistoryMenuState = {
   commands: [],
   selectedIndex: -1,
@@ -511,39 +513,8 @@ const EMPTY_TERMINAL_COMMAND_HISTORY_MENU: TerminalCommandHistoryMenuState = {
   anchorHeight: 20,
 };
 
-/** 根据 xterm 光标和候选文本计算候选框位置与宽度，并保证留在当前终端区域内。 */
-function terminalCommandHistoryMenuLayout(
-  terminal: XtermTerminal,
-  container: HTMLDivElement,
-  commands: readonly string[],
-  extraCharacters = 0,
-): Pick<TerminalCommandHistoryMenuState, "left" | "top" | "width" | "anchorHeight"> {
-  const host = container.parentElement;
-  if (!host) return { left: 12, top: 12, width: 180, anchorHeight: 20 };
-
-  const hostRect = host.getBoundingClientRect();
-  const containerRect = container.getBoundingClientRect();
-  const cellWidth = container.clientWidth / Math.max(1, terminal.cols);
-  const cellHeight = container.clientHeight / Math.max(1, terminal.rows);
-  const buffer = terminal.buffer.active;
-  const viewportRow = buffer.baseY + buffer.cursorY - buffer.viewportY;
-  const cursorLeft = containerRect.left - hostRect.left + buffer.cursorX * cellWidth;
-  const cursorRowTop = containerRect.top - hostRect.top + viewportRow * cellHeight;
-  const anchorHeight = Math.max(1, cellHeight);
-
-  const maximumWidth = Math.max(96, host.clientWidth - 24);
-  const minimumWidth = Math.min(180, maximumWidth);
-  const longestLength = commands.reduce((length, command) => Math.max(
-    length,
-    ...command.split(/\r\n|\r|\n/).map((line) => Array.from(line).length),
-  ), 0);
-  const desiredWidth = Math.ceil((longestLength + extraCharacters) * Math.max(cellWidth, 7) + 28);
-  const width = Math.min(maximumWidth, Math.max(minimumWidth, desiredWidth));
-  const left = Math.max(12, Math.min(cursorLeft, Math.max(12, host.clientWidth - width - 12)));
-  const top = Math.max(8, Math.min(cursorRowTop, Math.max(8, host.clientHeight - anchorHeight - 8)));
-
-  return { left, top, width, anchorHeight };
-}
+/** 删除确认提示的预留字符数，仅影响候选框宽度估算。 */
+const HISTORY_DELETE_CONFIRM_CHARACTERS = 32;
 
 /** 终端隐藏 textarea 也关闭系统自动纠正，避免三端输入行为不同。 */
 function configureTerminalTextarea(textarea: HTMLTextAreaElement | undefined): void {
@@ -690,15 +661,26 @@ function useTerminalCommandHistoryInput(
     return true;
   }, [terminalRef]);
 
+  /** 输出、光标移动及滚动后更新网格锚点；光标不可见时关闭候选。 */
   const refreshMenuLayout = useCallback(() => {
     const current = menuRef.current;
     const terminal = terminalRef.current;
     const container = containerRef.current;
     if (current.commands.length === 0 || !terminal || !container) return;
-    const layout = terminalCommandHistoryMenuLayout(terminal, container, current.commands);
-    updateMenu((state) => ({ ...state, ...layout }));
-  }, [containerRef, terminalRef, updateMenu]);
+    const layout = terminalCommandHistoryMenuLayout(
+      terminal,
+      container,
+      current.commands,
+      current.deleteConfirmIndex === null ? 0 : HISTORY_DELETE_CONFIRM_CHARACTERS,
+    );
+    if (!layout) {
+      hideMenu();
+      return;
+    }
+    updateMenu(/** 只替换几何信息，保留候选选择及删除确认。 */ (state) => ({ ...state, ...layout }));
+  }, [containerRef, hideMenu, terminalRef, updateMenu]);
 
+  /** 仅在可靠的 Shell 输入末尾展示匹配命令；网格尚未渲染时关闭候选。 */
   const refreshSuggestions = useCallback(() => {
     if (
       !enabledRef.current
@@ -722,8 +704,12 @@ function useTerminalCommandHistoryInput(
     const container = containerRef.current;
     const layout = terminal && container
       ? terminalCommandHistoryMenuLayout(terminal, container, commands)
-      : { left: 12, top: 12, width: 180, anchorHeight: 20 };
-    updateMenu(() => ({ commands, selectedIndex: -1, deleteConfirmIndex: null, ...layout }));
+      : null;
+    if (!layout) {
+      hideMenu();
+      return;
+    }
+    updateMenu(/** 新匹配列表重置选择及删除确认，并提交网格锚点。 */ () => ({ commands, selectedIndex: -1, deleteConfirmIndex: null, ...layout }));
   }, [containerRef, hideMenu, terminalRef, updateMenu]);
 
   /** 只在 Shell 自己改写输入行时同步；普通回显不得覆盖本地按键跟踪状态。 */
@@ -924,9 +910,7 @@ function useTerminalCommandHistoryInput(
     }
     if (event.type !== "keydown") return true;
 
-    // xterm 6.0 may finalize an active macOS IME composition with a stale end offset when Tab
-    // arrives before compositionupdate's deferred offset update. Hold Tab until compositionend so
-    // xterm first commits the complete preedit text, then send the control byte to the PTY.
+    // 组合输入期间暂存 Tab 和 Backspace 控制字节，待预编辑文本提交后再交给 PTY。
     const compositionPending = compositionActiveRef.current
       || compositionCommitPendingRef.current
       || event.isComposing;
@@ -945,6 +929,7 @@ function useTerminalCommandHistoryInput(
 
     if (!enabledRef.current || !promptActiveRef.current) return true;
 
+    // keyCode 229 表示输入法正在处理按键，此时不改变候选选择。
     if (event.isComposing || compositionActiveRef.current || event.keyCode === 229) {
       hideMenu();
       return true;
@@ -964,7 +949,7 @@ function useTerminalCommandHistoryInput(
         event.preventDefault();
         event.stopPropagation();
         const direction = event.key === "ArrowDown" ? 1 : -1;
-        updateMenu((current) => ({
+        updateMenu(/** 在候选列表中循环移动选择，并取消删除确认。 */ (current) => ({
           ...current,
           selectedIndex: current.selectedIndex < 0
             ? (direction > 0 ? 0 : count - 1)
@@ -977,7 +962,7 @@ function useTerminalCommandHistoryInput(
         event.preventDefault();
         event.stopPropagation();
         suppressCandidateEnterRef.current = true;
-        window.setTimeout(() => {
+        window.setTimeout(/** 下一事件轮次解除 Enter 抑制，避免同一次确认传入 Shell。 */ () => {
           suppressCandidateEnterRef.current = false;
         }, 0);
 
@@ -995,8 +980,12 @@ function useTerminalCommandHistoryInput(
           const container = containerRef.current;
           const layout = terminal && container
             ? terminalCommandHistoryMenuLayout(terminal, container, commands)
-            : { left: 12, top: 12, width: 180, anchorHeight: 20 };
-          updateMenu(() => ({
+            : null;
+          if (!layout) {
+            hideMenu();
+            return false;
+          }
+          updateMenu(/** 删除后选择相邻候选，并清除删除确认。 */ () => ({
             commands,
             selectedIndex: Math.min(deleteIndex, commands.length - 1),
             deleteConfirmIndex: null,
@@ -1014,7 +1003,7 @@ function useTerminalCommandHistoryInput(
             event.preventDefault();
             event.stopPropagation();
             suppressCandidateEnterRef.current = true;
-            window.setTimeout(() => {
+            window.setTimeout(/** 下一事件轮次解除 Enter 抑制，候选接受不执行命令。 */ () => {
               suppressCandidateEnterRef.current = false;
             }, 0);
             return false;
@@ -1034,9 +1023,13 @@ function useTerminalCommandHistoryInput(
         const terminal = terminalRef.current;
         const container = containerRef.current;
         const layout = terminal && container
-          ? terminalCommandHistoryMenuLayout(terminal, container, menuRef.current.commands, 32)
-          : { left: 12, top: 12, width: 360, anchorHeight: 20 };
-        updateMenu((current) => ({
+          ? terminalCommandHistoryMenuLayout(terminal, container, menuRef.current.commands, HISTORY_DELETE_CONFIRM_CHARACTERS)
+          : null;
+        if (!layout) {
+          hideMenu();
+          return false;
+        }
+        updateMenu(/** 显示删除确认并为提示文本预留宽度。 */ (current) => ({
           ...current,
           deleteConfirmIndex: selectedIndex,
           ...layout,
@@ -1051,8 +1044,12 @@ function useTerminalCommandHistoryInput(
           const container = containerRef.current;
           const layout = terminal && container
             ? terminalCommandHistoryMenuLayout(terminal, container, menuRef.current.commands)
-            : { left: 12, top: 12, width: 180, anchorHeight: 20 };
-          updateMenu((current) => ({ ...current, deleteConfirmIndex: null, ...layout }));
+            : null;
+          if (!layout) {
+            hideMenu();
+            return false;
+          }
+          updateMenu(/** 取消删除确认并恢复普通候选宽度。 */ (current) => ({ ...current, deleteConfirmIndex: null, ...layout }));
         } else {
           hideMenu();
         }
@@ -1063,6 +1060,7 @@ function useTerminalCommandHistoryInput(
     const key = event.key.toLowerCase();
     const isNativeHistoryKey = event.key === "ArrowUp" || event.key === "ArrowDown"
       || (event.ctrlKey && !event.metaKey && (key === "p" || key === "n"));
+    // Shell 原生历史编辑需要等待终端回显后恢复本地输入跟踪。
     if (isNativeHistoryKey) {
       shellHistoryNavigationRef.current = true;
       trackingReliableRef.current = false;
@@ -1081,6 +1079,7 @@ function useTerminalCommandHistoryInput(
       shellHistoryNavigationRef.current = false;
     }
 
+    // 保存当前可确认的输入快照，续行与执行状态由 Shell Integration 后续事件确认。
     if (event.key === "Enter") {
       if (shellLineResyncPendingRef.current && !trackingReliableRef.current) {
         resyncInputTrackingFromTerminal();
@@ -1169,6 +1168,7 @@ function useTerminalCommandHistoryInput(
         trackingReliableRef.current = true;
         hideMenu();
       } else if (key === "w") {
+        // 按光标前的空白和单词边界删除；两段循环均以光标回退到 0 为上限。
         while (cursorRef.current > 0 && /\s/.test(inputRef.current[cursorRef.current - 1] ?? "")) {
           inputRef.current.splice(--cursorRef.current, 1);
         }
