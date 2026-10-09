@@ -16,6 +16,7 @@ import type { SshKeepaliveSettings } from "../preferences/sshKeepalive";
 import {
   deserializeRecentConnectionIds,
   deserializeTerminalConnections,
+  isTerminalSessionRetryable,
   pruneRecentConnectionIds,
   serializeRecentConnectionIds,
   serializeTerminalConnections,
@@ -29,6 +30,7 @@ import {
   type SshAuthType,
   type SshConnectionSecrets,
   type TerminalConnectionKind,
+  type TerminalSessionState,
 } from "./terminalConnections";
 import { DEFAULT_SERIAL_DEFAULTS, MAX_SERIAL_BAUD_RATE, SERIAL_DATA_BITS, SERIAL_STOP_BITS, type SerialFlowControl, type SerialParity } from "./serialDefaults";
 import {
@@ -74,8 +76,6 @@ interface TerminalPageProps {
   /** 应用自定义标题栏中用于承载真实会话标签的 DOM 节点。 */
   titlebarHost: HTMLElement | null;
 }
-
-type TerminalSessionState = "connecting" | "connected" | "closed" | "error";
 
 interface SshSession {
   kind: "ssh";
@@ -2434,13 +2434,13 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
     );
   }, []);
 
-  /** 从顶部会话标签触发已关闭 SSH 或串口会话重新连接。 */
-  const retryClosedSession = useCallback((sessionId: string) => {
-    setSessions((current) =>
-      current.map((session) =>
+  /** 重连失败或已关闭的 SSH/串口会话；先标记连接中，阻止重复点击创建并发连接。 */
+  const retrySession = useCallback((sessionId: string) => {
+    setSessions(/** 按最新会话状态决定是否启动重连。 */ (current) =>
+      current.map(/** 只更新指定的可重试会话，并递增连接请求序号。 */ (session) =>
         session.id === sessionId &&
         (session.kind === "ssh" || session.kind === "serial") &&
-        session.state === "closed"
+        isTerminalSessionRetryable(session.state)
           ? { ...session, state: "connecting", reconnectNonce: session.reconnectNonce + 1 }
           : session,
       ),
@@ -3240,14 +3240,14 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
           <header className="terminal-pane-header">
             <span className={`terminal-session-dot state-${session.state}`} />
             <span className="terminal-pane-title">{sessionTitle(session)}</span>
-            {(session.kind === "ssh" || session.kind === "serial") && session.state === "closed" ? (
+            {(session.kind === "ssh" || session.kind === "serial") && isTerminalSessionRetryable(session.state) ? (
               <button
                 type="button"
                 className="terminal-pane-retry"
                 aria-label={copy.retryConnection}
                 title={copy.retryConnection}
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={() => retryClosedSession(session.id)}
+                onClick={/** 重连当前分屏会话。 */ () => retrySession(session.id)}
               >
                 <SvgIcon name="retry" size={12} />
               </button>
@@ -3408,13 +3408,13 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
               {countTerminalPanes(tab.root) === 1 &&
               tabSession &&
               (tabSession.kind === "ssh" || tabSession.kind === "serial") &&
-              tabSession.state === "closed" ? (
+              isTerminalSessionRetryable(tabSession.state) ? (
                 <button
                   type="button"
                   className="terminal-tab-retry"
                   aria-label={copy.retryConnection}
                   title={copy.retryConnection}
-                  onClick={() => retryClosedSession(tabSession.id)}
+                  onClick={/** 重连标签内的唯一会话。 */ () => retrySession(tabSession.id)}
                 >
                   <SvgIcon name="retry" size={12} />
                 </button>

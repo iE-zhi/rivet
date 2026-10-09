@@ -3,8 +3,15 @@ import { areSshForwardRules, copySshForwardRule, type SshForwardRule } from "./s
 
 /** 已保存终端连接的协议类型。 */
 export type TerminalConnectionKind = "ssh" | "serial";
+/** 终端会话的运行时状态；错误或关闭后允许保存的连接重试，不写入连接配置。 */
+export type TerminalSessionState = "connecting" | "connected" | "closed" | "error";
 /** SSH 首因素认证方式；验证码交互在连接时自动协商，秘密不写入此模型。 */
 export type SshAuthType = "password" | "privateKey" | "agent";
+
+/** 判断会话状态是否允许重试；连接中及已连接状态拒绝重复连接。 */
+export function isTerminalSessionRetryable(state: TerminalSessionState): boolean {
+  return state === "closed" || state === "error";
+}
 
 /** 已保存终端连接的公共字段。 */
 interface SavedTerminalConnectionBase {

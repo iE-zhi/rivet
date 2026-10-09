@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   deserializeRecentConnectionIds,
   deserializeTerminalConnections,
+  isTerminalSessionRetryable,
   pruneRecentConnectionIds,
   serializeRecentConnectionIds,
   serializeTerminalConnections,
@@ -11,6 +12,14 @@ import {
   TERMINAL_RECENT_CONNECTIONS_STORAGE_KEY,
   touchRecentConnectionId,
 } from "../src/pages/terminalConnections.ts";
+
+/** 超时等错误与正常关闭均可重试；连接中或已连接时拒绝重复连接。 */
+test("terminal sessions allow retry after errors or closure and reject active connections", () => {
+  assert.equal(isTerminalSessionRetryable("error"), true);
+  assert.equal(isTerminalSessionRetryable("closed"), true);
+  assert.equal(isTerminalSessionRetryable("connecting"), false);
+  assert.equal(isTerminalSessionRetryable("connected"), false);
+});
 
 const LEGACY_SSH_CONNECTION = {
   id: "n305",
