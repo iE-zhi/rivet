@@ -6,6 +6,7 @@ import { NotificationProvider, SvgIcon } from "./components/ui";
 import { APP_PREFERENCE_STORAGE_KEYS, persistSyncedStorage, SYNC_DOCUMENT_APPLIED_EVENT, useRivetSync } from "./rivetSync";
 import SerialPage, { type Locale } from "./pages/SerialPage";
 import SettingsPage, { type FontMode, type FontSizeMode, type ThemeMode } from "./pages/SettingsPage";
+import type { RemoteMarkdownSession, RemoteMarkdownTarget } from "./pages/markdown/model";
 
 import { deserializeSerialDefaults, deserializeSerialDefaultsEnabled, isSerialDefaults, SERIAL_DEFAULTS_ENABLED_STORAGE_KEY, SERIAL_DEFAULTS_STORAGE_KEY, serializeSerialDefaults, type SerialDefaults } from "./pages/serialDefaults";
 import { deserializeSerialRxSettings, isSerialRxSettings, SERIAL_RX_SETTINGS_STORAGE_KEY, serializeSerialRxSettings, type SerialRxSettings } from "./pages/serialRxSettings";
@@ -18,6 +19,8 @@ import { readSshKeepaliveSettings, SSH_KEEPALIVE_STORAGE_KEY, serializeSshKeepal
 const TerminalPage = lazy(() => import("./pages/TerminalPage"));
 /** VNC 页面首次访问时加载，连接与桌面状态由其独立模块持有。 */
 const VncPage = lazy(() => import("./pages/VncPage"));
+/** Markdown 编辑器首次访问时加载，离开导航仍保留文档和草稿。 */
+const MarkdownPage = lazy(() => import("./pages/MarkdownPage"));
 
 /** 应用外壳所需的导航与品牌文案。 */
 const SHELL_COPY = {
@@ -38,7 +41,7 @@ const FONT_MODE_VALUES = ["builtin", "system"] as const;
 const FONT_SIZE_VALUES = ["12", "14", "16", "18"] as const;
 
 /** 应用外壳当前展示的一级页面。 */
-type AppPage = "serial" | "terminal" | "vnc" | "settings";
+type AppPage = "serial" | "terminal" | "vnc" | "markdown" | "settings";
 
 /**
  * 校验浏览器存储中读取的语言值。
@@ -234,6 +237,12 @@ export default function App() {
   const [terminalMounted, setTerminalMounted] = useState(initialPage === "terminal");
   /** VNC 首次访问后保持挂载，切换页面不关闭桌面连接。 */
   const [vncMounted, setVncMounted] = useState(initialPage === "vnc");
+  /** 编辑页首次访问后常驻，切换导航不会丢失未保存内容。 */
+  const [markdownMounted, setMarkdownMounted] = useState(initialPage === "markdown");
+  /** 当前 SFTP 打开请求；每次点击产生新对象，重连后可重新关联已有草稿。 */
+  const [markdownRequest, setMarkdownRequest] = useState<RemoteMarkdownTarget | null>(null);
+  /** 终端页只发布已连接会话身份，供 Markdown 浏览 SFTP，不包含认证数据。 */
+  const [markdownSessions, setMarkdownSessions] = useState<RemoteMarkdownSession[]>([]);
   /** 最大化时取消悬浮留白，让应用内容真正铺满系统工作区。 */
   const [windowMaximized, setWindowMaximized] = useState(false);
   /** 串口页将真实日志工具栏渲染到此标题栏宿主。 */
@@ -242,6 +251,8 @@ export default function App() {
   const [terminalTitlebarHost, setTerminalTitlebarHost] = useState<HTMLDivElement | null>(null);
   /** VNC 标签使用独立标题栏宿主，与终端标签互不共享状态。 */
   const [vncTitlebarHost, setVncTitlebarHost] = useState<HTMLDivElement | null>(null);
+  /** Markdown 活动文档标签渲染到标题栏，编辑区域不再占用一行标签空间。 */
+  const [markdownTitlebarHost, setMarkdownTitlebarHost] = useState<HTMLDivElement | null>(null);
   /** Git 托管同步控制器常驻应用外壳，设置页只负责展示和人工操作。 */
   const sync = useRivetSync();
   /** 当前 locale 对应的一级导航文案。 */
@@ -430,6 +441,20 @@ export default function App() {
     setPage("vnc");
   };
 
+  /** 打开独立 Markdown 导航，保留当前终端与远程连接。 */
+  const navigateToMarkdown = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    setMarkdownMounted(true);
+    setPage("markdown");
+  };
+
+  /** 接收已连接 SFTP 文件目标并切换到 Markdown 页，不新建 SSH 连接。 */
+  const openRemoteMarkdown = useCallback((target: RemoteMarkdownTarget) => {
+    setMarkdownRequest({ ...target });
+    setMarkdownMounted(true);
+    setPage("markdown");
+  }, []);
+
   /** 导航到设置页并阻止浏览器修改 URL hash。 */
   const navigateToSettings = (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
@@ -544,6 +569,7 @@ export default function App() {
         />
         <div className="app-titlebar-drag" onPointerDown={handleTitlebarPointerDown} />
         <div ref={setVncTitlebarHost} className="app-titlebar-host app-titlebar-terminal-host" hidden={page !== "vnc"} />
+        <div ref={setMarkdownTitlebarHost} className="app-titlebar-host app-titlebar-markdown-host" hidden={page !== "markdown"} />
         <div className="app-window-controls">
           <button type="button" className="app-window-button" aria-label={copy.minimize} title={copy.minimize} onClick={() => runWindowAction("minimize")}>
             <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5h10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
@@ -572,6 +598,8 @@ export default function App() {
               >
                 <SvgIcon name="serial" size={24} className="serial-icon" />
               </a>
+            ) : item.id === "markdown" ? (
+              <a key={item.id} className={`rail-link${page === "markdown" ? " active" : ""}`} href="#markdown-page" onClick={navigateToMarkdown} aria-current={page === "markdown" ? "page" : undefined} aria-label="Markdown" title="Markdown"><SvgIcon name="markdown" size={23} /></a>
             ) : item.id === "vnc" ? (
               <a key={item.id} className={`rail-link${page === "vnc" ? " active" : ""}`} href="#vnc-page" onClick={navigateToVnc} aria-current={page === "vnc" ? "page" : undefined} aria-label="VNC" title="VNC">
                 <SvgIcon name="vnc" size={23} />
@@ -610,11 +638,12 @@ export default function App() {
             {terminalMounted && (
               <div className="app-view terminal-view" hidden={page !== "terminal"}>
                 <Suspense fallback={null}>
-                  <TerminalPage locale={locale} themeKey={resolvedTheme} pageActive={page === "terminal"} fontSize={Number(fontSize)} hideActivityBarScrollbar={terminalActivityBarScrollbarHidden} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} sshKeepalive={sshKeepalive} onRequestActivate={activateTerminalPage} titlebarHost={terminalTitlebarHost} />
+                  <TerminalPage locale={locale} themeKey={resolvedTheme} pageActive={page === "terminal"} fontSize={Number(fontSize)} hideActivityBarScrollbar={terminalActivityBarScrollbarHidden} x11ServerAddress={x11ServerAddress} linuxXauthPath={linuxXauthPath} sshKeepalive={sshKeepalive} onRequestActivate={activateTerminalPage} titlebarHost={terminalTitlebarHost} onOpenMarkdown={openRemoteMarkdown} onSshSessionsChange={setMarkdownSessions} />
                 </Suspense>
               </div>
             )}
             {vncMounted && <div className="app-view vnc-view" hidden={page !== "vnc"}><Suspense fallback={null}><VncPage locale={locale} pageActive={page === "vnc"} titlebarHost={vncTitlebarHost} /></Suspense></div>}
+            {markdownMounted && <div className="app-view markdown-view" hidden={page !== "markdown"}><Suspense fallback={null}><MarkdownPage locale={locale} pageActive={page === "markdown"} remoteRequest={markdownRequest} remoteSessions={markdownSessions} titlebarHost={markdownTitlebarHost} onRequestTerminal={activateTerminalPage} /></Suspense></div>}
             <div className="app-view settings-view" hidden={page !== "settings"}>
               <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} fontSize={fontSize} onFontSizeChange={setFontSize} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} sshKeepalive={sshKeepalive} onSshKeepaliveChange={setSshKeepalive} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} hideActivityBarScrollbar={terminalActivityBarScrollbarHidden} onHideActivityBarScrollbarChange={setTerminalActivityBarScrollbarHidden} sync={sync} />
             </div>

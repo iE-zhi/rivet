@@ -2,6 +2,15 @@
 
 桌面分发中包含以下锁定运行时依赖：
 
+- MIT：`mermaid@12.2.0`，附 `licenses/MIT-Mermaid.txt`；[源码](https://github.com/mermaid-js/mermaid)。
+- Apache-2.0：`dompurify@3.4.17`，附 `licenses/Apache-2.0-DOMPurify.txt`；[源码](https://github.com/cure53/DOMPurify)。
+- MIT：`khroma@2.1.0`，附 `licenses/MIT-Khroma.txt`；以包内许可文本为准。
+- EPL-2.0：`elkjs@0.9.3`，附 `licenses/EPL-2.0-elkjs.txt`；[对应版本源码](https://github.com/kieler/elkjs/tree/v0.9.3)，库未修改。
+- Unlicense：`robust-predicates@3.0.3`，附 `licenses/Unlicense-robust-predicates.txt`；[源码](https://github.com/mourner/robust-predicates)。
+- MIT：`@milkdown/crepe@7.23.0`、`@milkdown/kit@7.23.0`；随安装包附带 `licenses/MIT-Milkdown.txt`。对应源码：[Milkdown/milkdown](https://github.com/Milkdown/milkdown)。
+- MIT：`@codemirror/theme-one-dark@6.1.3`；随安装包附带 `licenses/MIT-CodeMirror.txt`。对应源码：[codemirror/theme-one-dark](https://github.com/codemirror/theme-one-dark)。
+- MIT：`@floating-ui/dom@1.8.0`；随安装包附带 `licenses/MIT-Floating-UI.txt`。对应源码：[floating-ui/floating-ui](https://github.com/floating-ui/floating-ui)。
+
 - MIT：`vnc-rs@0.6.0`；随安装包附带 `licenses/MIT-vnc-rs.txt`。对应源码：[HsuJv/vnc-rs](https://github.com/HsuJv/vnc-rs)。
 - Unlicense：`async_io_stream@0.3.3`（VNC 间接依赖）。对应源码：[crates.io async_io_stream 0.3.3](https://crates.io/crates/async_io_stream/0.3.3)。
 

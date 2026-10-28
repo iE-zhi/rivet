@@ -192,71 +192,6 @@
   box-shadow: 0 16px 42px rgba(0, 0, 0, .19), 0 2px 8px rgba(0, 0, 0, .08);
 }
 
-.terminal-close-confirm-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 360;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: color-mix(in srgb, var(--r-bg) 38%, transparent);
-  backdrop-filter: blur(1px);
-}
-
-.terminal-close-confirm-dialog {
-  display: grid;
-  width: min(390px, 100%);
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 12px 10px;
-  padding: 17px;
-  border: 1px solid var(--r-border);
-  border-radius: 10px;
-  background: var(--r-surface);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, .2), 0 3px 10px rgba(0, 0, 0, .08);
-}
-
-.terminal-close-confirm-icon {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--r-danger) 45%, var(--r-border));
-  border-radius: 50%;
-  color: var(--r-danger);
-}
-
-.terminal-close-confirm-content {
-  min-width: 0;
-}
-
-.terminal-close-confirm-content strong {
-  color: var(--r-text);
-  font-size: var(--r-font-size-base);
-  font-weight: 600;
-}
-
-.terminal-close-confirm-content p {
-  margin: 7px 0 0;
-  color: var(--r-subtle);
-  font-size: var(--r-font-size-base);
-  line-height: 1.55;
-}
-
-.terminal-close-confirm-actions {
-  display: flex;
-  grid-column: 1 / -1;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 3px;
-}
-
-.terminal-close-confirm-actions .rivet-button {
-  height: 30px;
-  padding: 0 11px;
-  border-radius: 6px;
-  font-size: var(--r-font-size-base);
-}
-
 .terminal-session-picker-top {
   top: 42px;
   right: 8px;
@@ -944,7 +879,6 @@
 
 .app-shell[data-theme="light"] .terminal-session-picker,
 .app-shell[data-theme="light"] .terminal-picker-scroll,
-.app-shell[data-theme="light"] .terminal-close-confirm-dialog,
 .app-shell[data-theme="light"] .terminal-connection-panel,
 .app-shell[data-theme="light"] .terminal-connection-panel .rivet-select-menu {
   background: var(--r-bg);

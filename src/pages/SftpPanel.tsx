@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Input, PopupMenu, PopupMenuItem, SvgIcon, VerticalScrollbar, useNotification } from "../components/ui";
 import type { Locale } from "./SerialPage";
+import { isMarkdownPath, type RemoteMarkdownTarget } from "./markdown/model";
 import "./sftpPanel.css";
 
 type SftpEntryKind = "directory" | "file" | "symlink" | "other";
@@ -39,11 +40,20 @@ interface SftpTransferTask extends SftpTransferProgressEvent {
 }
 
 interface SftpPanelProps {
+  /** 面板是否可见，关闭不结束 SSH 连接。 */
   open: boolean;
+  /** 当前已连接 SSH 会话；null 时禁止文件操作。 */
   sessionId: string | null;
+  /** 服务器的展示名称，不参与鉴权。 */
   sessionName: string;
+  /** 与应用一致的中英文语言。 */
   locale: Locale;
+  /** 仅收起浏览面板，不清理服务器会话。 */
   onClose: () => void;
+  /** SSH 连接库的稳定标识，用于区分不同服务器的同路径文件。 */
+  connectionId: string;
+  /** 将已连接服务器上的普通 Markdown 文件交给独立编辑页。 */
+  onOpenMarkdown: (target: RemoteMarkdownTarget) => void;
 }
 
 const COPY = {
@@ -144,7 +154,7 @@ function transferPercent(task: SftpTransferTask): number {
 }
 
 /** SFTP 文件浏览面板；所有操作复用当前 SSH 会话的独立 SFTP subsystem。 */
-export default function SftpPanel({ open, sessionId, sessionName, locale, onClose }: SftpPanelProps) {
+export default function SftpPanel({ open, sessionId, sessionName, locale, onClose, connectionId, onOpenMarkdown }: SftpPanelProps) {
   const copy = COPY[locale];
   const { notify } = useNotification();
   const [path, setPath] = useState(".");
@@ -163,6 +173,14 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
   const requestSequenceRef = useRef(0);
   /** 仅在当前应用进程内按 SSH session 记忆最近访问目录；重连后的新 session 不继承。 */
   const lastPathBySessionRef = useRef(new Map<string, string>());
+
+  /** 打开当前会话里的普通 Markdown；不把符号链接作为可覆盖的文件交给编辑器。 */
+  const openMarkdown = (entry: SftpEntry) => {
+    if (!sessionId || entry.kind !== "file" || !isMarkdownPath(entry.path)) return;
+    setMenuPath(null);
+    onOpenMarkdown({ sessionId, connectionId, sessionName, path: entry.path });
+    onClose();
+  };
 
   /** 新建一个等待中的传输任务。 */
   const addTransfer = useCallback((
@@ -617,8 +635,9 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
                       type="button"
                       className={`sftp-file-main ${entry.kind === "directory" ? "is-directory" : ""}`}
                       disabled={busyPath !== null}
-                      onClick={() => {
+                      onClick={/** 目录继续浏览；普通 Markdown 文件切换到独立编辑页。 */ () => {
                         if (entry.kind === "directory") void loadDirectory(entry.path);
+                        else openMarkdown(entry);
                       }}
                     >
                       <SvgIcon name={entry.kind === "directory" ? "folder" : "file"} size={15} />
@@ -645,6 +664,7 @@ export default function SftpPanel({ open, sessionId, sessionName, locale, onClos
                         ariaLabel={locale === "zh" ? "文件操作" : "File actions"}
                         className="sftp-row-popup-menu"
                       >
+                        {entry.kind === "file" && isMarkdownPath(entry.path) && <PopupMenuItem onClick={/** 复用当前会话，不下载到临时本地副本。 */ () => openMarkdown(entry)}><SvgIcon name="markdown" size={13} />{locale === "zh" ? "打开 Markdown" : "Open Markdown"}</PopupMenuItem>}
                         {entry.kind !== "directory" && (
                           <PopupMenuItem onClick={() => void downloadFile(entry)}>
                             <SvgIcon name="download" size={13} />

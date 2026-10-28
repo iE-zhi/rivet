@@ -9,7 +9,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
-import { Button, Checkbox, GroupManager, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
+import { Button, Checkbox, ConfirmDialog, GroupManager, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, Select, SvgIcon, VerticalScrollbar, VerticalScrollbarTrack, useNotification } from "../components/ui";
 import { MAX_TERMINAL_COMMAND_LENGTH, TERMINAL_COMMAND_HISTORY_CHANGED_EVENT, deleteTerminalCommandHistory, findTerminalCommandHistoryMatches, readTerminalCommandHistory, readTerminalCommandHistoryEnabled, recordTerminalCommand, terminalCommandHistoryIndex } from "../preferences/terminalHistory";
 import { readWindowsPowerShellMode } from "../preferences/terminalSettings";
 import type { SshKeepaliveSettings } from "../preferences/sshKeepalive";
@@ -53,11 +53,14 @@ import SshAuthPrompt, { type SshAuthRequest } from "./SshAuthPrompt";
 import { areSshForwardRules, isSshHost, resolveSshJumpChain, type SshForwardRule } from "./sshAdvanced";
 import SftpPanel from "./SftpPanel";
 import TerminalQuickCommandPanel from "./TerminalQuickCommandPanel";
+import type { RemoteMarkdownSession, RemoteMarkdownTarget } from "./markdown/model";
 import { terminalCommandHistoryMenuLayout, type TerminalHistoryMenuLayout } from "./terminalHistoryLayout";
 
 /** 终端页面的应用级偏好及窗口宿主接口；活动会话保留自己的连接资源。 */
 interface TerminalPageProps {
+  /** 与应用导航一致的中英文语言。 */
   locale: Locale;
+  /** 已解析系统偏好的实际主题，用于活动终端重绘。 */
   themeKey: "light" | "dark";
   /** 终端页面当前是否可见；重新显示时用于刷新 xterm 的主题与尺寸。 */
   pageActive: boolean;
@@ -75,6 +78,10 @@ interface TerminalPageProps {
   onRequestActivate: () => void;
   /** 应用自定义标题栏中用于承载真实会话标签的 DOM 节点。 */
   titlebarHost: HTMLElement | null;
+  /** 在独立 Markdown 导航打开当前 SSH 会话中的文件。 */
+  onOpenMarkdown: (target: RemoteMarkdownTarget) => void;
+  /** 发布已连接 SSH 的身份快照；连接关闭时从列表移除，不传递任何凭据。 */
+  onSshSessionsChange: (sessions: RemoteMarkdownSession[]) => void;
 }
 
 interface SshSession {
@@ -2242,13 +2249,17 @@ function SerialSessionTerminal({ session, active, visible, themeKey, locale, fon
 }
 
 /** Rivet 终端页面：Tab 之内使用递归 pane 树管理本地、SSH 与串口终端。 */
-export default function TerminalPage({ locale, themeKey, pageActive, fontSize, hideActivityBarScrollbar, x11ServerAddress, linuxXauthPath, sshKeepalive, onRequestActivate, titlebarHost }: TerminalPageProps) {
+export default function TerminalPage({ locale, themeKey, pageActive, fontSize, hideActivityBarScrollbar, x11ServerAddress, linuxXauthPath, sshKeepalive, onRequestActivate, titlebarHost, onOpenMarkdown, onSshSessionsChange }: TerminalPageProps) {
   const copy = COPY[locale];
   const { notify } = useNotification();
   const [initialWorkspace] = useState(() => createInitialTerminalWorkspace(copy.terminal));
   const [connections, setConnections] = useState<SavedTerminalConnection[]>(readConnections);
   const [recentConnectionIds, setRecentConnectionIds] = useState<string[]>(readRecentConnectionIds);
   const [sessions, setSessions] = useState<TerminalSession[]>(initialWorkspace.sessions);
+  /** 只共享活动 SSH 的标识和展示名，终端继续持有连接资源与认证秘密。 */
+  useEffect(() => {
+    onSshSessionsChange(sessions.filter(/** 尚未连接、本地或串口会话均不能浏览 SFTP。 */ (session): session is SshSession => session.kind === "ssh" && session.state === "connected").map(/** 不复制 connection 中的认证选项及 session.secrets。 */ (session) => ({ sessionId: session.id, connectionId: session.connection.id, sessionName: session.connection.name })));
+  }, [sessions, onSshSessionsChange]);
   const [tabs, setTabs] = useState<TerminalTab[]>(initialWorkspace.tabs);
   const [activeTabId, setActiveTabId] = useState<string | null>(initialWorkspace.activeTabId);
   const [picker, setPicker] = useState<PickerState | null>(null);
@@ -3984,6 +3995,8 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
               : null
           }
           sessionName={activeSession?.kind === "ssh" ? activeSession.connection.name : ""}
+          connectionId={activeSession?.kind === "ssh" ? activeSession.connection.id : ""}
+          onOpenMarkdown={onOpenMarkdown}
           locale={locale}
           onClose={() => setSftpOpen(false)}
         />
@@ -3998,51 +4011,11 @@ export default function TerminalPage({ locale, themeKey, pageActive, fontSize, h
         />
       </section>
 
-      {closeConfirmTarget && (
-        <div
-          className="terminal-close-confirm-backdrop"
-          onPointerDown={() => setCloseConfirmTarget(null)}
-        >
-          <section
-            className="terminal-close-confirm-dialog"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="terminal-close-confirm-title"
-            aria-describedby="terminal-close-confirm-message"
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            <div className="terminal-close-confirm-icon">
-              <SvgIcon name="info" size={18} />
-            </div>
-            <div className="terminal-close-confirm-content">
-              <strong id="terminal-close-confirm-title">
-                {closeConfirmTarget.kind === "window"
-                  ? copy.appCloseTitle
-                  : copy.activeCloseTitle}
-              </strong>
-              <p id="terminal-close-confirm-message">
-                {closeConfirmTarget.kind === "window"
-                  ? copy.appCloseMessage
-                  : closeConfirmTarget.kind === "tab"
-                    ? copy.activeTabCloseMessage
-                    : copy.activeCloseMessage}
-              </p>
-            </div>
-            <footer className="terminal-close-confirm-actions">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setCloseConfirmTarget(null)}
-              >
-                {copy.cancel}
-              </Button>
-              <Button type="button" variant="danger" onClick={confirmForceClose}>
-                {copy.forceClose}
-              </Button>
-            </footer>
-          </section>
-        </div>
-      )}
+      <ConfirmDialog open={!!closeConfirmTarget}
+        title={closeConfirmTarget?.kind === "window" ? copy.appCloseTitle : copy.activeCloseTitle}
+        message={closeConfirmTarget?.kind === "window" ? copy.appCloseMessage : closeConfirmTarget?.kind === "tab" ? copy.activeTabCloseMessage : copy.activeCloseMessage}
+        cancelLabel={copy.cancel} confirmLabel={copy.forceClose}
+        onCancel={/** 取消仅关闭浮层，保持终端会话和布局。 */ () => setCloseConfirmTarget(null)} onConfirm={confirmForceClose} />
 
       <footer className="terminal-bottom-toolbar">
         <button

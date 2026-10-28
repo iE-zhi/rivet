@@ -944,7 +944,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
   };
 
   /** 返回当前语言下的主导航项目名称。 */
-  const navigationItemLabel = (id: NavigationItemId) => id === "serial" ? copy.serial : id === "vnc" ? "VNC" : copy.ssh;
+  const navigationItemLabel = (id: NavigationItemId) => id === "serial" ? copy.serial : id === "vnc" ? "VNC" : id === "markdown" ? "Markdown" : copy.ssh;
 
   /** 根据屏幕坐标解析当前主导航拖动目标及插入方向。 */
   const resolveNavigationDropTarget = (clientX: number, clientY: number): NavigationDropTarget | null => {
@@ -955,7 +955,7 @@ export default function SettingsPage({ locale, onLocaleChange, theme, onThemeCha
     }
 
     const id = row.dataset.navigationId;
-    if (id !== "serial" && id !== "terminal" && id !== "vnc") {
+    if (id !== "serial" && id !== "terminal" && id !== "vnc" && id !== "markdown") {
       return null;
     }
 

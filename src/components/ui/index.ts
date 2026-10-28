@@ -1,4 +1,5 @@
 export * from "./Button";
+export * from "./ConfirmDialog";
 export * from "./Input";
 export * from "./SearchInput";
 export * from "./Textarea";

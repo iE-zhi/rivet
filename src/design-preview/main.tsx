@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Button,
   Checkbox,
+  ConfirmDialog,
   GroupManager,
   HorizontalScrollbar,
   Input,
@@ -18,6 +19,7 @@ import {
   Textarea,
   VerticalScrollbar,
   useNotification,
+  type PopupMenuPoint,
 } from "../components/ui";
 import "./preview.css";
 import { APP_VERSION } from "../appVersion";
@@ -76,9 +78,30 @@ function GroupManagerPreviewSamples() {
   );
 }
 
+/** 直接渲染正式右键菜单，支持指针打开、键盘关闭与边缘定位检查。 */
+function PointMenuPreview() {
+  const [point, setPoint] = useState<PopupMenuPoint | null>(null);
+  /** 清理预览菜单，不改变其他组件示例。 */
+  const close = useCallback(() => setPoint(null), []);
+  return <div className="preview-context-menu" onContextMenu={/** 预览区域的鼠标位置就是菜单锚点。 */ (event) => { event.preventDefault(); setPoint({ x: event.clientX, y: event.clientY }); }}>
+    <Button variant="secondary" onClick={/** 点击也能在按钮下方打开，便于键盘检查。 */ (event) => { const rect = event.currentTarget.getBoundingClientRect(); setPoint({ x: rect.left, y: rect.bottom }); }}>右键菜单</Button>
+    <PopupMenu open={!!point} point={point ?? undefined} onClose={close} width={200} ariaLabel="右键菜单预览"><PopupMenuItem onClick={close}>保存</PopupMenuItem><PopupMenuItem onClick={close}>另存为</PopupMenuItem><PopupMenuItem disabled>不可用</PopupMenuItem></PopupMenu>
+  </div>;
+}
+
+/** 预览直接使用正式确认框，取消和确认均关闭；不执行任何删除操作。 */
+function ConfirmDialogPreview() {
+  const [open, setOpen] = useState(false);
+  /** 清理演示浮层，不修改任何用户数据。 */
+  const close = useCallback(() => setOpen(false), []);
+  return <><Button onClick={/** 由用户打开浮层，避免多个主题示例同时抢占焦点。 */ () => setOpen(true)}>打开确认弹窗</Button><ConfirmDialog open={open} title="丢弃未保存修改？" message="关闭后将丢失这份文档的未保存修改。" cancelLabel="取消" confirmLabel="丢弃" onCancel={close} onConfirm={close} /></>;
+}
+
 /** 根据组件标识渲染带可访问名称的交互预览控件。 */
 function ComponentPreview({ id, dark }: { id: string; dark: boolean }) {
   switch (id) {
+    case "confirm-dialog":
+      return <ConfirmDialogPreview />;
     case "button":
       return (
         <>
@@ -136,6 +159,7 @@ function ComponentPreview({ id, dark }: { id: string; dark: boolean }) {
       );
     case "popup-menu":
       return (
+        <>
         <Row label="Open" open>
           <div className="preview-popup-menu-anchor">
             <Button variant="secondary">更多</Button>
@@ -146,6 +170,8 @@ function ComponentPreview({ id, dark }: { id: string; dark: boolean }) {
             </PopupMenu>
           </div>
         </Row>
+        <Row label="Context"><PointMenuPreview /></Row>
+        </>
       );
     case "group-manager":
       return <GroupManagerPreviewSamples />;

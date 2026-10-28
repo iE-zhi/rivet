@@ -6,6 +6,9 @@ import { spawnSync } from "node:child_process";
 const allowed = new Set(["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib"]);
 /** 用户已批准的精确包版本例外；许可证标识也必须与审查时一致。 */
 const approvedExceptions = new Map([
+  // 用户已批准 Mermaid 的精确间接依赖，分发时附带许可与源码链接。
+  ["elkjs@0.9.3", "EPL-2.0"],
+  ["robust-predicates@3.0.3", "Unlicense"],
   // VNC 协议引擎的固定间接依赖；已核对其公有领域授权全文。
   ["async_io_stream@0.3.3", "Unlicense"],
   ["@fontsource-variable/jetbrains-mono@5.3.0", "OFL-1.1"],
@@ -38,6 +41,8 @@ const approvedExceptions = new Map([
   ["target-lexicon@0.12.16", "Apache-2.0 WITH LLVM-exception"],
   ["unicode-ident@1.0.26", "(MIT OR Apache-2.0) AND Unicode-3.0"],
 ]);
+/** khroma 该版本清单漏写 license，已核对包内 license 的完整 MIT 授权文本。 */
+const verifiedNpmLicenseMetadata = new Map([["khroma@2.1.0", "MIT"]]);
 /** pnpm 虚拟存储中的每个目录代表锁文件中的一个已安装依赖实例。 */
 const virtualStore = join(process.cwd(), "node_modules", ".pnpm");
 
@@ -50,7 +55,7 @@ function hasApprovedLicense(packageId, license) {
 function readNpmLicense(packageJsonPath) {
   const manifest = JSON.parse(readFileSync(packageJsonPath, "utf8"));
   const raw = typeof manifest.license === "string" ? manifest.license : manifest.license?.type;
-  if (typeof raw !== "string" || raw.trim() === "") return null;
+  if (typeof raw !== "string" || raw.trim() === "") return verifiedNpmLicenseMetadata.get(`${manifest.name}@${manifest.version}`) ?? null;
   return raw;
 }
 

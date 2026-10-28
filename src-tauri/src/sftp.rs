@@ -104,34 +104,67 @@ pub(crate) struct TransferContext {
 
 /// 独立 SFTP worker 支持的操作。
 pub(crate) enum SftpCommand {
+    /// 有界读取普通 UTF-8 Markdown，由队列顺序隔离本应用内的读写。
+    ReadMarkdown {
+        /// 不经 Shell 解释的服务器文件路径。
+        path: String,
+        /// 消费方关闭后仅放弃结果，不中断已开始的文件操作。
+        result: oneshot::Sender<Result<crate::markdown_file::MarkdownFile, String>>,
+    },
+    /// 检查摘要后保存 Markdown；失败恢复与临时文件由 markdown_remote 负责。
+    WriteMarkdown {
+        /// 已打开的服务器文件路径。
+        path: String,
+        /// 最多 2 MiB 的 UTF-8 正文，由 worker 接管。
+        content: String,
+        /// 上次成功读取或保存的内容摘要。
+        revision: String,
+        /// 一次性结果通道；前端超时后 worker 仍完成清理。
+        result: oneshot::Sender<Result<crate::markdown_file::MarkdownFile, String>>,
+    },
     /// 读取一个目录。
     List {
+        /// 要浏览的服务端目录，返回前会规范化。
         path: String,
+        /// 目录读取的一次性回复，接收方取消不影响会话。
         result: oneshot::Sender<Result<SftpDirectory, String>>,
     },
     /// 将本地文件原子上传到远端路径。
     Upload {
+        /// 传输进度及应用事件归属。
         context: TransferContext,
+        /// 用户选择或拖入的本机普通文件。
         local_path: PathBuf,
+        /// 不覆盖现有文件的远端目标。
         remote_path: String,
+        /// 上传完成或失败的一次性回复。
         result: oneshot::Sender<Result<(), String>>,
     },
     /// 将远端文件原子下载到本地路径。
     Download {
+        /// 传输进度及应用事件归属。
         context: TransferContext,
+        /// 要读取的远端文件。
         remote_path: String,
+        /// 用户明确选择的本机目标。
         local_path: PathBuf,
+        /// 下载提交完成后回复。
         result: oneshot::Sender<Result<(), String>>,
     },
     /// 删除文件、链接或空目录。
     Delete {
+        /// 用户确认删除的单个条目。
         path: String,
+        /// 删除结果的一次性回复。
         result: oneshot::Sender<Result<(), String>>,
     },
     /// 在同一父目录内重命名。
     Rename {
+        /// 原文件或目录的完整路径。
         old_path: String,
+        /// 同一目录内的新路径，不覆盖已有条目。
         new_path: String,
+        /// 重命名结果的一次性回复。
         result: oneshot::Sender<Result<(), String>>,
     },
     /// 关闭 SFTP subsystem。
@@ -400,10 +433,32 @@ pub async fn sftp_rename(
     Ok(new_path)
 }
 
-/// 顺序执行文件操作；该 worker 与终端 shell worker 独立，长传输不会阻塞键盘输入。
+/// 顺序执行文件操作；与终端 shell worker 独立，长传输不会阻塞键盘输入。
+///
+/// # 参数
+/// - `sftp`：本任务拥有的服务器文件会话，队列结束后关闭。
+/// - `commands`：有界命令接收端；结果接收方消失时仍执行已开始的提交与清理。
 async fn run_sftp_worker(sftp: SftpSession, mut commands: mpsc::Receiver<SftpCommand>) {
     while let Some(command) = commands.recv().await {
         match command {
+            SftpCommand::ReadMarkdown { path, result } => {
+                // 前端取消只丢弃回复，不把通道关闭当作文件操作失败。
+                drop(result.send(crate::markdown_remote::read_remote(&sftp, &path).await));
+            }
+            SftpCommand::WriteMarkdown {
+                path,
+                content,
+                revision,
+                result,
+            } => {
+                // 超时且尚未开始的保存不再执行，避免用户离开后队列才写入文件。
+                if result.is_closed() {
+                    continue;
+                }
+                drop(result.send(
+                    crate::markdown_remote::write_remote(&sftp, &path, &content, &revision).await,
+                ));
+            }
             SftpCommand::List { path, result } => {
                 let _ = result.send(list_directory(&sftp, path).await);
             }
@@ -438,7 +493,9 @@ async fn run_sftp_worker(sftp: SftpSession, mut commands: mpsc::Receiver<SftpCom
         }
     }
 
-    let _ = sftp.close().await;
+    if let Err(error) = sftp.close().await {
+        eprintln!("关闭 SFTP 会话失败：{error}");
+    }
 }
 
 /// 读取并排序一个远端目录。

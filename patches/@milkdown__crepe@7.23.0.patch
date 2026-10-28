@@ -1,0 +1,105 @@
+diff --git a/lib/cjs/feature/block-edit/index.js b/lib/cjs/feature/block-edit/index.js
+index 69a885d5cae11059c5597d927c061e4bf04052ae..fbaa1dd2e7682c739dc89ce9eb0868e4dcbfcba7 100644
+--- a/lib/cjs/feature/block-edit/index.js
++++ b/lib/cjs/feature/block-edit/index.js
+@@ -460,6 +460,7 @@ _getGroupInstance = new WeakMap();
+ function keepAlive(..._args) {
+ }
+ 
++/** 按显示名称或稳定命令键搜索，保留原分组、索引和插入动作。 */
+ function getGroups(filter, config, ctx) {
+   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __, _$, _aa, _ba, _ca, _da, _ea, _fa, _ga, _ha, _ia, _ja, _ka, _la, _ma, _na, _oa, _pa, _qa, _ra, _sa, _ta, _ua, _va, _wa, _xa, _ya, _za, _Aa, _Ba, _Ca, _Da, _Ea, _Fa, _Ga, _Ha, _Ia, _Ja, _Ka, _La, _Ma, _Na, _Oa, _Pa, _Qa, _Ra, _Sa, _Ta, _Ua, _Va, _Wa, _Xa, _Ya, _Za, __a, _$a, _ab, _bb, _cb, _db, _eb, _fb, _gb, _hb, _ib, _jb, _kb;
+   const flags = ctx && useCrepeFeatures(ctx).get();
+@@ -738,7 +739,7 @@ function getGroups(filter, config, ctx) {
+   if (filter) {
+     groups = groups.map((group) => {
+       const items2 = group.items.filter(
+-        (item) => item.label.toLowerCase().includes(filter.toLowerCase())
++        (item) => `${item.label} ${item.key}`.toLowerCase().includes(filter.toLowerCase())
+       );
+       return {
+         ...group,
+diff --git a/lib/cjs/index.js b/lib/cjs/index.js
+index 86cd15af6497fd602333548584315b619951b15b..07e8d87f4f0c891161e7f455785c13ac13bd2c7f 100644
+--- a/lib/cjs/index.js
++++ b/lib/cjs/index.js
+@@ -2224,6 +2224,7 @@ class GroupBuilder {
+ _groups = new WeakMap();
+ _getGroupInstance = new WeakMap();
+ 
++/** 按显示名称或稳定命令键搜索，保留原分组、索引和插入动作。 */
+ function getGroups$2(filter, config, ctx) {
+   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __, _$, _aa, _ba, _ca, _da, _ea, _fa, _ga, _ha, _ia, _ja, _ka, _la, _ma, _na, _oa, _pa, _qa, _ra, _sa, _ta, _ua, _va, _wa, _xa, _ya, _za, _Aa, _Ba, _Ca, _Da, _Ea, _Fa, _Ga, _Ha, _Ia, _Ja, _Ka, _La, _Ma, _Na, _Oa, _Pa, _Qa, _Ra, _Sa, _Ta, _Ua, _Va, _Wa, _Xa, _Ya, _Za, __a, _$a, _ab, _bb, _cb, _db, _eb, _fb, _gb, _hb, _ib, _jb, _kb;
+   const flags = ctx && useCrepeFeatures(ctx).get();
+@@ -2502,7 +2503,7 @@ function getGroups$2(filter, config, ctx) {
+   if (filter) {
+     groups = groups.map((group) => {
+       const items2 = group.items.filter(
+-        (item) => item.label.toLowerCase().includes(filter.toLowerCase())
++        (item) => `${item.label} ${item.key}`.toLowerCase().includes(filter.toLowerCase())
+       );
+       return {
+         ...group,
+diff --git a/lib/esm/feature/block-edit/index.js b/lib/esm/feature/block-edit/index.js
+index e10bae88c03d017f3dfd533c71ed388018e39669..ed1c538fb241e7e15b954b50e7c6a17342ff42a9 100644
+--- a/lib/esm/feature/block-edit/index.js
++++ b/lib/esm/feature/block-edit/index.js
+@@ -458,6 +458,7 @@ _getGroupInstance = new WeakMap();
+ function keepAlive(..._args) {
+ }
+ 
++/** 按显示名称或稳定命令键搜索，保留原分组、索引和插入动作。 */
+ function getGroups(filter, config, ctx) {
+   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __, _$, _aa, _ba, _ca, _da, _ea, _fa, _ga, _ha, _ia, _ja, _ka, _la, _ma, _na, _oa, _pa, _qa, _ra, _sa, _ta, _ua, _va, _wa, _xa, _ya, _za, _Aa, _Ba, _Ca, _Da, _Ea, _Fa, _Ga, _Ha, _Ia, _Ja, _Ka, _La, _Ma, _Na, _Oa, _Pa, _Qa, _Ra, _Sa, _Ta, _Ua, _Va, _Wa, _Xa, _Ya, _Za, __a, _$a, _ab, _bb, _cb, _db, _eb, _fb, _gb, _hb, _ib, _jb, _kb;
+   const flags = ctx && useCrepeFeatures(ctx).get();
+@@ -736,7 +737,7 @@ function getGroups(filter, config, ctx) {
+   if (filter) {
+     groups = groups.map((group) => {
+       const items2 = group.items.filter(
+-        (item) => item.label.toLowerCase().includes(filter.toLowerCase())
++        (item) => `${item.label} ${item.key}`.toLowerCase().includes(filter.toLowerCase())
+       );
+       return {
+         ...group,
+diff --git a/lib/esm/index.js b/lib/esm/index.js
+index dcce7ee48e646d1de951a10399f1e6f77e53426e..757952350570ef9c1ffd317f6ccf26a744e04c38 100644
+--- a/lib/esm/index.js
++++ b/lib/esm/index.js
+@@ -2222,6 +2222,7 @@ class GroupBuilder {
+ _groups = new WeakMap();
+ _getGroupInstance = new WeakMap();
+ 
++/** 按显示名称或稳定命令键搜索，保留原分组、索引和插入动作。 */
+ function getGroups$2(filter, config, ctx) {
+   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __, _$, _aa, _ba, _ca, _da, _ea, _fa, _ga, _ha, _ia, _ja, _ka, _la, _ma, _na, _oa, _pa, _qa, _ra, _sa, _ta, _ua, _va, _wa, _xa, _ya, _za, _Aa, _Ba, _Ca, _Da, _Ea, _Fa, _Ga, _Ha, _Ia, _Ja, _Ka, _La, _Ma, _Na, _Oa, _Pa, _Qa, _Ra, _Sa, _Ta, _Ua, _Va, _Wa, _Xa, _Ya, _Za, __a, _$a, _ab, _bb, _cb, _db, _eb, _fb, _gb, _hb, _ib, _jb, _kb;
+   const flags = ctx && useCrepeFeatures(ctx).get();
+@@ -2500,7 +2501,7 @@ function getGroups$2(filter, config, ctx) {
+   if (filter) {
+     groups = groups.map((group) => {
+       const items2 = group.items.filter(
+-        (item) => item.label.toLowerCase().includes(filter.toLowerCase())
++        (item) => `${item.label} ${item.key}`.toLowerCase().includes(filter.toLowerCase())
+       );
+       return {
+         ...group,
+diff --git a/src/feature/block-edit/menu/config.ts b/src/feature/block-edit/menu/config.ts
+index 150aab494d8f0b6103f5404c56fcd62ba7f3e6c6..bb61bdf11fd2320c254becaf17202fd7515cce11 100644
+--- a/src/feature/block-edit/menu/config.ts
++++ b/src/feature/block-edit/menu/config.ts
+@@ -44,6 +44,7 @@ import {
+ } from '../../../icons'
+ import { GroupBuilder, type MenuItemGroup } from '../../../utils/group-builder'
+ 
++/** 按显示名称或稳定命令键搜索，保留原分组、索引和插入动作。 */
+ export function getGroups(
+   filter?: string,
+   config?: BlockEditFeatureConfig,
+@@ -365,7 +366,7 @@ export function getGroups(
+     groups = groups
+       .map((group) => {
+         const items = group.items.filter((item) =>
+-          item.label.toLowerCase().includes(filter.toLowerCase())
++          `${item.label} ${item.key}`.toLowerCase().includes(filter.toLowerCase())
+         )
+ 
+         return {

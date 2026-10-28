@@ -2,7 +2,7 @@
 export const NAVIGATION_SETTINGS_STORAGE_KEY = "rivet.navigationSettings";
 
 /** 当前允许用户排序和隐藏的主导航工具页；设置入口固定保留。 */
-export type NavigationItemId = "serial" | "terminal" | "vnc";
+export type NavigationItemId = "serial" | "terminal" | "vnc" | "markdown";
 
 /** 单个主导航工具页的顺序项与可见状态。 */
 export interface NavigationItemSetting {
@@ -20,10 +20,11 @@ export const DEFAULT_NAVIGATION_SETTINGS: ReadonlyArray<Readonly<NavigationItemS
   { id: "serial", visible: true },
   { id: "terminal", visible: true },
   { id: "vnc", visible: true },
+  { id: "markdown", visible: true },
 ];
 
-/** 当前支持的工具页；旧版缺少 VNC 时恢复后追加入口。 */
-const NAVIGATION_ITEM_IDS: readonly NavigationItemId[] = ["serial", "terminal", "vnc"];
+/** 当前支持的工具页；恢复旧配置时按此顺序追加缺失的新入口。 */
+const NAVIGATION_ITEM_IDS: readonly NavigationItemId[] = ["serial", "terminal", "vnc", "markdown"];
 /** 原始导航 JSON 最多五百一十二个字符。 */
 const MAX_SERIALIZED_NAVIGATION_SETTINGS_LENGTH = 512;
 
@@ -33,12 +34,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * 严格校验主导航设置；兼容只有串口和终端的旧版数组，拒绝其他缺失或重复项。
+ * 严格校验主导航设置；兼容旧版缺少新页面的数组，串口与终端必须存在。
  * @param value 未信任的运行时值。
  * @returns 顺序、页面标识和可见状态均有效时为 true。
  */
 export function isNavigationSettings(value: unknown): value is NavigationSettings {
-  if (!Array.isArray(value) || (value.length !== NAVIGATION_ITEM_IDS.length && value.length !== NAVIGATION_ITEM_IDS.length - 1)) {
+  if (!Array.isArray(value) || value.length < 2 || value.length > NAVIGATION_ITEM_IDS.length) {
     return false;
   }
 
@@ -51,7 +52,7 @@ export function isNavigationSettings(value: unknown): value is NavigationSetting
     if (keys.length !== 2 || !keys.includes("id") || !keys.includes("visible")) {
       return false;
     }
-    if ((item.id !== "serial" && item.id !== "terminal" && item.id !== "vnc") || typeof item.visible !== "boolean" || seen.has(item.id)) {
+    if ((item.id !== "serial" && item.id !== "terminal" && item.id !== "vnc" && item.id !== "markdown") || typeof item.visible !== "boolean" || seen.has(item.id)) {
       return false;
     }
     seen.add(item.id);
@@ -79,7 +80,7 @@ export function deserializeNavigationSettings(serialized: string | null): Naviga
     const parsed: unknown = JSON.parse(serialized);
     if (!isNavigationSettings(parsed)) return createDefaultNavigationSettings();
     // 旧版顺序与隐藏设置保持原值，只追加新工具，不重排用户已有导航。
-    return [...parsed.map((item) => ({ ...item })), ...(parsed.some((item) => item.id === "vnc") ? [] : [{ id: "vnc" as const, visible: true }])];
+    return [...parsed.map((item) => ({ ...item })), ...DEFAULT_NAVIGATION_SETTINGS.filter((item) => !parsed.some((existing) => existing.id === item.id)).map((item) => ({ ...item }))];
   } catch {
     return createDefaultNavigationSettings();
   }

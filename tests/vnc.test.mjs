@@ -93,8 +93,8 @@ test("VNC key and mouse mappings preserve modifier sides and button order", () =
   assert.equal(pointerButtons(7), 7);
 });
 
-/** 旧版导航保留排序和隐藏状态，只追加 VNC；新配置可往返，重复项回退默认。 */
-test("navigation migration appends VNC without changing saved tool order", () => {
+/** 旧版导航保留排序和隐藏状态，追加 VNC 与 Markdown；新配置可往返，重复项回退默认。 */
+test("navigation migration appends VNC and Markdown without changing saved tool order", () => {
   assert.deepEqual(
     deserializeNavigationSettings(
       JSON.stringify([
@@ -106,18 +106,20 @@ test("navigation migration appends VNC without changing saved tool order", () =>
       { id: "terminal", visible: false },
       { id: "serial", visible: true },
       { id: "vnc", visible: true },
+      { id: "markdown", visible: true },
     ],
   );
   const saved = [
     { id: "vnc", visible: false },
     { id: "serial", visible: true },
     { id: "terminal", visible: true },
+    { id: "markdown", visible: true },
   ];
   assert.deepEqual(deserializeNavigationSettings(JSON.stringify(saved)), saved);
   assert.equal(
     deserializeNavigationSettings(
       JSON.stringify([saved[0], saved[0], saved[1]]),
     ).length,
-    3,
+    4,
   );
 });

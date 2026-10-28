@@ -1,0 +1,133 @@
+.markdown-page { position: relative; display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 100%; min-width: 0; min-height: 0; color: var(--r-text); background: var(--r-bg); }
+.markdown-page.has-inline-tabs { grid-template-rows: 35px minmax(0, 1fr); }
+.markdown-activity { max-width: 100%; }
+.markdown-tabs { display: flex; width: max-content; height: 35px; }
+.markdown-activity-fallback { grid-column: 1 / -1; min-width: 0; border-bottom: 1px solid var(--r-border); }
+.markdown-tab { display: flex; align-items: center; flex: 0 0 auto; height: 35px; max-width: 240px; border-right: 1px solid var(--r-border); border-bottom: 2px solid transparent; }
+.markdown-tab.active { background: var(--r-bg); border-bottom-color: var(--r-primary); }
+.markdown-tab button { display: flex; align-items: center; gap: 7px; height: 33px; color: var(--r-subtle); border: 0; background: transparent; padding: 0 10px; cursor: pointer; min-width: 0; font-size: 12px; }
+.markdown-tab button[role="tab"] > span:not(.markdown-dirty) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.markdown-tab .markdown-close { height: 25px; padding: 6px; margin-right: 4px; border-radius: 4px; }
+.markdown-close:hover { background: var(--r-surface-2); }
+.markdown-tab.active button { color: var(--r-text); }
+.markdown-dirty { flex-shrink: 0; font-size: 8px; color: var(--r-primary); }
+.markdown-files { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-right: 1px solid var(--r-border); background: var(--r-surface); }
+.markdown-files > header { display: flex; align-items: center; justify-content: space-between; min-height: 42px; padding: 0 12px 0 16px; font-size: 12px; }
+.markdown-files > header > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.markdown-file-actions { display: flex; flex-shrink: 0; gap: 2px; margin-left: 8px; }
+.markdown-file-actions button, .markdown-folder-create > button { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--r-subtle); cursor: pointer; }
+.markdown-file-actions button:hover, .markdown-folder-create > button:hover { background: var(--r-surface-2); color: var(--r-text); }
+.markdown-folder-create { display: flex; align-items: center; gap: 4px; padding: 0 8px 8px 16px; }
+.markdown-folder-create .rivet-input { flex: 1; min-width: 0; height: 28px; padding: 4px 6px; font-size: 12px; }
+.markdown-folder-create > button { width: 22px; }
+.markdown-files-list { flex: 1; min-height: 0; }
+.markdown-file-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 7px 16px; border: 0; background: transparent; color: var(--r-subtle); cursor: pointer; text-align: left; font-size: 12px; }
+.markdown-file-row > .markdown-file-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.markdown-file-row:hover { background: var(--r-surface-2); }
+.markdown-file-row.active { background: color-mix(in srgb, var(--r-primary) 8%, transparent); color: var(--r-text); }
+.markdown-folder-entries { list-style: none; margin: 0; padding: 0; }
+.markdown-folder-row { gap: 6px; padding-right: 10px; }
+.markdown-folder-row .markdown-folder-chevron, .markdown-folder-row .markdown-folder-spacer { flex: 0 0 10px; }
+.markdown-folder-chevron { display: flex; transform: rotate(-90deg); }
+.markdown-folder-chevron.expanded { transform: rotate(0); }
+.markdown-folder-note { padding: 8px 16px; color: var(--r-subtle); font-size: 12px; overflow-wrap: anywhere; }
+.markdown-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.markdown-file-menu .rivet-popup-menu-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.markdown-file-menu kbd { font: inherit; font-size: 11px; color: var(--r-muted); }
+.markdown-location { display: flex; justify-content: space-between; gap: 16px; padding: 10px 22px; font-size: 12px; color: var(--r-subtle); }
+.markdown-location > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.markdown-scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; overscroll-behavior: contain; }
+/* 块按钮共 66px，距正文 16px，再留 14px 边缘空隙；窄窗口也保留同一操作区。 */
+.markdown-editor { --markdown-block-gutter: 96px; max-width: 960px; min-height: 100%; margin: 0 auto; position: relative; }
+.markdown-loading { color: var(--r-subtle); padding: 32px 64px; }
+.markdown-page button:focus-visible, .markdown-tabs button:focus-visible { outline: 2px solid var(--r-primary); outline-offset: -2px; }
+.markdown-page button:disabled, .markdown-tabs button:disabled { opacity: .5; cursor: default; }
+.markdown-drop-marker { position: fixed; height: 2px; background: #3b82f6; pointer-events: none; z-index: 1000; }
+.markdown-drop-marker[hidden] { display: none; }
+.markdown-editor .is-block-dragging { cursor: grabbing; user-select: none; }
+.markdown-editor .milkdown {
+  --crepe-color-background: var(--r-bg);
+  --crepe-color-on-background: var(--r-text);
+  --crepe-color-surface: var(--r-bg);
+  --crepe-color-surface-low: var(--r-surface);
+  --crepe-color-on-surface: var(--r-text);
+  --crepe-color-on-surface-variant: var(--r-subtle);
+  --crepe-color-outline: var(--r-subtle);
+  --crepe-color-primary: var(--r-primary);
+  --crepe-color-secondary: var(--r-surface-2);
+  --crepe-color-on-secondary: var(--r-text);
+  --crepe-color-inverse: var(--r-text);
+  --crepe-color-on-inverse: var(--r-bg);
+  --crepe-color-inline-code: var(--r-primary);
+  --crepe-color-error: var(--r-danger);
+  --crepe-color-hover: var(--r-surface);
+  --crepe-color-selected: var(--r-surface-2);
+  --crepe-color-inline-area: var(--r-surface);
+  --crepe-base-font-size: 16px;
+  --crepe-font-title: inherit;
+  --crepe-font-default: inherit;
+  --crepe-font-code: "JetBrains Mono Variable", monospace;
+  --crepe-shadow-1: 0 6px 24px #00000012;
+  --crepe-shadow-2: 0 8px 32px #00000018;
+}
+.markdown-editor .milkdown .ProseMirror { padding: 30px 70px 140px var(--markdown-block-gutter); min-height: 350px; }
+.markdown-editor .milkdown .milkdown-block-handle { transition: opacity 120ms; touch-action: none; }
+/* 菜单宽 248px；列表仅纵向滚动，窄窗口可收缩，不沿用条目的默认最小宽度。 */
+.markdown-editor .milkdown .milkdown-slash-menu { box-sizing: border-box; width: 248px; border: 1px solid var(--r-border); border-radius: 8px; max-width: min(380px, calc(100vw - 100px)); overflow: hidden; }
+/* 深色当前项复用共享菜单的悬停底色，与菜单背景保持区分。 */
+.app-shell[data-theme="dark"] .markdown-editor .milkdown .milkdown-slash-menu { --crepe-color-hover: var(--r-surface-2); }
+.markdown-editor .milkdown .milkdown-slash-menu .tab-group { display: none; }
+.markdown-editor .milkdown .milkdown-slash-menu .menu-groups { padding: 6px; max-height: min(300px, 45vh); overflow-x: hidden; overflow-y: auto; scroll-behavior: auto; scrollbar-width: thin; scrollbar-color: var(--r-scrollbar-thumb) transparent; }
+/* WebKit 使用 5px 轨道，颜色跟随应用主题。 */
+.markdown-editor .milkdown .milkdown-slash-menu .menu-groups::-webkit-scrollbar { width: 5px; height: 0; }
+.markdown-editor .milkdown .milkdown-slash-menu .menu-groups::-webkit-scrollbar-track { background: transparent; }
+.markdown-editor .milkdown .milkdown-slash-menu .menu-groups::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--r-scrollbar-thumb); }
+.markdown-editor .milkdown .milkdown-slash-menu .menu-groups::-webkit-scrollbar-thumb:hover { background: var(--r-scrollbar-thumb-hover); }
+.markdown-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group h6 { margin: 0; padding: 6px 8px; font-size: 12px; line-height: 18px; }
+/* 每行 32px，图标 20px；长名称省略，避免产生横向滚动。 */
+.markdown-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group ul { margin: 0; padding: 0; }
+.markdown-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li { min-width: 0; gap: 10px; padding: 6px 8px; }
+.markdown-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li svg { width: 20px; height: 20px; flex-shrink: 0; }
+.markdown-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.markdown-editor .milkdown .milkdown-toolbar { border: 1px solid var(--r-border); }
+.markdown-editor .milkdown .cm-editor { background: var(--r-surface); color: var(--r-text); }
+/* 目录展开后延伸至编辑区底部上方 16px，列表独立滚动；正文额外预留 24px。 */
+.markdown-outline { position: absolute; z-index: 5; top: 48px; right: 16px; bottom: 16px; display: flex; flex-direction: column; width: 280px; max-width: calc(100% - 32px); padding: 8px; border: 1px solid var(--hao-border, var(--r-border)); border-radius: 12px; background: var(--r-bg); font-family: var(--hao-body-font, sans-serif); overflow: hidden; }
+.markdown-outline.is-collapsed { bottom: auto; width: 136px; }
+.markdown-outline-toggle { display: flex; flex-shrink: 0; align-items: center; gap: 6px; width: 100%; height: 32px; padding: 0 8px; color: var(--r-text); border: 0; background: transparent; cursor: pointer; text-align: left; }
+.markdown-outline-toggle strong { font-size: 16px; font-weight: 700; }
+.markdown-outline-list { flex: 1; min-height: 0; margin-top: 4px; }
+.markdown-outline-list nav > button { display: block; width: 100%; min-height: 28px; padding: 4px 8px; border: 0; color: #606266; background: transparent; text-align: left; white-space: normal; overflow-wrap: anywhere; font: inherit; font-size: 16px; line-height: 20px; cursor: pointer; }
+.markdown-outline-list nav > button:hover { color: var(--hao-accent, var(--r-primary)); }
+.markdown-outline-list nav > button.active { color: #34415c; font-size: 20px; line-height: 22px; font-weight: 700; background: transparent; }
+.app-shell[data-theme="dark"] .markdown-outline-list nav > button { color: #b6bac4; }
+.app-shell[data-theme="dark"] .markdown-outline-list nav > button.active { color: #f7f7fa; }
+.markdown-main:has(> .markdown-outline:not(.is-collapsed):not(.is-compact)) > .markdown-scroll { padding-right: 304px; }
+.markdown-main:has(> .markdown-outline:not(.is-collapsed):not(.is-compact)) .markdown-editor .milkdown > .ProseMirror { padding-right: 24px; }
+@media (max-width: 760px) {
+  .markdown-page { grid-template-columns: 170px minmax(0, 1fr); }
+  .markdown-file-row { padding-inline: 12px; }
+  .markdown-location { padding: 8px 12px; }
+  .markdown-editor .milkdown .ProseMirror { padding: 24px 48px 100px var(--markdown-block-gutter); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .markdown-editor .milkdown .milkdown-block-handle { transition: none; }
+}
+
+.markdown-remote-backdrop { position: absolute; inset: 0; z-index: 350; display: grid; place-items: center; padding: 24px; background: color-mix(in srgb, var(--r-bg) 50%, transparent); }
+.markdown-remote-dialog { display: flex; flex-direction: column; width: min(580px, 100%); height: min(480px, 100%); min-height: 0; border: 1px solid var(--r-border); border-radius: 9px; background: var(--r-bg); box-shadow: 0 12px 40px #00000018; outline: none; overflow: hidden; }
+.markdown-remote-dialog.is-empty { height: min(220px, 100%); }
+.markdown-remote-dialog > header { display: flex; align-items: center; justify-content: space-between; min-height: 42px; padding: 0 14px 0 18px; border-bottom: 1px solid var(--r-border); font-size: 13px; }
+.markdown-remote-dialog > header > button, .markdown-remote-path > button { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: var(--r-subtle); cursor: pointer; }
+.markdown-remote-dialog > header > button:hover, .markdown-remote-path > button:hover { background: var(--r-surface-2); }
+.markdown-remote-server { padding: 12px 14px 0; }
+.markdown-remote-server .rivet-select { width: 100%; }
+.markdown-remote-path { display: flex; align-items: center; gap: 7px; padding: 10px 14px; }
+.markdown-remote-path .rivet-input { flex: 1; min-width: 0; }
+.markdown-remote-list { flex: 1; min-height: 0; border-top: 1px solid var(--r-border); }
+.markdown-remote-footer { display: flex; flex-shrink: 0; justify-content: flex-end; padding: 10px 14px; border-top: 1px solid var(--r-border); }
+.markdown-remote-entry { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 8px 18px; border: 0; background: transparent; color: var(--r-text); text-align: left; cursor: pointer; font-size: 13px; }
+.markdown-remote-entry > span:not(.rivet-svg-icon) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.markdown-remote-entry:hover { background: var(--r-surface); }
+.markdown-remote-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 32px 18px; color: var(--r-subtle); font-size: 13px; }
+.markdown-remote-dialog > .markdown-remote-empty { flex: 1; }

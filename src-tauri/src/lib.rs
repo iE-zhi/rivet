@@ -1,10 +1,14 @@
-//! Rivet 桌面后端：通过 Tauri 提供串口、SSH/SFTP/X11、独立 VNC 和日志导出能力。
+//! Rivet 桌面后端：通过 Tauri 提供串口、SSH/SFTP/X11、VNC、Markdown 和日志导出能力。
 
 mod config;
 mod credential_store;
 mod external_links;
 mod local_terminal;
 mod log_export;
+mod markdown;
+mod markdown_file;
+mod markdown_folder;
+mod markdown_remote;
 mod serial;
 mod sftp;
 mod shell_integration;
@@ -27,7 +31,7 @@ use serial::SerialService;
 use ssh::SshService;
 use terminal_serial::TerminalSerialService;
 
-/// 注册串口、SSH/SFTP/X11、独立 VNC 及日志导出命令，并启动桌面事件循环。
+/// 注册串口、SSH/SFTP/X11、VNC、Markdown 及日志导出命令，并启动桌面事件循环。
 ///
 /// Windows 启动时同步主窗口的大图标与 Tauri 已配置的小图标。
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -87,6 +91,14 @@ pub fn run() -> tauri::Result<()> {
             sftp::sftp_download_file,
             sftp::sftp_delete,
             sftp::sftp_rename,
+            markdown::markdown_open_local,
+            markdown::markdown_open_folder,
+            markdown::markdown_list_folder,
+            markdown::markdown_create_folder,
+            markdown::markdown_open_folder_file,
+            markdown::markdown_save_local,
+            markdown::markdown_open_remote,
+            markdown::markdown_save_remote,
             log_export::save_log
         ])
         // 应用启动回调：Windows 同步主窗口图标，失败时将错误返回给启动流程。
