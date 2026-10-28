@@ -16,6 +16,8 @@ import { readTerminalActivityBarScrollbarHidden, TERMINAL_ACTIVITY_BAR_SCROLLBAR
 import { readSshKeepaliveSettings, SSH_KEEPALIVE_STORAGE_KEY, serializeSshKeepaliveSettings } from "./preferences/sshKeepalive";
 
 const TerminalPage = lazy(() => import("./pages/TerminalPage"));
+/** VNC 页面首次访问时加载，连接与桌面状态由其独立模块持有。 */
+const VncPage = lazy(() => import("./pages/VncPage"));
 
 /** 应用外壳所需的导航与品牌文案。 */
 const SHELL_COPY = {
@@ -36,7 +38,7 @@ const FONT_MODE_VALUES = ["builtin", "system"] as const;
 const FONT_SIZE_VALUES = ["12", "14", "16", "18"] as const;
 
 /** 应用外壳当前展示的一级页面。 */
-type AppPage = "serial" | "terminal" | "settings";
+type AppPage = "serial" | "terminal" | "vnc" | "settings";
 
 /**
  * 校验浏览器存储中读取的语言值。
@@ -230,12 +232,16 @@ export default function App() {
   const [page, setPage] = useState<AppPage>(initialPage);
   /** SSH 终端页首次访问后保持挂载，避免初始加载 xterm 且切页不丢会话。 */
   const [terminalMounted, setTerminalMounted] = useState(initialPage === "terminal");
+  /** VNC 首次访问后保持挂载，切换页面不关闭桌面连接。 */
+  const [vncMounted, setVncMounted] = useState(initialPage === "vnc");
   /** 最大化时取消悬浮留白，让应用内容真正铺满系统工作区。 */
   const [windowMaximized, setWindowMaximized] = useState(false);
   /** 串口页将真实日志工具栏渲染到此标题栏宿主。 */
   const [serialTitlebarHost, setSerialTitlebarHost] = useState<HTMLDivElement | null>(null);
   /** 终端页将真实会话标签渲染到此标题栏宿主。 */
   const [terminalTitlebarHost, setTerminalTitlebarHost] = useState<HTMLDivElement | null>(null);
+  /** VNC 标签使用独立标题栏宿主，与终端标签互不共享状态。 */
+  const [vncTitlebarHost, setVncTitlebarHost] = useState<HTMLDivElement | null>(null);
   /** Git 托管同步控制器常驻应用外壳，设置页只负责展示和人工操作。 */
   const sync = useRivetSync();
   /** 当前 locale 对应的一级导航文案。 */
@@ -417,6 +423,13 @@ export default function App() {
     setPage("terminal");
   };
 
+  /** 打开 VNC 页面；event 为导航点击，阻止 hash 跳转并保留已建立会话。 */
+  const navigateToVnc = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    setVncMounted(true);
+    setPage("vnc");
+  };
+
   /** 导航到设置页并阻止浏览器修改 URL hash。 */
   const navigateToSettings = (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
@@ -530,6 +543,7 @@ export default function App() {
           hidden={page !== "terminal"}
         />
         <div className="app-titlebar-drag" onPointerDown={handleTitlebarPointerDown} />
+        <div ref={setVncTitlebarHost} className="app-titlebar-host app-titlebar-terminal-host" hidden={page !== "vnc"} />
         <div className="app-window-controls">
           <button type="button" className="app-window-button" aria-label={copy.minimize} title={copy.minimize} onClick={() => runWindowAction("minimize")}>
             <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5h10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
@@ -557,6 +571,10 @@ export default function App() {
                 title={copy.serial}
               >
                 <SvgIcon name="serial" size={24} className="serial-icon" />
+              </a>
+            ) : item.id === "vnc" ? (
+              <a key={item.id} className={`rail-link${page === "vnc" ? " active" : ""}`} href="#vnc-page" onClick={navigateToVnc} aria-current={page === "vnc" ? "page" : undefined} aria-label="VNC" title="VNC">
+                <SvgIcon name="vnc" size={23} />
               </a>
             ) : (
               <a
@@ -596,6 +614,7 @@ export default function App() {
                 </Suspense>
               </div>
             )}
+            {vncMounted && <div className="app-view vnc-view" hidden={page !== "vnc"}><Suspense fallback={null}><VncPage locale={locale} pageActive={page === "vnc"} titlebarHost={vncTitlebarHost} /></Suspense></div>}
             <div className="app-view settings-view" hidden={page !== "settings"}>
               <SettingsPage locale={locale} onLocaleChange={setLocale} theme={theme} onThemeChange={setTheme} font={font} onFontChange={setFont} fontSize={fontSize} onFontSizeChange={setFontSize} notificationSettings={notificationSettings} onNotificationSettingsChange={updateNotificationSettings} navigationSettings={navigationSettings} onNavigationSettingsChange={updateNavigationSettings} serialDefaults={serialDefaults} onSerialDefaultsChange={updateSerialDefaults} useSerialDefaults={useSerialDefaults} onUseSerialDefaultsChange={setUseSerialDefaults} serialRxSettings={serialRxSettings} onSerialRxSettingsChange={updateSerialRxSettings} sshKeepalive={sshKeepalive} onSshKeepaliveChange={setSshKeepalive} x11ServerAddress={x11ServerAddress} onX11ServerAddressChange={setX11ServerAddress} linuxXauthPath={linuxXauthPath} onLinuxXauthPathChange={setLinuxXauthPath} hideActivityBarScrollbar={terminalActivityBarScrollbarHidden} onHideActivityBarScrollbarChange={setTerminalActivityBarScrollbarHidden} sync={sync} />
             </div>

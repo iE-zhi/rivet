@@ -6,6 +6,8 @@ import { spawnSync } from "node:child_process";
 const allowed = new Set(["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib"]);
 /** 用户已批准的精确包版本例外；许可证标识也必须与审查时一致。 */
 const approvedExceptions = new Map([
+  // VNC 协议引擎的固定间接依赖；已核对其公有领域授权全文。
+  ["async_io_stream@0.3.3", "Unlicense"],
   ["@fontsource-variable/jetbrains-mono@5.3.0", "OFL-1.1"],
   ["lightningcss-darwin-arm64@1.33.0", "MPL-2.0"],
   ["lightningcss@1.33.0", "MPL-2.0"],

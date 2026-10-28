@@ -16,6 +16,12 @@ mod ssh_forward;
 mod sync;
 #[path = "../src/sync_secrets.rs"]
 mod sync_secrets;
+#[path = "../src/vnc.rs"]
+mod vnc;
+#[path = "../src/vnc_frame.rs"]
+mod vnc_frame;
+#[path = "../src/vnc_transport.rs"]
+mod vnc_transport;
 #[path = "../src/x11.rs"]
 mod x11;
 
@@ -31,5 +37,7 @@ mod ssh_keepalive_tests;
 mod sync_secrets_tests;
 #[path = "unit/sync.rs"]
 mod sync_tests;
+#[path = "unit/vnc.rs"]
+mod vnc_tests;
 #[path = "unit/x11.rs"]
 mod x11_tests;

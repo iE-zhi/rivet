@@ -31,9 +31,10 @@ import uploadIcon from "../../assets/svg/upload.svg?url";
 import unshowIcon from "../../assets/svg/unshow.svg?url";
 import unplugIcon from "../../assets/svg/unplug.svg?url";
 import waveIcon from "../../assets/svg/wave.svg?url";
+import vncIcon from "../../assets/svg/vnc.svg?url";
 
 /** 可共用的单色图标标识；SVG 通过 CSS mask 继承所在位置的文字颜色。 */
-export type SvgIconName = "back" | "port" | "check" | "chevron" | "close" | "cmd" | "copy" | "display" | "download" | "file" | "folder" | "globe" | "group" | "info" | "list" | "more" | "plus" | "plug" | "refresh" | "retry" | "search" | "send" | "serial" | "setting" | "show" | "split-horizontal" | "split-vertical" | "terminal" | "unplug" | "unshow" | "upload" | "wave";
+export type SvgIconName = "back" | "port" | "check" | "chevron" | "close" | "cmd" | "copy" | "display" | "download" | "file" | "folder" | "globe" | "group" | "info" | "list" | "more" | "plus" | "plug" | "refresh" | "retry" | "search" | "send" | "serial" | "setting" | "show" | "split-horizontal" | "split-vertical" | "terminal" | "unplug" | "unshow" | "upload" | "wave" | "vnc";
 
 /** SVG 图标组件参数；尺寸以 CSS 像素计，默认 17px。 */
 export interface SvgIconProps {
@@ -79,6 +80,7 @@ const SVG_ICON_SOURCES: Record<SvgIconName, string> = {
   unplug: unplugIcon,
   unshow: unshowIcon,
   wave: waveIcon,
+  vnc: vncIcon,
 };
 
 /**

@@ -1,0 +1,538 @@
+/* VNC 独立布局；尺寸与现有终端的标题栏、浮层和底部工具栏一致。 */
+.vnc-page {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--r-terminal-bg);
+  color: var(--r-text);
+}
+.vnc-page button {
+  font: inherit;
+}
+.vnc-icon-button {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--r-subtle);
+  cursor: pointer;
+}
+.vnc-icon-button:hover:not(:disabled),
+.vnc-icon-button.active {
+  background: var(--r-surface-2);
+  color: var(--r-text);
+}
+.vnc-page button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.vnc-page button:focus-visible,
+.vnc-tabbar button:focus-visible,
+.vnc-page canvas:focus-visible {
+  outline: 2px solid var(--r-primary-light);
+  outline-offset: -2px;
+}
+.vnc-tabbar {
+  display: flex;
+  height: 35px;
+  max-width: 100%;
+  min-width: 0;
+  background: var(--r-surface);
+}
+.vnc-tabs {
+  min-width: 0;
+  max-width: 100%;
+}
+.vnc-tabs-row {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  height: 35px;
+}
+.vnc-tab {
+  position: relative;
+  display: flex;
+  min-width: 120px;
+  max-width: 230px;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px 0 12px;
+  border-right: 1px solid var(--r-border);
+  color: var(--r-subtle);
+}
+.vnc-tab.active {
+  background: var(--r-terminal-bg);
+  color: var(--r-text);
+}
+.vnc-tab.active::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--r-primary);
+  content: "";
+}
+.vnc-tab-main {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.vnc-tab-main span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vnc-new-tab {
+  width: 35px;
+  height: 35px;
+  flex-basis: 35px;
+  border-radius: 0;
+}
+.vnc-workspace {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+}
+.vnc-empty {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--r-subtle);
+}
+.vnc-empty strong {
+  color: var(--r-text);
+  font-size: var(--r-font-size-base);
+}
+.vnc-tab-content {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+.vnc-tab-content[hidden] {
+  display: none;
+}
+.vnc-tab-content.is-vertical {
+  flex-direction: column;
+}
+.vnc-pane {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+.is-horizontal > .vnc-pane + .vnc-pane {
+  border-left: 1px solid var(--r-border);
+}
+.is-vertical > .vnc-pane + .vnc-pane {
+  border-top: 1px solid var(--r-border);
+}
+.vnc-pane-header {
+  display: flex;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-left: 10px;
+  border-bottom: 1px solid var(--r-border);
+  background: var(--r-surface);
+  font-size: var(--r-font-size-secondary);
+}
+.vnc-pane-header > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vnc-viewport {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.vnc-pane-tools {
+  display: flex;
+  height: 34px;
+  flex: 0 0 34px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--r-border);
+  background: var(--r-surface);
+}
+.vnc-pane-tools > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--r-muted);
+  font-size: var(--r-font-size-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.vnc-pane-tools .rivet-button {
+  height: 24px;
+  min-height: 24px;
+  padding: 0 7px;
+  font-size: var(--r-font-size-secondary);
+}
+.vnc-desktop {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  background: var(--r-terminal-bg);
+}
+.vnc-desktop:fullscreen {
+  background: var(--r-terminal-bg);
+}
+.vnc-desktop-y,
+.vnc-desktop-x {
+  width: 100%;
+}
+.vnc-desktop-y > .rivet-vertical-scrollbar-viewport {
+  padding-right: 0;
+}
+.vnc-canvas-wrap {
+  display: flex;
+  width: max-content;
+  align-items: center;
+  justify-content: center;
+}
+.vnc-canvas-wrap canvas {
+  display: block;
+  flex: 0 0 auto;
+  touch-action: none;
+}
+.vnc-session-status {
+  position: absolute;
+  inset: 34px 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  background: color-mix(in srgb, var(--r-terminal-bg) 92%, transparent);
+  text-align: center;
+}
+.vnc-session-status > span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--r-danger);
+  font-size: var(--r-font-size-secondary);
+}
+.vnc-bottom-toolbar {
+  display: flex;
+  height: 36px;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 7px;
+  border-top: 1px solid var(--r-border);
+  background: var(--r-surface);
+}
+.vnc-bottom-toolbar > div {
+  display: flex;
+}
+.vnc-connection-toggle {
+  display: flex;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--r-subtle);
+  cursor: pointer;
+}
+.vnc-connection-toggle:hover,
+.vnc-connection-toggle.active {
+  background: var(--r-surface-2);
+  color: var(--r-text);
+}
+.vnc-split-hint {
+  flex: 1;
+  color: var(--r-muted);
+  font-size: var(--r-font-size-secondary);
+}
+.vnc-connections {
+  position: absolute;
+  z-index: 180;
+  left: 10px;
+  bottom: 12px;
+  display: flex;
+  width: 330px;
+  max-width: calc(100% - 20px);
+  height: min(540px, calc(100% - 24px));
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--r-border);
+  border-radius: 10px;
+  background: var(--r-surface);
+  box-shadow:
+    0 16px 44px rgba(0, 0, 0, 0.18),
+    0 3px 10px rgba(0, 0, 0, 0.07);
+}
+.vnc-connections > header {
+  display: flex;
+  height: 43px;
+  flex: 0 0 43px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 16px;
+  border-bottom: 1px solid var(--r-border);
+  font-size: var(--r-font-size-base);
+}
+.vnc-connections > header > div {
+  display: flex;
+}
+.vnc-search {
+  padding: 12px 14px 8px;
+}
+.vnc-connection-list {
+  min-height: 0;
+  flex: 1;
+}
+.vnc-connection-list section {
+  padding-bottom: 6px;
+}
+.vnc-connection-list h3 {
+  margin: 8px 14px;
+  color: var(--r-muted);
+  font-size: var(--r-font-size-secondary);
+  font-weight: 500;
+}
+.vnc-group-heading {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--r-subtle);
+  text-align: left;
+  cursor: pointer;
+}
+.vnc-group-heading > strong {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vnc-group-heading > span:last-child {
+  color: var(--r-muted);
+  font-size: var(--r-font-size-secondary);
+}
+.vnc-group-heading .is-expanded {
+  transform: rotate(90deg);
+}
+.vnc-connection-row {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 0 9px 0 16px;
+}
+.vnc-connection-row:hover {
+  background: var(--r-surface-2);
+}
+.vnc-connection-main {
+  display: flex;
+  min-width: 0;
+  height: 49px;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--r-subtle);
+  text-align: left;
+  cursor: pointer;
+}
+.vnc-connection-main > span:last-child {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+.vnc-connection-main strong,
+.vnc-connection-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vnc-connection-main strong {
+  color: var(--r-text);
+  font-size: var(--r-font-size-base);
+  font-weight: 500;
+}
+.vnc-connection-main small {
+  color: var(--r-muted);
+  font-size: var(--r-font-size-secondary);
+}
+.vnc-row-actions {
+  position: relative;
+}
+.vnc-delete-confirm {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 7px 0;
+  font-size: var(--r-font-size-secondary);
+}
+.vnc-delete-confirm > span {
+  margin-right: auto;
+}
+.vnc-delete-confirm .rivet-button {
+  min-height: 25px;
+  height: 25px;
+  padding: 0 7px;
+}
+.vnc-connection-form {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.vnc-connection-form > .rivet-vertical-scrollbar {
+  min-height: 0;
+  flex: 1;
+}
+.vnc-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 14px 16px;
+}
+.vnc-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--r-subtle);
+  font-size: var(--r-font-size-secondary);
+}
+.vnc-field .rivet-input,
+.vnc-field .rivet-select {
+  width: 100%;
+}
+.vnc-field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 78px;
+  gap: 10px;
+}
+.vnc-connection-form > footer,
+.vnc-auth-dialog > footer {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--r-border);
+}
+.vnc-hint {
+  margin: 2px 0;
+  color: var(--r-muted);
+  font-size: var(--r-font-size-secondary);
+  line-height: 1.6;
+}
+.vnc-panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 16px;
+  color: var(--r-muted);
+}
+.vnc-error,
+.vnc-page-error {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  color: var(--r-danger);
+  background: var(--r-surface);
+  font-size: var(--r-font-size-secondary);
+  overflow-wrap: anywhere;
+}
+.vnc-page-error > span {
+  flex: 1;
+}
+.vnc-modal-backdrop {
+  position: absolute;
+  z-index: 250;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.vnc-auth-dialog {
+  display: flex;
+  width: min(330px, 100%);
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+  border: 1px solid var(--r-border);
+  border-radius: 10px;
+  background: var(--r-surface);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.18);
+}
+.vnc-auth-dialog > strong,
+.vnc-auth-dialog > .vnc-field {
+  margin: 0 16px;
+}
+.vnc-auth-dialog > strong {
+  margin-top: 16px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .vnc-tab-content.is-horizontal {
+    flex-direction: column;
+  }
+  .vnc-pane-tools {
+    gap: 2px;
+  }
+  .vnc-split-hint {
+    display: none;
+  }
+}

@@ -1,4 +1,4 @@
-//! Rivet 桌面后端：提供串口、SSH/SFTP/X11 终端和日志导出能力，并通过 Tauri 命令与事件连接前端。
+//! Rivet 桌面后端：通过 Tauri 提供串口、SSH/SFTP/X11、独立 VNC 和日志导出能力。
 
 mod config;
 mod credential_store;
@@ -15,6 +15,9 @@ mod ssh_forward;
 mod sync;
 mod sync_secrets;
 mod terminal_serial;
+mod vnc;
+mod vnc_frame;
+mod vnc_transport;
 #[cfg(windows)]
 mod windows_icon;
 mod x11;
@@ -24,7 +27,7 @@ use serial::SerialService;
 use ssh::SshService;
 use terminal_serial::TerminalSerialService;
 
-/// 注册串口、SSH/SFTP/X11 终端及日志导出命令，初始化原生文件对话框并启动桌面窗口事件循环。
+/// 注册串口、SSH/SFTP/X11、独立 VNC 及日志导出命令，并启动桌面事件循环。
 ///
 /// Windows 启动时同步主窗口的大图标与 Tauri 已配置的小图标。
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -35,6 +38,7 @@ pub fn run() -> tauri::Result<()> {
         .manage(SerialService::default())
         .manage(SshService::default())
         .manage(TerminalSerialService::default())
+        .manage(vnc::VncService::default())
         .invoke_handler(tauri::generate_handler![
             serial::list_ports,
             serial::open_port,
@@ -43,6 +47,12 @@ pub fn run() -> tauri::Result<()> {
             credential_store::load_ssh_secrets,
             credential_store::save_ssh_secrets,
             credential_store::delete_ssh_secrets,
+            vnc::open_vnc_session,
+            vnc::vnc_poll_frame,
+            vnc::vnc_send_input,
+            vnc::close_vnc_session,
+            vnc::load_vnc_password,
+            vnc::save_vnc_password,
             local_terminal::open_local_terminal,
             local_terminal::local_terminal_send_input,
             local_terminal::local_terminal_resize,

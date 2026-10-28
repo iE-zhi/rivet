@@ -1,4 +1,4 @@
-//! Rivet 自有凭据存储：跨平台保存同步 Token、SSH 密码和私钥口令，不依赖系统凭据库。
+//! Rivet 自有凭据存储：跨平台加密保存同步 Token、SSH 与独立 VNC 凭据。
 
 use std::{
     collections::BTreeMap,
@@ -25,6 +25,8 @@ const MAX_CREDENTIAL_FILE_BYTES: usize = 1024 * 1024;
 const MAX_CONNECTION_ID_LENGTH: usize = 128;
 /// 单个 SSH 密码或私钥口令最大长度。
 const MAX_SSH_SECRET_BYTES: usize = 4096;
+/// 传统 VNC 密码最多八个 ASCII 字节；拒绝静默截断。
+const MAX_VNC_SECRET_BYTES: usize = 8;
 /// 单个平台同步 Token 最大长度。
 const MAX_SYNC_TOKEN_BYTES: usize = 8192;
 /// 本地凭据密文的 AEAD 附加认证数据。
@@ -38,6 +40,8 @@ const CREDENTIAL_FILE_NAME: &str = "credentials.enc.json";
 
 /// 进程内唯一凭据存储实例；启动后仅使用 Rivet 自有文件。
 static CREDENTIAL_STORE: OnceLock<CredentialStore> = OnceLock::new();
+/// 独立 VNC 凭据实例，使用独立子目录、密文和主密钥，不改变现有 SSH 凭据文件。
+static VNC_CREDENTIAL_STORE: OnceLock<CredentialStore> = OnceLock::new();
 
 /// 返回给前端和同步模块的 SSH 秘密。
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -51,17 +55,25 @@ pub struct StoredSshSecrets {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct CredentialDocument {
+    /// 明文结构版本；新增独立命名空间保持向后读取兼容。
     version: u8,
+    /// 同步平台 Token，键为平台名称，与连接凭据隔离。
     sync_tokens: BTreeMap<String, String>,
+    /// SSH 密码和私钥口令，键为 SSH 连接 ID。
     ssh: BTreeMap<String, StoredSshSecrets>,
+    /// VNC 密码，键为独立 VNC 连接 ID；旧凭据文档缺省为空。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    vnc: BTreeMap<String, String>,
 }
 
 impl Default for CredentialDocument {
+    /// 创建没有任何秘密的当前版本文档，所有命名空间互相隔离。
     fn default() -> Self {
         Self {
             version: CREDENTIAL_STORE_VERSION,
             sync_tokens: BTreeMap::new(),
             ssh: BTreeMap::new(),
+            vnc: BTreeMap::new(),
         }
     }
 }
@@ -75,15 +87,66 @@ struct EncryptedCredentialFile {
     ciphertext: String,
 }
 
-/// Rivet 应用自有凭据存储。
+/// Rivet 应用自有加密存储；同进程读改写通过互斥锁串行化，密钥不跨 IPC 暴露。
 pub(crate) struct CredentialStore {
+    /// 实例拥有的凭据目录，临时原子替换文件也在此目录创建。
     directory: PathBuf,
+    /// 此实例唯一的加密文档路径，不保存明文密码。
     credential_path: PathBuf,
+    /// 从应用自有文件加载的固定长度密钥，仅在实例生命周期内驻留内存。
     master_key: [u8; MASTER_KEY_BYTES],
+    /// 保护整个磁盘读改写流程；不得重入或跨异步等待持有。
     lock: Mutex<()>,
 }
 
 impl CredentialStore {
+    /// 读取独立 VNC 密码；同步锁保护整次读操作，不修改文件。
+    ///
+    /// # 参数
+    /// - `connection_id`：VNC 命名空间的连接标识，借用仅本次读取有效。
+    ///
+    /// # Errors
+    /// 标识无效、锁损坏或解密失败时返回错误；不存在时返回空字符串。
+    pub(crate) fn load_vnc(&self, connection_id: &str) -> Result<String, String> {
+        validate_connection_id(connection_id)?;
+        let _guard = self.lock.lock().map_err(|_| "本地凭据锁已损坏")?;
+        Ok(self
+            .read_document_unlocked()?
+            .vnc
+            .get(connection_id)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    /// 原子保存独立 VNC 密码；空密码删除该条目，失败时原文件保持有效。
+    ///
+    /// # 参数
+    /// - `connection_id`：VNC 命名空间的连接标识，不影响同名 SSH 条目。
+    /// - `password`：最多八个 ASCII 字符，空字符串表示删除。
+    ///
+    /// # Errors
+    /// 校验、加密或写盘失败返回错误；由 update_document 串行化读改写。
+    pub(crate) fn save_vnc(&self, connection_id: &str, password: &str) -> Result<(), String> {
+        validate_connection_id(connection_id)?;
+        if password.len() > MAX_VNC_SECRET_BYTES
+            || !password.is_ascii()
+            || password.chars().any(char::is_control)
+        {
+            return Err("标准 VNC 密码最多八个 ASCII 字符".into());
+        }
+        self.update_document(|document| {
+            // document 只在持有本地凭据写锁期间借用；删除操作可重复调用。
+            if password.is_empty() {
+                document.vnc.remove(connection_id);
+            } else {
+                document
+                    .vnc
+                    .insert(connection_id.to_string(), password.to_string());
+            }
+            Ok(())
+        })
+    }
+
     /// 在指定目录打开或初始化 Rivet 自有凭据存储。
     pub(crate) fn open_at(directory: PathBuf) -> Result<Self, String> {
         ensure_private_directory(&directory)?;
@@ -297,6 +360,12 @@ impl CredentialStore {
 }
 
 /// 应用启动时初始化 Rivet 自有凭据目录和主密钥。
+///
+/// # 参数
+/// - `app`：桌面应用句柄，仅借用其应用数据路径，不保存句柄。
+///
+/// # Errors
+/// 路径、权限、文件或重复初始化失败时阻止启动，不覆盖原凭据。
 pub(crate) fn initialize(app: &AppHandle) -> Result<(), String> {
     if CREDENTIAL_STORE.get().is_some() {
         return Ok(());
@@ -306,6 +375,11 @@ pub(crate) fn initialize(app: &AppHandle) -> Result<(), String> {
         .app_data_dir()
         .map_err(|error| format!("获取 Rivet 数据目录失败：{error}"))?
         .join(CREDENTIAL_DIRECTORY_NAME);
+    // VNC 使用同一加密存储实现，但文件与密钥独立；旧版 Rivet 可继续读取原凭据。
+    let vnc_store = CredentialStore::open_at(directory.join("vnc"))?;
+    VNC_CREDENTIAL_STORE
+        .set(vnc_store)
+        .map_err(|_| "VNC 本地凭据存储已经初始化")?;
     let store = CredentialStore::open_at(directory)?;
     CREDENTIAL_STORE
         .set(store)
@@ -317,6 +391,35 @@ fn store() -> Result<&'static CredentialStore, String> {
     CREDENTIAL_STORE
         .get()
         .ok_or_else(|| "Rivet 本地凭据存储尚未初始化".to_string())
+}
+
+/// 从应用级凭据实例读取 VNC 密码；调用方应在阻塞线程执行磁盘访问。
+///
+/// # 参数
+/// - `connection_id`：只读 VNC 连接 ID，不与 SSH 命名空间共享条目。
+///
+/// # Errors
+/// 未初始化或读取失败时返回错误，不回退到明文存储。
+pub(crate) fn load_vnc_password(connection_id: &str) -> Result<String, String> {
+    VNC_CREDENTIAL_STORE
+        .get()
+        .ok_or("VNC 本地凭据存储尚未初始化")?
+        .load_vnc(connection_id)
+}
+
+/// 在应用级凭据实例保存或删除 VNC 密码；调用方应在阻塞线程执行。
+///
+/// # 参数
+/// - `connection_id`：VNC 命名空间的连接 ID。
+/// - `password`：最多八字节 ASCII；空字符串幂等删除。
+///
+/// # Errors
+/// 未初始化、校验或写盘失败时返回错误，不改变其他凭据。
+pub(crate) fn save_vnc_password(connection_id: &str, password: &str) -> Result<(), String> {
+    VNC_CREDENTIAL_STORE
+        .get()
+        .ok_or("VNC 本地凭据存储尚未初始化")?
+        .save_vnc(connection_id, password)
 }
 
 /// 从 Rivet 自有凭据文件读取指定连接的密码与私钥口令。
@@ -434,6 +537,12 @@ fn validate_sync_token_value(token: &str) -> Result<(), String> {
 }
 
 /// 校验整个明文凭据文档，损坏内容不得进入运行时。
+///
+/// # 参数
+/// - `document`：解密或更新后的只读文档；校验期间不访问文件。
+///
+/// # Errors
+/// 版本、命名空间或秘密格式无效时拒绝读取/写入，不覆盖已有文件。
 fn validate_document(document: &CredentialDocument) -> Result<(), String> {
     if document.version != CREDENTIAL_STORE_VERSION || document.sync_tokens.len() > 3 {
         return Err("Rivet 本地凭据结构无效".to_string());
@@ -449,6 +558,15 @@ fn validate_document(document: &CredentialDocument) -> Result<(), String> {
             || (!secrets.password.is_empty() && !secrets.key_passphrase.is_empty())
         {
             return Err("Rivet 本地 SSH 凭据结构无效".to_string());
+        }
+    }
+    for (connection_id, password) in &document.vnc {
+        validate_connection_id(connection_id)?;
+        if password.len() > MAX_VNC_SECRET_BYTES
+            || !password.is_ascii()
+            || password.chars().any(char::is_control)
+        {
+            return Err("Rivet 本地 VNC 凭据结构无效".into());
         }
     }
     Ok(())

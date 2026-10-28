@@ -2,6 +2,9 @@
 
 桌面分发中包含以下锁定运行时依赖：
 
+- MIT：`vnc-rs@0.6.0`；随安装包附带 `licenses/MIT-vnc-rs.txt`。对应源码：[HsuJv/vnc-rs](https://github.com/HsuJv/vnc-rs)。
+- Unlicense：`async_io_stream@0.3.3`（VNC 间接依赖）。对应源码：[crates.io async_io_stream 0.3.3](https://crates.io/crates/async_io_stream/0.3.3)。
+
 - MPL-2.0：`option-ext@0.2.0`；随安装包附带 `licenses/MPL-2.0.txt`。对应源码：[crates.io option-ext 0.2.0](https://crates.io/crates/option-ext/0.2.0)。
 - MIT：`lxgw-wenkai-webfont@1.7.0` 的 webfont 样式代码；随安装包附带 `licenses/MIT-LXGW-Webfont.txt`。对应源码：[chawyehsu/lxgw-wenkai-webfont](https://github.com/chawyehsu/lxgw-wenkai-webfont)。
 - SIL OFL-1.1：LXGW WenKai 字体（`lxgw-wenkai-webfont@1.7.0`）；随安装包附带 `licenses/OFL-1.1-LXGW.txt`。对应源码：[lxgw/LxgwWenKai](https://github.com/lxgw/LxgwWenKai)。
