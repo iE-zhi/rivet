@@ -443,7 +443,7 @@ function createInitialTerminalWorkspace(title: string): {
   };
 }
 
-/** 读取当前主题 token 并映射为 xterm 颜色。 */
+/** 生成本地、SSH 和串口共用的终端配色。 */
 function readTerminalTheme(element: HTMLElement): ITheme {
   const style = getComputedStyle(element);
   return {
@@ -459,7 +459,8 @@ function readTerminalTheme(element: HTMLElement): ITheme {
     blue: style.getPropertyValue("--r-terminal-info").trim(),
     magenta: "#8b5cf6",
     cyan: "#22c5c7",
-    white: style.getPropertyValue("--r-terminal-text").trim(),
+    // ANSI 7（SGR 37/47）表示浅灰白色，不随应用默认文字颜色切换。
+    white: "#e5e5e5",
   };
 }
 
