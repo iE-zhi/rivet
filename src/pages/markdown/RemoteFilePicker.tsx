@@ -100,10 +100,14 @@ export default function RemoteFilePicker({ sessions, zh, mode = "file", onOpened
     catch (error) { notify({ kind: "error", message: error instanceof Error ? error.message : String(error) }); }
   };
 
-  return <div className="markdown-remote-backdrop" onContextMenu={/** 选择器内不弹出原生菜单或背后的文件菜单。 */ (event) => { event.preventDefault(); event.stopPropagation(); }} onPointerDown={/** 点击空白只关闭选择器，不影响已连接会话。 */ (event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div ref={dialog} className={`markdown-remote-dialog${selected ? "" : " is-empty"}`} role="dialog" aria-modal="true" aria-labelledby="markdown-remote-title" tabIndex={-1} onKeyDown={keyDown}>
-      <header><strong id="markdown-remote-title">{folderMode ? (zh ? "打开远程文件夹" : "Open remote folder") : (zh ? "打开远程文件" : "Open remote file")}</strong><button type="button" aria-label={folderMode ? (zh ? "关闭远程文件夹选择器" : "Close remote folder picker") : (zh ? "关闭远程文件选择器" : "Close remote file picker")} onClick={onClose}><SvgIcon name="close" size={14} /></button></header>
-      {!selected ? <div className="markdown-remote-empty"><span>{zh ? "请先连接 SSH 服务器" : "Connect to an SSH server first"}</span><Button variant="secondary" onClick={onConnect}>{zh ? "前往终端连接" : "Connect in Terminal"}</Button></div> : <>
+  return <div className="rivet-confirm-backdrop markdown-remote-backdrop" onContextMenu={/** 选择器内不弹出原生菜单或背后的文件菜单。 */ (event) => { event.preventDefault(); event.stopPropagation(); }} onPointerDown={/** 点击空白只关闭选择器，不影响已连接会话。 */ (event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div ref={dialog} className={`rivet-confirm-dialog markdown-remote-dialog${selected ? "" : " is-empty"}`} role="dialog" aria-modal="true" aria-labelledby="markdown-remote-title" tabIndex={-1} onKeyDown={keyDown}>
+      {!selected ? <>
+        <div className="rivet-confirm-icon markdown-remote-info"><SvgIcon name="info" size={18} /></div>
+        <div className="rivet-confirm-content"><strong id="markdown-remote-title">{folderMode ? (zh ? "打开远程文件夹" : "Open remote folder") : (zh ? "打开远程文件" : "Open remote file")}</strong><p>{zh ? "请先连接 SSH 服务器" : "Connect to an SSH server first"}</p></div>
+        <footer className="rivet-confirm-actions"><Button variant="secondary" onClick={onClose}>{zh ? "取消" : "Cancel"}</Button><Button onClick={onConnect}>{zh ? "前往终端连接" : "Connect in Terminal"}</Button></footer>
+      </> : <>
+        <header><strong id="markdown-remote-title">{folderMode ? (zh ? "打开远程文件夹" : "Open remote folder") : (zh ? "打开远程文件" : "Open remote file")}</strong><button type="button" aria-label={folderMode ? (zh ? "关闭远程文件夹选择器" : "Close remote folder picker") : (zh ? "关闭远程文件选择器" : "Close remote file picker")} onClick={onClose}><SvgIcon name="close" size={14} /></button></header>
         <div className="markdown-remote-server"><Select ariaLabel={zh ? "SSH 会话" : "SSH session"} value={currentSessionId} disabled={busy} options={sessions.map(/** 只展示身份快照中的服务器名称。 */ (session) => ({ value: session.sessionId, label: session.sessionName }))} onChange={/** 新会话结果返回前旧目录不可操作。 */ (value) => { setDirectory(null); setSessionId(value); }} /></div>
         <form className="markdown-remote-path" onSubmit={/** 用户可以直接输入服务器目录，路径不经 Shell。 */ (event) => { event.preventDefault(); void loadDirectory(pathInput); }}>
           <button type="button" disabled={busy || !currentDirectory} aria-label={zh ? "上一级" : "Parent directory"} onClick={/** 由 SFTP 规范化父目录，根目录继续保持在根。 */ () => void loadDirectory(`${currentDirectory?.path ?? "."}/..`)}><SvgIcon name="back" size={15} /></button>
@@ -113,7 +117,7 @@ export default function RemoteFilePicker({ sessions, zh, mode = "file", onOpened
         <VerticalScrollbar className="markdown-remote-list" height="100%" viewportLabel={zh ? "远程文件" : "Remote files"}>
           {busy ? <div className="markdown-remote-empty">{zh ? "正在读取…" : "Loading…"}</div> : !currentDirectory ? null : !entries.length ? <div className="markdown-remote-empty">{folderMode ? (zh ? "没有子文件夹" : "No subfolders") : (zh ? "此目录没有 Markdown 文件或子目录" : "No Markdown files or subdirectories")}</div> : entries.map(/** 点击目录继续浏览，点击 Markdown 读取正文后交给工作区。 */ (entry) => <button key={entry.path} type="button" className="markdown-remote-entry" disabled={!currentDirectory} title={entry.path} onClick={/** 根据服务器类型选择浏览或读取，均绑定当前会话。 */ () => { if (entry.kind === "directory") void loadDirectory(entry.path); else void openFile(entry.path); }}><SvgIcon name={entry.kind === "directory" ? "folder" : "markdown"} size={16} /><span>{entry.name}</span>{entry.kind === "directory" && <SvgIcon name="chevron" size={12} />}</button>)}
         </VerticalScrollbar>
-        {folderMode && <footer className="markdown-remote-footer"><Button disabled={busy || !currentDirectory || pathInput !== currentDirectory.path || !onFolderOpened} onClick={chooseFolder}>{zh ? "打开此文件夹" : "Open this folder"}</Button></footer>}
+        {folderMode && <footer className="rivet-confirm-actions markdown-remote-footer"><Button variant="secondary" onClick={onClose}>{zh ? "取消" : "Cancel"}</Button><Button disabled={busy || !currentDirectory || pathInput !== currentDirectory.path || !onFolderOpened} onClick={chooseFolder}>{zh ? "打开此文件夹" : "Open this folder"}</Button></footer>}
       </>}
     </div>
   </div>;

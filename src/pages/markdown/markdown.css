@@ -114,18 +114,19 @@
   .markdown-editor .milkdown .milkdown-block-handle { transition: none; }
 }
 
-.markdown-remote-backdrop { position: absolute; inset: 0; z-index: 350; display: grid; place-items: center; padding: 24px; background: color-mix(in srgb, var(--r-bg) 50%, transparent); }
-.markdown-remote-dialog { display: flex; flex-direction: column; width: min(580px, 100%); height: min(480px, 100%); min-height: 0; border: 1px solid var(--r-border); border-radius: 9px; background: var(--r-bg); box-shadow: 0 12px 40px #00000018; outline: none; overflow: hidden; }
-.markdown-remote-dialog.is-empty { height: min(220px, 100%); }
-.markdown-remote-dialog > header { display: flex; align-items: center; justify-content: space-between; min-height: 42px; padding: 0 14px 0 18px; border-bottom: 1px solid var(--r-border); font-size: 13px; }
+/* 复用确认弹窗的遮罩和卡片外观；只有已连接的目录浏览器扩展到 580×480px。 */
+.markdown-remote-dialog { outline: none; }
+.markdown-remote-dialog:not(.is-empty) { display: flex; flex-direction: column; gap: 0; width: min(580px, 100%); height: min(480px, 100%); min-height: 0; overflow: hidden; }
+.markdown-remote-dialog .markdown-remote-info { color: var(--r-primary); border-color: color-mix(in srgb, var(--r-primary) 45%, var(--r-border)); }
+.markdown-remote-dialog > header { display: flex; align-items: center; justify-content: space-between; min-height: 30px; padding: 0 0 12px; font-size: var(--r-font-size-base); }
+.markdown-remote-dialog > header > strong { font-weight: 600; }
 .markdown-remote-dialog > header > button, .markdown-remote-path > button { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: var(--r-subtle); cursor: pointer; }
 .markdown-remote-dialog > header > button:hover, .markdown-remote-path > button:hover { background: var(--r-surface-2); }
-.markdown-remote-server { padding: 12px 14px 0; }
 .markdown-remote-server .rivet-select { width: 100%; }
-.markdown-remote-path { display: flex; align-items: center; gap: 7px; padding: 10px 14px; }
+.markdown-remote-path { display: flex; align-items: center; gap: 7px; padding: 10px 0; }
 .markdown-remote-path .rivet-input { flex: 1; min-width: 0; }
 .markdown-remote-list { flex: 1; min-height: 0; border-top: 1px solid var(--r-border); }
-.markdown-remote-footer { display: flex; flex-shrink: 0; justify-content: flex-end; padding: 10px 14px; border-top: 1px solid var(--r-border); }
+.markdown-remote-footer { flex-shrink: 0; padding-top: 10px; border-top: 1px solid var(--r-border); }
 .markdown-remote-entry { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 8px 18px; border: 0; background: transparent; color: var(--r-text); text-align: left; cursor: pointer; font-size: 13px; }
 .markdown-remote-entry > span:not(.rivet-svg-icon) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .markdown-remote-entry:hover { background: var(--r-surface); }
