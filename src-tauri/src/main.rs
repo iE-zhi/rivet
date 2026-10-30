@@ -1,17 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-/// Linux 默认使用更保守的 X11 + 非 DMA-BUF WebKitGTK 渲染路径，
-/// 避免 Debian 13 / Wayland / NVIDIA 环境下出现 GBM/KMS buffer 创建失败。
-///
-/// 如果用户已显式设置对应环境变量，则保留用户配置，不做覆盖。
+/// 在创建线程和初始化 GTK 前为 Linux 设置默认 X11 后端；保留用户指定的后端和 DMA-BUF 配置。
 #[cfg(target_os = "linux")]
 fn configure_linux_webview_compatibility() {
     if std::env::var_os("GDK_BACKEND").is_none() {
         std::env::set_var("GDK_BACKEND", "x11");
-    }
-
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 }
 
