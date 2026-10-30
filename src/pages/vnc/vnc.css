@@ -138,9 +138,6 @@
 .vnc-tab-content[hidden] {
   display: none;
 }
-.vnc-tab-content.is-vertical {
-  flex-direction: column;
-}
 .vnc-pane {
   position: relative;
   display: flex;
@@ -149,29 +146,6 @@
   flex: 1;
   flex-direction: column;
   overflow: hidden;
-}
-.is-horizontal > .vnc-pane + .vnc-pane {
-  border-left: 1px solid var(--r-border);
-}
-.is-vertical > .vnc-pane + .vnc-pane {
-  border-top: 1px solid var(--r-border);
-}
-.vnc-pane-header {
-  display: flex;
-  height: 28px;
-  flex: 0 0 28px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-left: 10px;
-  border-bottom: 1px solid var(--r-border);
-  background: var(--r-surface);
-  font-size: var(--r-font-size-secondary);
-}
-.vnc-pane-header > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .vnc-viewport {
   display: flex;
@@ -261,9 +235,6 @@
   border-top: 1px solid var(--r-border);
   background: var(--r-surface);
 }
-.vnc-bottom-toolbar > div {
-  display: flex;
-}
 .vnc-connection-toggle {
   display: flex;
   height: 28px;
@@ -280,11 +251,6 @@
 .vnc-connection-toggle.active {
   background: var(--r-surface-2);
   color: var(--r-text);
-}
-.vnc-split-hint {
-  flex: 1;
-  color: var(--r-muted);
-  font-size: var(--r-font-size-secondary);
 }
 .vnc-connections {
   position: absolute;
@@ -311,15 +277,42 @@
   flex: 0 0 43px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 10px 0 16px;
+  gap: 8px;
+  padding: 0 9px 0 13px;
   border-bottom: 1px solid var(--r-border);
   font-size: var(--r-font-size-base);
 }
-.vnc-connections > header > div {
-  display: flex;
+.vnc-connections > header > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.vnc-search {
-  padding: 12px 14px 8px;
+.vnc-connection-header-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 3px;
+}
+/* 搜索框占据标题和操作按钮之间的剩余宽度，窄面板允许输入区域收缩。 */
+.vnc-header-search {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+}
+.vnc-header-search > .rivet-svg-icon {
+  position: absolute;
+  left: 8px;
+  color: var(--r-muted);
+  pointer-events: none;
+}
+.vnc-header-search .rivet-input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px 0 26px;
+  font-size: var(--r-font-size-secondary);
 }
 .vnc-connection-list {
   min-height: 0;
@@ -468,12 +461,6 @@
   padding: 12px 16px;
   border-top: 1px solid var(--r-border);
 }
-.vnc-hint {
-  margin: 2px 0;
-  color: var(--r-muted);
-  font-size: var(--r-font-size-secondary);
-  line-height: 1.6;
-}
 .vnc-panel-empty {
   display: flex;
   flex-direction: column;
@@ -526,13 +513,7 @@
   overflow-wrap: anywhere;
 }
 @media (max-width: 700px) {
-  .vnc-tab-content.is-horizontal {
-    flex-direction: column;
-  }
   .vnc-pane-tools {
     gap: 2px;
-  }
-  .vnc-split-hint {
-    display: none;
   }
 }

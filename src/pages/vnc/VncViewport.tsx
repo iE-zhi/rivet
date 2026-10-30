@@ -16,9 +16,8 @@ import {
 import { closeSession, pollFrame, sendInput, type VncInput } from "./api";
 import { decodeFrame, type VncState } from "./model";
 import { keySymbol, pointerButtons } from "./keyboard";
+import { VncFramePump } from "./framePump";
 
-/** 前端每次只保留一个取帧请求，最多每六十毫秒启动下一次。 */
-const POLL_INTERVAL_MS = 60;
 /** 前端最多排队一百二十八个键鼠事件；超限断开会话以释放远端按键。 */
 const MAX_QUEUED_INPUTS = 128;
 /** 每次 IPC 最多发送六十四个有序事件。 */
@@ -64,6 +63,8 @@ export default function VncViewport({
   const animation = useRef<number | null>(null);
   const mounted = useRef(true);
   const failed = useRef(false);
+  /** 当前桌面的串行取帧调度器，暂停不销毁在途请求。 */
+  const framePump = useRef<VncFramePump | null>(null);
   /** 按物理 code 保存按下时的 keysym，修饰键变化不会改变释放目标。 */
   const pressed = useRef(new Map<string, number>());
   const pointer = useRef({ x: 0, y: 0, buttons: 0 });
@@ -179,30 +180,36 @@ export default function VncViewport({
     return () => observer.disconnect();
   }, []);
 
-  /** 活动视图串行拉取帧；已经返回的脏区即使刚被隐藏也写入 Canvas，避免消费后丢失。 */
+  /** 为本会话缓存 Canvas 上下文；语言和可见性变化不重建取帧器，避免旧请求消费新画面。 */
   useEffect(() => {
-    if (!active) {
-      releaseInputs();
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d", { alpha: false });
+    if (!canvas || !context) {
+      fail("无法创建桌面画布 / Canvas is unavailable");
       return;
     }
-    let cancelled = false;
-    // 每次恢复显示先拉完整桌面，后续只取脏区；Canvas 重建不会永久丢失静止画面。
-    let full = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    /** 单次轮询负责状态、尺寸和像素写入；失败终止轮询并释放后端会话。 */
-    const poll = async () => {
-      try {
-        const buffer = await pollFrame(sessionId, full);
-        full = false;
-        const canvas = canvasRef.current;
-        if (!canvas || !mounted.current || failed.current) return;
+    /** 上次已报告的会话状态；普通像素更新不触发 React 状态更新。 */
+    let state: VncState | null = null;
+    const pump = new VncFramePump(
+      /** full 仅在首次或恢复可见时为 true，其他请求等待最新变化。 */
+      (full) => pollFrame(sessionId, full),
+      /** buffer 由当前 IPC 请求拥有，同步绘制所有经校验区域，不复制像素缓冲。 */
+      (buffer) => {
+        if (!mounted.current || failed.current) {
+          pump.dispose();
+          return;
+        }
         const frame = decodeFrame(buffer);
         if (frame.state === "error") {
           fail(frame.error);
+          pump.dispose();
           return;
         }
-        onState(sessionId, frame.state, "");
-        setConnected(frame.state === "connected");
+        if (state !== frame.state) {
+          state = frame.state;
+          onState(sessionId, state, "");
+          setConnected(state === "connected");
+        }
         if (
           frame.width &&
           frame.height &&
@@ -212,31 +219,27 @@ export default function VncViewport({
           canvas.height = frame.height;
           setScreen({ width: frame.width, height: frame.height });
         }
-        if (frame.dirtyWidth && frame.dirtyHeight) {
-          const context = canvas.getContext("2d", { alpha: false });
-          if (!context)
-            throw new Error(zh ? "无法创建桌面画布" : "Canvas is unavailable");
+        for (const region of frame.regions) {
           context.putImageData(
-            new ImageData(frame.data, frame.dirtyWidth, frame.dirtyHeight),
-            frame.x,
-            frame.y,
+            new ImageData(region.data, region.width, region.height),
+            region.x,
+            region.y,
           );
         }
-        if (frame.state === "closed") return;
-        if (!cancelled)
-          timer = setTimeout(() => {
-            void poll();
-          }, POLL_INTERVAL_MS);
-      } catch (error) {
-        if (!cancelled) fail(error);
-      }
-    };
-    void poll();
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [sessionId, active, fail, onState, releaseInputs, zh]);
+        if (frame.state === "closed") pump.dispose();
+      },
+      fail,
+    );
+    framePump.current = pump;
+    return /** 只销毁本次会话的调度器，保留后端已有资源的统一关闭路径。 */ () =>
+      pump.dispose();
+  }, [sessionId, fail, onState]);
+
+  /** 可见性变化只暂停或恢复同一个调度器；隐藏时释放已按下的键鼠。 */
+  useEffect(() => {
+    framePump.current?.setActive(active);
+    if (!active) releaseInputs();
+  }, [active, releaseInputs, sessionId, fail, onState]);
 
   /** 使用非 passive 原生监听拦截远端滚轮，仅在桌面已连接且允许输入时发送脉冲。 */
   useEffect(() => {

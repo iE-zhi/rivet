@@ -7,7 +7,6 @@ import {
   Input,
   PopupMenu,
   PopupMenuItem,
-  SearchInput,
   Select,
   SvgIcon,
   VerticalScrollbar,
@@ -70,6 +69,7 @@ export default function VncConnections({
 }: VncConnectionsProps) {
   const zh = locale === "zh";
   const [draft, setDraft] = useState<Draft | null>(null);
+  /** 标题栏搜索文本，仅在当前面板生命周期内过滤名称、主机和分组。 */
   const [search, setSearch] = useState("");
   const [manage, setManage] = useState(false);
   const [menu, setMenu] = useState<string | null>(null);
@@ -351,7 +351,21 @@ export default function VncConnections({
                 ? "VNC 连接"
                 : "VNC connections"}
         </strong>
-        <div>
+        {!draft && !manage && (
+          <label className="vnc-header-search">
+            <SvgIcon name="search" size={14} />
+            <Input
+              type="search"
+              aria-label={zh ? "搜索连接" : "Search connections"}
+              placeholder={zh ? "搜索连接" : "Search connections"}
+              value={search}
+              onChange={/** 输入后立即过滤连接，不触发网络请求或持久化。 */ (event) =>
+                setSearch(event.currentTarget.value)
+              }
+            />
+          </label>
+        )}
+        <div className="vnc-connection-header-actions">
           {!draft && (
             <>
               <button
@@ -505,11 +519,6 @@ export default function VncConnections({
                   update("readOnly", event.currentTarget.checked)
                 }
               />
-              <p className="vnc-hint">
-                {zh
-                  ? "标准 VNC 连接未加密，请在可信网络使用。"
-                  : "Standard VNC is unencrypted. Use a trusted network."}
-              </p>
             </div>
           </VerticalScrollbar>
           <footer>
@@ -544,15 +553,6 @@ export default function VncConnections({
         />
       ) : (
         <>
-          <div className="vnc-search">
-            <SearchInput
-              onSearch={setSearch}
-              placeholder={zh ? "搜索连接" : "Search connections"}
-              buttonLabel={zh ? "搜索" : "Search"}
-              value={search}
-              onChange={(event) => setSearch(event.currentTarget.value)}
-            />
-          </div>
           <VerticalScrollbar height="100%" className="vnc-connection-list">
             {!query &&
               recent.some((id) =>
@@ -607,15 +607,6 @@ export default function VncConnections({
                   : zh
                     ? "暂无连接"
                     : "No connections"}
-                {!connections.length && (
-                  <Button
-                    variant="secondary"
-                    disabled={!writable}
-                    onClick={create}
-                  >
-                    {zh ? "新建连接" : "New connection"}
-                  </Button>
-                )}
               </div>
             )}
           </VerticalScrollbar>

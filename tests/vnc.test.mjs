@@ -55,7 +55,7 @@ test("VNC binary snapshots validate bounds and exact pixel length", () => {
   view.setUint8(12, 1);
   const frame = decodeFrame(bytes);
   assert.equal(frame.state, "connected");
-  assert.equal(frame.data.length, 8);
+  assert.equal(frame.regions[0].data.length, 8);
   assert.throws(() => decodeFrame(bytes.slice(0, 23)));
   view.setUint16(4, 1, true);
   assert.throws(() => decodeFrame(bytes));
@@ -73,7 +73,82 @@ test("VNC error snapshots preserve the visible UTF-8 failure", () => {
   const frame = decodeFrame(bytes.buffer);
   assert.equal(frame.state, "error");
   assert.equal(frame.error, "认证失败");
-  assert.equal(frame.data.length, 0);
+  assert.equal(frame.regions.length, 0);
+  assert.throws(
+    () =>
+      decodeFrame(
+        new Uint8Array([...bytes.slice(0, 16), ...new Uint8Array(4097)]).buffer,
+      ),
+    /过大/,
+  );
+});
+
+/** 使用两块相距很远的 1×1 RGBA 更新，验证多区域解码借用原缓冲且不扩成整屏。 */
+test("VNC sparse regions retain coordinates and share the response buffer", () => {
+  const buffer = new ArrayBuffer(40);
+  const view = new DataView(buffer);
+  view.setUint16(0, 1920, true);
+  view.setUint16(2, 1080, true);
+  view.setUint8(12, 1);
+  view.setUint8(13, 1);
+  view.setUint16(14, 2, true);
+  for (const [offset, x, y] of [
+    [16, 0, 0],
+    [28, 1919, 1079],
+  ]) {
+    view.setUint16(offset, x, true);
+    view.setUint16(offset + 2, y, true);
+    view.setUint16(offset + 4, 1, true);
+    view.setUint16(offset + 6, 1, true);
+    new Uint8Array(buffer, offset + 8, 4).set([10, 20, 30, 255]);
+  }
+  const frame = decodeFrame(buffer);
+  assert.equal(frame.regions.length, 2);
+  assert.deepEqual(
+    frame.regions.map(({ x, y }) => [x, y]),
+    [
+      [0, 0],
+      [1919, 1079],
+    ],
+  );
+  for (const region of frame.regions) {
+    assert.equal(region.data.buffer, buffer);
+    assert.deepEqual([...region.data], [10, 20, 30, 255]);
+  }
+  assert.throws(() => decodeFrame(buffer.slice(0, 39)), /长度/);
+  assert.throws(() => decodeFrame(buffer.slice(0, 30)), /头不完整/);
+  view.setUint16(28, 1920, true);
+  assert.throws(() => decodeFrame(buffer), /区域/);
+  view.setUint16(28, 1919, true);
+  view.setUint16(14, 65, true);
+  assert.throws(() => decodeFrame(buffer), /格式/);
+  view.setUint16(14, 0, true);
+  assert.throws(() => decodeFrame(buffer), /格式/);
+  view.setUint16(14, 1, true);
+  assert.throws(() => decodeFrame(buffer), /多余/);
+  view.setUint8(13, 2);
+  assert.throws(() => decodeFrame(buffer), /格式/);
+});
+
+/** 多区域帧不得用重叠矩形绕过总像素上限，空白普通帧仍能传达状态。 */
+test("VNC region packets bound total pixel count and preserve empty snapshots", () => {
+  const buffer = new ArrayBuffer(40);
+  const view = new DataView(buffer);
+  view.setUint16(0, 1, true);
+  view.setUint16(2, 1, true);
+  view.setUint8(12, 1);
+  view.setUint8(13, 1);
+  view.setUint16(14, 2, true);
+  for (const offset of [16, 28]) {
+    view.setUint16(offset + 4, 1, true);
+    view.setUint16(offset + 6, 1, true);
+  }
+  assert.throws(() => decodeFrame(buffer), /区域/);
+  view.setUint8(13, 0);
+  view.setUint16(14, 0, true);
+  const empty = decodeFrame(buffer.slice(0, 16));
+  assert.equal(empty.state, "connected");
+  assert.deepEqual(empty.regions, []);
 });
 
 /** 控制键、左右修饰键、Unicode 和三键鼠标映射符合 RFB/X11 顺序。 */

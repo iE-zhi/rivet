@@ -47,14 +47,12 @@ interface Session {
   ready: boolean;
 }
 
-/** 标签只引用所属 VNC 会话；最多四个窗格，布局不进入 SSH 模型。 */
+/** 每个标签只引用一个 VNC 会话；标签和会话均不持久化。 */
 interface Tab {
-  /** 标签稳定标识，移除其中的首个窗格也不改变此值。 */
+  /** 标签稳定标识，重连时保持不变。 */
   id: string;
-  /** 有序的 VNC 会话 ID；删除最后一个会话时同时移除标签。 */
-  sessions: string[];
-  /** horizontal 表示左右排列，vertical 表示上下排列。 */
-  direction: "horizontal" | "vertical";
+  /** 所属会话 ID；重连时替换，关闭会话时同时移除标签。 */
+  sessionId: string;
 }
 
 /** VNC 页面仅依赖应用语言、可见性与标题栏宿主。 */
@@ -102,9 +100,6 @@ export default function VncPage({
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTab, setActiveTab] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
-  const [splitDirection, setSplitDirection] = useState<Tab["direction"] | null>(
-    null,
-  );
   const [error, setError] = useState(initial.error);
   /** 待认证连接和可选重连目标，只保留到提交或取消。 */
   const [prompt, setPrompt] = useState<{
@@ -127,7 +122,6 @@ export default function VncPage({
       ...connections.map((item) => item.group),
     ]),
   ];
-  const selectedTab = tabs.find((tab) => tab.id === activeTab);
 
   /** 关闭当前标签后选择仍然存在的最后一个标签，不在状态更新器中触发另一状态写入。 */
   useEffect(() => {
@@ -163,10 +157,9 @@ export default function VncPage({
     };
   }, []);
 
-  /** 关闭浮层并取消待分屏操作，不改变已连接桌面。 */
+  /** 关闭连接浮层，不改变已连接桌面。 */
   const closePanel = useCallback(() => {
     setPanelOpen(false);
-    setSplitDirection(null);
   }, []);
 
   /** 在秘密保存成功后提交配置；浏览器写入失败时恢复旧秘密，两个存储均保留错误上下文。 */
@@ -284,38 +277,21 @@ export default function VncPage({
       : [...sessionsRef.current, session];
     setSessions(sessionsRef.current);
     if (replacing)
-      setTabs((current) =>
-        current.map((tab) => ({
+      setTabs(/** 将重连会话关联到原标签。 */ (current) =>
+        current.map(/** 保留标签 ID，只替换对应的会话引用。 */ (tab) => ({
           ...tab,
-          sessions: tab.sessions.map((item) =>
-            item === replacing ? id : item,
-          ),
+          sessionId: tab.sessionId === replacing ? id : tab.sessionId,
         })),
       );
-    else if (splitDirection && selectedTab)
-      setTabs((current) =>
-        current.map((tab) =>
-          tab.id === selectedTab.id
-            ? {
-                ...tab,
-                direction: splitDirection,
-                sessions: [...tab.sessions, id],
-              }
-            : tab,
-        ),
-      );
     else {
-      setTabs((current) => [
-        ...current,
-        { id, sessions: [id], direction: "horizontal" },
-      ]);
+      setTabs(/** 新会话始终追加独立标签。 */ (current) => [...current, { id, sessionId: id }]);
       setActiveTab(id);
     }
     closePanel();
     setError("");
     try {
       await openSession(id, connection, secret);
-      // 用户可能在注册 IPC 返回前关闭窗格或卸载页面，迟到的资源立即关闭。
+      // 用户可能在注册 IPC 返回前关闭标签或卸载页面，迟到的资源立即关闭。
       if (
         !alive.current ||
         !sessionsRef.current.some((item) => item.id === id)
@@ -407,31 +383,20 @@ export default function VncPage({
     }
   };
 
-  /** 先关闭后端再移除窗格；失败保留可操作的错误状态，避免遗留不可见连接。 */
-  const closePane = async (id: string) => {
+  /** 先关闭后端再移除会话及标签；id 为会话 ID，失败保留桌面和错误状态。 */
+  const closeTab = async (id: string) => {
     try {
       await closeSession(id);
       sessionsRef.current = sessionsRef.current.filter(
         (item) => item.id !== id,
       );
       setSessions(sessionsRef.current);
-      setTabs((current) => {
-        const next = current
-          .map((tab) => ({
-            ...tab,
-            sessions: tab.sessions.filter((item) => item !== id),
-          }))
-          .filter((tab) => tab.sessions.length);
-        return next;
-      });
+      setTabs(/** 后端关闭成功后移除对应标签。 */ (current) =>
+        current.filter(/** 其余会话的标签保持不变。 */ (tab) => tab.sessionId !== id),
+      );
     } catch (cause) {
       updateState(id, "error", String(cause));
     }
-  };
-
-  /** 关闭整个标签内的有限窗格，任何失败均保留对应桌面和诊断。 */
-  const closeTab = async (tab: Tab) => {
-    for (const id of tab.sessions) await closePane(id);
   };
 
   /** 保存独立 VNC 分组顺序；写盘失败不改变当前顺序。 */
@@ -444,9 +409,8 @@ export default function VncPage({
     }
   };
 
-  /** 打开连接面板；存在活动标签时可指定接下来连接的分屏方向。 */
-  const showConnections = (direction: Tab["direction"] | null = null) => {
-    setSplitDirection(direction);
+  /** 打开连接面板，新连接始终使用独立标签。 */
+  const showConnections = () => {
     setPanelOpen(true);
   };
 
@@ -454,9 +418,9 @@ export default function VncPage({
     <div className="vnc-tabbar">
       <HorizontalScrollbar height={35} className="vnc-tabs" hideTrack>
         <div className="vnc-tabs-row">
-          {tabs.map((tab) => {
-            const first = sessions.find(
-              (session) => session.id === tab.sessions[0],
+          {tabs.map(/** 绘制单会话标签的名称和关闭入口。 */ (tab) => {
+            const session = sessions.find(
+              /** 按会话 ID 读取当前连接快照。 */ (item) => item.id === tab.sessionId,
             );
             return (
               <div
@@ -467,22 +431,17 @@ export default function VncPage({
                   type="button"
                   className="vnc-tab-main"
                   onClick={() => setActiveTab(tab.id)}
-                  title={first?.connection.name}
+                  title={session?.connection.name}
                 >
                   <SvgIcon name="vnc" size={14} />
-                  <span>
-                    {first?.connection.name}
-                    {tab.sessions.length > 1
-                      ? ` +${tab.sessions.length - 1}`
-                      : ""}
-                  </span>
+                  <span>{session?.connection.name}</span>
                 </button>
                 <button
                   type="button"
                   className="vnc-icon-button"
                   aria-label={zh ? "关闭标签" : "Close tab"}
-                  onClick={() => {
-                    void closeTab(tab);
+                  onClick={/** 关闭此标签对应的唯一会话。 */ () => {
+                    void closeTab(tab.sessionId);
                   }}
                 >
                   <SvgIcon name="close" size={12} />
@@ -525,95 +484,76 @@ export default function VncPage({
           <div className="vnc-empty">
             <SvgIcon name="vnc" size={44} />
             <strong>{zh ? "VNC 远程桌面" : "VNC remote desktop"}</strong>
-            <Button variant="secondary" onClick={() => showConnections()}>
-              {zh ? "打开连接管理" : "Open connections"}
-            </Button>
           </div>
         )}
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            hidden={activeTab !== tab.id}
-            className={`vnc-tab-content is-${tab.direction}`}
-          >
-            {tab.sessions.map((id) => {
-              const session = sessions.find((item) => item.id === id);
-              if (!session) return null;
-              return (
-                <section
-                  key={id}
-                  className="vnc-pane"
-                  aria-label={session.connection.name}
-                >
-                  {tab.sessions.length > 1 && (
-                    <header className="vnc-pane-header">
-                      <span>{session.connection.name}</span>
-                      <button
-                        type="button"
-                        className="vnc-icon-button"
-                        aria-label={zh ? "关闭窗格" : "Close pane"}
+        {tabs.map(/** 每个标签只挂载自己的桌面，非活动标签保持隐藏。 */ (tab) => {
+          const session = sessions.find(/** 跳过已移除的会话。 */ (item) => item.id === tab.sessionId);
+          if (!session) return null;
+          const id = session.id;
+          return (
+            <div
+              key={tab.id}
+              hidden={activeTab !== tab.id}
+              className="vnc-tab-content"
+            >
+              <section
+                key={id}
+                className="vnc-pane"
+                aria-label={session.connection.name}
+              >
+                {session.ready && (
+                  <VncViewport
+                    sessionId={id}
+                    locale={locale}
+                    readOnly={session.connection.readOnly}
+                    active={
+                      pageActive &&
+                      activeTab === tab.id &&
+                      (session.state === "connecting" ||
+                        session.state === "connected")
+                    }
+                    onState={updateState}
+                  />
+                )}
+                {session.state !== "connected" && (
+                  <div className="vnc-session-status" role="status">
+                    <strong>
+                      {session.state === "connecting"
+                        ? zh
+                          ? "连接中…"
+                          : "Connecting…"
+                        : session.state === "closed"
+                          ? zh
+                            ? "连接已关闭"
+                            : "Connection closed"
+                          : zh
+                            ? "连接失败"
+                            : "Connection failed"}
+                    </strong>
+                    {session.error && <span>{session.error}</span>}
+                    {(session.state === "error" ||
+                      session.state === "closed") && (
+                      <Button
+                        variant="secondary"
                         onClick={() => {
-                          void closePane(id);
+                          void connect(session.connection, id);
                         }}
                       >
-                        <SvgIcon name="close" size={12} />
-                      </button>
-                    </header>
-                  )}
-                  {session.ready && (
-                    <VncViewport
-                      sessionId={id}
-                      locale={locale}
-                      readOnly={session.connection.readOnly}
-                      active={
-                        pageActive &&
-                        activeTab === tab.id &&
-                        (session.state === "connecting" ||
-                          session.state === "connected")
-                      }
-                      onState={updateState}
-                    />
-                  )}
-                  {session.state !== "connected" && (
-                    <div className="vnc-session-status" role="status">
-                      <strong>
-                        {session.state === "connecting"
-                          ? zh
-                            ? "连接中…"
-                            : "Connecting…"
-                          : session.state === "closed"
-                            ? zh
-                              ? "连接已关闭"
-                              : "Connection closed"
-                            : zh
-                              ? "连接失败"
-                              : "Connection failed"}
-                      </strong>
-                      {session.error && <span>{session.error}</span>}
-                      {(session.state === "error" ||
-                        session.state === "closed") && (
-                        <Button
-                          variant="secondary"
-                          onClick={() => {
-                            void connect(session.connection, id);
-                          }}
-                        >
-                          <SvgIcon name="retry" size={14} />
-                          {zh ? "重连" : "Reconnect"}
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                  {session.state === "connected" && session.error && (
-                    <div className="vnc-error" role="alert">
-                      {session.error}
-                    </div>
-                  )}
-                </section>
-              );
-            })}
-          </div>
-        ))}
+                        <SvgIcon name="retry" size={14} />
+                        {zh ? "重连" : "Reconnect"}
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {session.state === "connected" && session.error && (
+                  <div className="vnc-error" role="alert">
+                    {session.error}
+                  </div>
+                )}
+              </section>
+            </div>
+          );
+        })}
         {panelOpen && (
           <VncConnections
             locale={locale}
@@ -644,35 +584,6 @@ export default function VncPage({
           <SvgIcon name="list" size={15} />
           {zh ? "连接管理" : "Connections"}
         </button>
-        <span className="vnc-split-hint">
-          {splitDirection
-            ? zh
-              ? "双击连接以添加分屏"
-              : "Double-click a connection to add a pane"
-            : ""}
-        </span>
-        <div>
-          <button
-            type="button"
-            className="vnc-icon-button"
-            disabled={!selectedTab || sessions.length >= MAX_SESSIONS}
-            title={zh ? "左右分屏" : "Split left/right"}
-            aria-label={zh ? "左右分屏" : "Split left/right"}
-            onClick={() => showConnections("horizontal")}
-          >
-            <SvgIcon name="split-horizontal" />
-          </button>
-          <button
-            type="button"
-            className="vnc-icon-button"
-            disabled={!selectedTab || sessions.length >= MAX_SESSIONS}
-            title={zh ? "上下分屏" : "Split top/bottom"}
-            aria-label={zh ? "上下分屏" : "Split top/bottom"}
-            onClick={() => showConnections("vertical")}
-          >
-            <SvgIcon name="split-vertical" />
-          </button>
-        </div>
       </footer>
       {prompt && (
         <div className="vnc-modal-backdrop">

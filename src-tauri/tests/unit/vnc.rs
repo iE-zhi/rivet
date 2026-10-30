@@ -6,6 +6,11 @@ use crate::{
     vnc_frame::{VncFrame, FRAME_HEADER_BYTES},
 };
 use std::time::Duration;
+use std::{
+    future::{poll_fn, Future},
+    sync::Arc,
+    task::Poll,
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -401,5 +406,159 @@ async fn readonly_and_session_limits_are_enforced_and_pending_handshake_can_be_c
     for id in ["readonly", "second", "third", "fourth"] {
         service.close(id).unwrap();
     }
+    timeout(TEST_TIMEOUT, server).await.unwrap().unwrap();
+}
+
+/// 在真实 1080p 缓冲的对角写两个像素；区域包只应传四十字节，完整恢复仍保留两处修改。
+#[test]
+fn sparse_regions_do_not_copy_the_unchanged_desktop() {
+    let mut frame = VncFrame::default();
+    frame.resize(1920, 1080).unwrap();
+    frame.snapshot(false);
+    for (x, y) in [(0, 0), (1919, 1079)] {
+        frame
+            .draw(
+                Rect {
+                    x,
+                    y,
+                    width: 1,
+                    height: 1,
+                },
+                &[1, 2, 3, 0],
+            )
+            .unwrap();
+    }
+    let packet = frame.snapshot(false);
+    assert_eq!(packet.len(), 40);
+    assert_eq!(packet[13], 1);
+    assert_eq!(u16::from_le_bytes(packet[14..16].try_into().unwrap()), 2);
+    assert_eq!(&packet[24..28], &[1, 2, 3, 255]);
+    assert_eq!(&packet[36..40], &[1, 2, 3, 255]);
+    assert!(!frame.has_changes());
+    let full = frame.snapshot(true);
+    assert_eq!(full.len(), FRAME_HEADER_BYTES + 1920 * 1080 * 4);
+    assert_eq!(
+        &full[FRAME_HEADER_BYTES..FRAME_HEADER_BYTES + 4],
+        &[1, 2, 3, 255]
+    );
+    assert_eq!(&full[full.len() - 4..], &[1, 2, 3, 255]);
+}
+
+/// 桥接区域必须递归合并旧边界；第六十五个分离区域触发有界合并，不漏掉已写入像素。
+#[test]
+fn dirty_regions_merge_transitively_and_bound_fragmentation() {
+    let mut frame = VncFrame::default();
+    frame.resize(256, 1).unwrap();
+    frame.snapshot(false);
+    for x in [0, 2, 1] {
+        frame
+            .draw(
+                Rect {
+                    x,
+                    y: 0,
+                    width: 1,
+                    height: 1,
+                },
+                &[9, 0, 0, 0],
+            )
+            .unwrap();
+    }
+    let merged = frame.snapshot(false);
+    assert_eq!(merged[13], 0);
+    assert_eq!(u16::from_le_bytes(merged[8..10].try_into().unwrap()), 3);
+    assert_eq!(merged.len(), FRAME_HEADER_BYTES + 3 * 4);
+    for index in 0..65 {
+        frame
+            .draw(
+                Rect {
+                    x: index * 3,
+                    y: 0,
+                    width: 1,
+                    height: 1,
+                },
+                &[7, 0, 0, 0],
+            )
+            .unwrap();
+    }
+    let bounded = frame.snapshot(false);
+    assert_eq!(bounded[13], 0);
+    assert_eq!(bounded.len(), FRAME_HEADER_BYTES + 193 * 4);
+    for index in 0..65 {
+        assert_eq!(bounded[FRAME_HEADER_BYTES + index * 3 * 4], 7);
+    }
+}
+
+/// 假服务器只按通知发送两次 Raw 更新；验证无重复完整刷新、等待不丢通知、取消及关闭唤醒。
+#[tokio::test]
+async fn frame_wait_wakes_for_pixels_and_close_without_duplicate_full_requests() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (requested, request_ready) = tokio::sync::oneshot::channel();
+    let (advance, advanced) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        stream.set_nodelay(true).unwrap();
+        assert!(handshake(&mut stream, false, false).await);
+        wait_for_refresh(&mut stream).await;
+        stream.write_all(&[0, 0, 0, 1]).await.unwrap();
+        for value in [0, 0, 2, 2] {
+            stream.write_u16(value).await.unwrap();
+        }
+        stream.write_u32(0).await.unwrap();
+        stream.write_all(&[21, 22, 23, 0].repeat(4)).await.unwrap();
+        assert_eq!(stream.read_u8().await.unwrap(), 3);
+        let mut refresh = [0; 9];
+        stream.read_exact(&mut refresh).await.unwrap();
+        assert_eq!(
+            refresh[0], 1,
+            "the engine already requested the full initial frame"
+        );
+        requested.send(()).unwrap();
+        advanced.await.unwrap();
+        stream.write_all(&[0, 0, 0, 1]).await.unwrap();
+        for value in [0, 0, 2, 2] {
+            stream.write_u16(value).await.unwrap();
+        }
+        stream.write_u32(0).await.unwrap();
+        stream.write_all(&[31, 32, 33, 0].repeat(4)).await.unwrap();
+        let mut remaining = Vec::new();
+        stream.read_to_end(&mut remaining).await.unwrap();
+    });
+    let service = Arc::new(VncService::default());
+    service.open(request("wait-frames", port)).unwrap();
+    timeout(TEST_TIMEOUT, request_ready).await.unwrap().unwrap();
+    let first = service.snapshot("wait-frames", true).unwrap();
+    assert_eq!(first[FRAME_HEADER_BYTES], 21);
+
+    // 远端不更新时，有限等待最终返回空区域快照，不挂起 IPC 或重复请求整屏。
+    let idle = timeout(TEST_TIMEOUT, service.next_frame("wait-frames", false))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(idle.len(), FRAME_HEADER_BYTES);
+    assert_eq!(idle[12], 1);
+
+    let mut waiting = Box::pin(service.next_frame("wait-frames", false));
+    let pending = poll_fn(|cx| Poll::Ready(waiting.as_mut().poll(cx))).await;
+    assert!(
+        pending.is_pending(),
+        "unchanged desktops must wait instead of polling IPC"
+    );
+    // 取消一次在途等待后不改变桌面；新等待仍能接到下一次更新。
+    drop(waiting);
+    let mut waiting = Box::pin(service.next_frame("wait-frames", false));
+    let pending = poll_fn(|cx| Poll::Ready(waiting.as_mut().poll(cx))).await;
+    assert!(pending.is_pending());
+    advance.send(()).unwrap();
+    let next = timeout(TEST_TIMEOUT, waiting).await.unwrap().unwrap();
+    assert_eq!(next[FRAME_HEADER_BYTES], 31);
+
+    let mut closing = Box::pin(service.next_frame("wait-frames", false));
+    assert!(poll_fn(|cx| Poll::Ready(closing.as_mut().poll(cx)))
+        .await
+        .is_pending());
+    service.close("wait-frames").unwrap();
+    let closed = timeout(TEST_TIMEOUT, closing).await.unwrap().unwrap();
+    assert_eq!(closed[12], 2);
     timeout(TEST_TIMEOUT, server).await.unwrap().unwrap();
 }

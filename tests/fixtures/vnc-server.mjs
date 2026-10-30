@@ -4,6 +4,10 @@ import net from "node:net";
 /** 测试桌面为 640×360 像素；总帧和输入缓冲均有固定上限。 */
 const WIDTH = 640,
   HEIGHT = 360;
+/** 输入反馈只更新对角两块 16×16 像素，验证多区域 IPC 不传输中间的静止桌面。 */
+const PATCH_SIZE = 16;
+/** RFB 矩形头为十二字节，包含坐标、尺寸和四字节编码标识。 */
+const RECT_HEADER_BYTES = 12;
 /** 每条测试连接最多闲置两分钟，整个夹具最多存活十分钟。 */
 const IDLE_TIMEOUT_MS = 120_000,
   LIFETIME_MS = 600_000;
@@ -14,8 +18,30 @@ const MAX_CLIENTS = 4;
 /** 当前假服务端拥有的 socket 集合，关闭时全部释放，最多四个元素。 */
 const clients = new Set();
 
-/** 创建显示彩色区域的确定性 RGBA 桌面；counter 只改变顶部状态条。 */
+/** counter 为零生成完整渐变桌面，大于零仅返回对角变化区域；像素使用 RGBA。 */
 function frame(counter) {
+  if (counter > 0) {
+    const bytes = Buffer.alloc(
+      4 + 2 * (RECT_HEADER_BYTES + PATCH_SIZE * PATCH_SIZE * 4),
+    );
+    bytes.writeUInt16BE(2, 2);
+    let offset = 4;
+    for (const [x, y] of [
+      [0, 0],
+      [WIDTH - PATCH_SIZE, HEIGHT - PATCH_SIZE],
+    ]) {
+      bytes.writeUInt16BE(x, offset);
+      bytes.writeUInt16BE(y, offset + 2);
+      bytes.writeUInt16BE(PATCH_SIZE, offset + 4);
+      bytes.writeUInt16BE(PATCH_SIZE, offset + 6);
+      offset += RECT_HEADER_BYTES;
+      for (let pixel = 0; pixel < PATCH_SIZE * PATCH_SIZE; pixel++) {
+        bytes.set([(counter * 40) % 255, 180, 130, 255], offset);
+        offset += 4;
+      }
+    }
+    return bytes;
+  }
   const bytes = Buffer.alloc(16 + WIDTH * HEIGHT * 4);
   bytes.writeUInt16BE(1, 2);
   bytes.writeUInt16BE(WIDTH, 8);

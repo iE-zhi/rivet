@@ -35,7 +35,7 @@ export async function closeSession(sessionId: string): Promise<void> {
   if (isTauri()) await invoke("close_vnc_session", { sessionId });
 }
 
-/** 拉取原始 ArrayBuffer；full 为 true 时重建完整桌面，否则只消费最新脏区。 */
+/** sessionId 指定已有会话；full 立即重建完整桌面，否则等待最新区域，最长 250ms。 */
 export function pollFrame(
   sessionId: string,
   full = false,
