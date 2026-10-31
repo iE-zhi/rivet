@@ -89,9 +89,10 @@
   font-weight: 600;
 }
 
+/* 活动标签底部显示 2px 主题色指示线。 */
 .terminal-tab.active::before {
   position: absolute;
-  top: 0;
+  bottom: 0;
   right: 0;
   left: 0;
   height: 2px;
