@@ -40,7 +40,7 @@ export default function DocumentOutline({ scrollRoot, pageActive, zh }: Document
   /** 目录条目属于独立滚动区；跟随阅读时只移动该视口，不移动正文或焦点。 */
   const outlineNav = useRef<HTMLElement>(null);
 
-  /** 当前章节改变或重新展开目录时，仅在条目超出可见范围后就近滚动。 */
+  /** 当前章节改变或重新展开目录时尽量居中，仅滚动目录；首尾由可滚动范围限制。 */
   useEffect(() => {
     if (!pageActive || !expanded) return;
     const nav = outlineNav.current;
@@ -50,10 +50,9 @@ export default function DocumentOutline({ scrollRoot, pageActive, zh }: Document
     const bounds = viewport.getBoundingClientRect();
     const entry = item.getBoundingClientRect();
     const top = bounds.top + viewport.clientTop;
-    const bottom = top + viewport.clientHeight;
-    // 只修正目录的纵向位置；即时移动避免连续阅读时叠加平滑滚动。
-    if (entry.top < top || entry.height > viewport.clientHeight) viewport.scrollTop += entry.top - top;
-    else if (entry.bottom > bottom) viewport.scrollTop += entry.bottom - bottom;
+    // 按条目与视口的中心差修正，范围限定在首尾之间，不移动正文或输入焦点。
+    const centered = viewport.scrollTop + entry.top + entry.height / 2 - top - viewport.clientHeight / 2;
+    viewport.scrollTop = Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, centered));
   }, [activeIndex, expanded, headings, pageActive]);
 
   /** 同帧编辑和滚动合并测量；卸载后清理 DOM 引用、帧任务及所有观察器。 */

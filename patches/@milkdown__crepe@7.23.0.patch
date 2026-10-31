@@ -1,5 +1,5 @@
 diff --git a/lib/cjs/feature/block-edit/index.js b/lib/cjs/feature/block-edit/index.js
-index 69a885d5cae11059c5597d927c061e4bf04052ae..fbaa1dd2e7682c739dc89ce9eb0868e4dcbfcba7 100644
+index 69a885d5cae11059c5597d927c061e4bf04052ae..4003de4eba91dabe6558a5e55012080b879fbbe2 100644
 --- a/lib/cjs/feature/block-edit/index.js
 +++ b/lib/cjs/feature/block-edit/index.js
 @@ -460,6 +460,7 @@ _getGroupInstance = new WeakMap();
@@ -19,8 +19,34 @@ index 69a885d5cae11059c5597d927c061e4bf04052ae..fbaa1dd2e7682c739dc89ce9eb0868e4
        );
        return {
          ...group,
+@@ -807,14 +808,23 @@ const Menu = vue.defineComponent({
+       after == null ? void 0 : after(next);
+       hoverIndex.value = next;
+     };
++    /** index 是从零开始的现有菜单索引；缺失节点或隐藏视口不滚动，不改变焦点。 */
+     const scrollToIndex = (index) => {
+       var _a, _b;
+       const target = (_a = host.value) == null ? void 0 : _a.querySelector(
+         `[data-index="${index}"]`
+       );
+       const scrollRoot = (_b = host.value) == null ? void 0 : _b.querySelector(".menu-groups");
+-      if (!target || !scrollRoot) return;
+-      scrollRoot.scrollTop = target.offsetTop - scrollRoot.offsetTop;
++      if (!target || !scrollRoot || !scrollRoot.clientHeight) return;
++      // 可见条目只移动选择；靠近边缘时保留一行上下文，不改变正文滚动位置。
++      const viewport = scrollRoot.getBoundingClientRect();
++      const item = target.getBoundingClientRect();
++      const top = viewport.top + scrollRoot.clientTop;
++      const bottom = top + scrollRoot.clientHeight;
++      // 正常预留一个条目高度；狭窄视口最多平分剩余空间，保证当前项仍可见。
++      const context = Math.min(item.height, Math.max(0, (scrollRoot.clientHeight - item.height) / 2));
++      if (item.top < top + context) scrollRoot.scrollTop += item.top - top - context;
++      else if (item.bottom > bottom - context) scrollRoot.scrollTop += item.bottom - bottom + context;
+     };
+     const runByIndex = (index) => {
+       const item = groupInfo.value.groups.flatMap((group) => group.items).at(index);
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 86cd15af6497fd602333548584315b619951b15b..07e8d87f4f0c891161e7f455785c13ac13bd2c7f 100644
+index 86cd15af6497fd602333548584315b619951b15b..964fbd67e350145b1bf32fa090c1df30f82a1dfb 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
 @@ -2224,6 +2224,7 @@ class GroupBuilder {
@@ -40,8 +66,34 @@ index 86cd15af6497fd602333548584315b619951b15b..07e8d87f4f0c891161e7f455785c13ac
        );
        return {
          ...group,
+@@ -2571,14 +2572,23 @@ const Menu = vue.defineComponent({
+       after == null ? void 0 : after(next);
+       hoverIndex.value = next;
+     };
++    /** index 是从零开始的现有菜单索引；缺失节点或隐藏视口不滚动，不改变焦点。 */
+     const scrollToIndex = (index) => {
+       var _a, _b;
+       const target = (_a = host.value) == null ? void 0 : _a.querySelector(
+         `[data-index="${index}"]`
+       );
+       const scrollRoot = (_b = host.value) == null ? void 0 : _b.querySelector(".menu-groups");
+-      if (!target || !scrollRoot) return;
+-      scrollRoot.scrollTop = target.offsetTop - scrollRoot.offsetTop;
++      if (!target || !scrollRoot || !scrollRoot.clientHeight) return;
++      // 可见条目只移动选择；靠近边缘时保留一行上下文，不改变正文滚动位置。
++      const viewport = scrollRoot.getBoundingClientRect();
++      const item = target.getBoundingClientRect();
++      const top = viewport.top + scrollRoot.clientTop;
++      const bottom = top + scrollRoot.clientHeight;
++      // 正常预留一个条目高度；狭窄视口最多平分剩余空间，保证当前项仍可见。
++      const context = Math.min(item.height, Math.max(0, (scrollRoot.clientHeight - item.height) / 2));
++      if (item.top < top + context) scrollRoot.scrollTop += item.top - top - context;
++      else if (item.bottom > bottom - context) scrollRoot.scrollTop += item.bottom - bottom + context;
+     };
+     const runByIndex = (index) => {
+       const item = groupInfo.value.groups.flatMap((group) => group.items).at(index);
 diff --git a/lib/esm/feature/block-edit/index.js b/lib/esm/feature/block-edit/index.js
-index e10bae88c03d017f3dfd533c71ed388018e39669..ed1c538fb241e7e15b954b50e7c6a17342ff42a9 100644
+index e10bae88c03d017f3dfd533c71ed388018e39669..1272a6ffaa32bbe213d27f6eca3b94ef90a75bea 100644
 --- a/lib/esm/feature/block-edit/index.js
 +++ b/lib/esm/feature/block-edit/index.js
 @@ -458,6 +458,7 @@ _getGroupInstance = new WeakMap();
@@ -61,8 +113,34 @@ index e10bae88c03d017f3dfd533c71ed388018e39669..ed1c538fb241e7e15b954b50e7c6a173
        );
        return {
          ...group,
+@@ -805,14 +806,23 @@ const Menu = defineComponent({
+       after == null ? void 0 : after(next);
+       hoverIndex.value = next;
+     };
++    /** index 是从零开始的现有菜单索引；缺失节点或隐藏视口不滚动，不改变焦点。 */
+     const scrollToIndex = (index) => {
+       var _a, _b;
+       const target = (_a = host.value) == null ? void 0 : _a.querySelector(
+         `[data-index="${index}"]`
+       );
+       const scrollRoot = (_b = host.value) == null ? void 0 : _b.querySelector(".menu-groups");
+-      if (!target || !scrollRoot) return;
+-      scrollRoot.scrollTop = target.offsetTop - scrollRoot.offsetTop;
++      if (!target || !scrollRoot || !scrollRoot.clientHeight) return;
++      // 可见条目只移动选择；靠近边缘时保留一行上下文，不改变正文滚动位置。
++      const viewport = scrollRoot.getBoundingClientRect();
++      const item = target.getBoundingClientRect();
++      const top = viewport.top + scrollRoot.clientTop;
++      const bottom = top + scrollRoot.clientHeight;
++      // 正常预留一个条目高度；狭窄视口最多平分剩余空间，保证当前项仍可见。
++      const context = Math.min(item.height, Math.max(0, (scrollRoot.clientHeight - item.height) / 2));
++      if (item.top < top + context) scrollRoot.scrollTop += item.top - top - context;
++      else if (item.bottom > bottom - context) scrollRoot.scrollTop += item.bottom - bottom + context;
+     };
+     const runByIndex = (index) => {
+       const item = groupInfo.value.groups.flatMap((group) => group.items).at(index);
 diff --git a/lib/esm/index.js b/lib/esm/index.js
-index dcce7ee48e646d1de951a10399f1e6f77e53426e..757952350570ef9c1ffd317f6ccf26a744e04c38 100644
+index dcce7ee48e646d1de951a10399f1e6f77e53426e..e87c57b782e434ffc576ac6c80aa425efc27f559 100644
 --- a/lib/esm/index.js
 +++ b/lib/esm/index.js
 @@ -2222,6 +2222,7 @@ class GroupBuilder {
@@ -82,6 +160,64 @@ index dcce7ee48e646d1de951a10399f1e6f77e53426e..757952350570ef9c1ffd317f6ccf26a7
        );
        return {
          ...group,
+@@ -2569,14 +2570,23 @@ const Menu = defineComponent({
+       after == null ? void 0 : after(next);
+       hoverIndex.value = next;
+     };
++    /** index 是从零开始的现有菜单索引；缺失节点或隐藏视口不滚动，不改变焦点。 */
+     const scrollToIndex = (index) => {
+       var _a, _b;
+       const target = (_a = host.value) == null ? void 0 : _a.querySelector(
+         `[data-index="${index}"]`
+       );
+       const scrollRoot = (_b = host.value) == null ? void 0 : _b.querySelector(".menu-groups");
+-      if (!target || !scrollRoot) return;
+-      scrollRoot.scrollTop = target.offsetTop - scrollRoot.offsetTop;
++      if (!target || !scrollRoot || !scrollRoot.clientHeight) return;
++      // 可见条目只移动选择；靠近边缘时保留一行上下文，不改变正文滚动位置。
++      const viewport = scrollRoot.getBoundingClientRect();
++      const item = target.getBoundingClientRect();
++      const top = viewport.top + scrollRoot.clientTop;
++      const bottom = top + scrollRoot.clientHeight;
++      // 正常预留一个条目高度；狭窄视口最多平分剩余空间，保证当前项仍可见。
++      const context = Math.min(item.height, Math.max(0, (scrollRoot.clientHeight - item.height) / 2));
++      if (item.top < top + context) scrollRoot.scrollTop += item.top - top - context;
++      else if (item.bottom > bottom - context) scrollRoot.scrollTop += item.bottom - bottom + context;
+     };
+     const runByIndex = (index) => {
+       const item = groupInfo.value.groups.flatMap((group) => group.items).at(index);
+diff --git a/src/feature/block-edit/menu/component.tsx b/src/feature/block-edit/menu/component.tsx
+index 87fdadc46c7f00ba66a22f97d8b0def7d9b6e5c2..57a21932f3377816488f32a704760810125bf4d2 100644
+--- a/src/feature/block-edit/menu/component.tsx
++++ b/src/feature/block-edit/menu/component.tsx
+@@ -77,15 +77,24 @@ export const Menu = defineComponent<MenuProps>({
+       hoverIndex.value = next
+     }
+ 
++    /** index 是从零开始的现有菜单索引；缺失节点或隐藏视口不滚动，不改变焦点。 */
+     const scrollToIndex = (index: number) => {
+       const target = host.value?.querySelector<HTMLElement>(
+         `[data-index="${index}"]`
+       )
+       const scrollRoot = host.value?.querySelector<HTMLElement>('.menu-groups')
+ 
+-      if (!target || !scrollRoot) return
+-
+-      scrollRoot.scrollTop = target.offsetTop - scrollRoot.offsetTop
++      if (!target || !scrollRoot || !scrollRoot.clientHeight) return
++
++      // 可见条目只移动选择；靠近边缘时保留一行上下文，不改变正文滚动位置。
++      const viewport = scrollRoot.getBoundingClientRect()
++      const item = target.getBoundingClientRect()
++      const top = viewport.top + scrollRoot.clientTop
++      const bottom = top + scrollRoot.clientHeight
++      // 正常预留一个条目高度；狭窄视口最多平分剩余空间，保证当前项仍可见。
++      const context = Math.min(item.height, Math.max(0, (scrollRoot.clientHeight - item.height) / 2))
++      if (item.top < top + context) scrollRoot.scrollTop += item.top - top - context
++      else if (item.bottom > bottom - context) scrollRoot.scrollTop += item.bottom - bottom + context
+     }
+ 
+     const runByIndex = (index: number) => {
 diff --git a/src/feature/block-edit/menu/config.ts b/src/feature/block-edit/menu/config.ts
 index 150aab494d8f0b6103f5404c56fcd62ba7f3e6c6..bb61bdf11fd2320c254becaf17202fd7515cce11 100644
 --- a/src/feature/block-edit/menu/config.ts

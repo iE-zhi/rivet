@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@milkdown/crepe@7.23.0': bbac869f0236380a34a880bc9c8c08faa1f2670d26a563fbe22f1febd4a8789e
+  '@milkdown/crepe@7.23.0': 8fc8ee552697ab287c2428ede127778417b53081c96aeec2bad02f5976bbce2e
 
 importers:
 
@@ -22,7 +22,7 @@ importers:
         version: 5.3.0
       '@milkdown/crepe':
         specifier: 7.23.0
-        version: 7.23.0(patch_hash=bbac869f0236380a34a880bc9c8c08faa1f2670d26a563fbe22f1febd4a8789e)(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.8)(typescript@7.0.2)
+        version: 7.23.0(patch_hash=8fc8ee552697ab287c2428ede127778417b53081c96aeec2bad02f5976bbce2e)(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.8)(typescript@7.0.2)
       '@milkdown/kit':
         specifier: 7.23.0
         version: 7.23.0(@codemirror/language@6.13.1)(@codemirror/state@6.7.6)(@codemirror/view@6.43.15)(typescript@7.0.2)
@@ -2154,7 +2154,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@milkdown/crepe@7.23.0(patch_hash=bbac869f0236380a34a880bc9c8c08faa1f2670d26a563fbe22f1febd4a8789e)(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.8)(typescript@7.0.2)':
+  '@milkdown/crepe@7.23.0(patch_hash=8fc8ee552697ab287c2428ede127778417b53081c96aeec2bad02f5976bbce2e)(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.8)(typescript@7.0.2)':
     dependencies:
       '@codemirror/commands': 6.11.1
       '@codemirror/language': 6.13.1
