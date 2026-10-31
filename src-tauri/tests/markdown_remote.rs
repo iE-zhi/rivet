@@ -161,3 +161,61 @@ fn preserves_original_when_server_rejects_writes() {
         finish(session, child).await;
     });
 }
+
+/// 真实 SFTP 排他创建空文件并可继续保存；同名文件、目录、链接和只读服务均不会被覆盖。
+#[test]
+#[ignore = "需要本机 OpenSSH sftp-server"]
+fn creates_empty_remote_markdown_and_rejects_existing_targets() {
+    use std::os::unix::fs::PermissionsExt;
+    Runtime::new().unwrap().block_on(
+        // 本任务拥有隔离目录与两个服务进程，逐个完成断言后关闭会话并回收进程。
+        async {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("new.md");
+            let (session, child) = session(false).await;
+            let created = markdown_remote::create_remote(&session, path.to_str().unwrap())
+                .await
+                .unwrap();
+            assert_eq!(created.content, "");
+            assert_eq!(created.revision, markdown_file::revision(b""));
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            markdown_remote::write_remote(
+                &session,
+                &created.path,
+                "new content",
+                &created.revision,
+            )
+            .await
+            .unwrap();
+            assert!(markdown_remote::create_remote(&session, &created.path)
+                .await
+                .is_err());
+            assert_eq!(fs::read_to_string(&path).unwrap(), "new content");
+            let subdirectory = directory.path().join("directory.md");
+            fs::create_dir(&subdirectory).unwrap();
+            let link = directory.path().join("link.md");
+            std::os::unix::fs::symlink(&path, &link).unwrap();
+            for invalid in [&subdirectory, &link, &directory.path().join("invalid.txt")] {
+                assert!(
+                    markdown_remote::create_remote(&session, invalid.to_str().unwrap())
+                        .await
+                        .is_err()
+                );
+            }
+            assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 3);
+            finish(session, child).await;
+            let (session, child) = self::session(true).await;
+            let denied = directory.path().join("denied.md");
+            assert!(
+                markdown_remote::create_remote(&session, denied.to_str().unwrap())
+                    .await
+                    .is_err()
+            );
+            assert!(!denied.exists());
+            finish(session, child).await;
+        },
+    );
+}

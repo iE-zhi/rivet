@@ -1,6 +1,8 @@
 .markdown-page { position: relative; display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 100%; min-width: 0; min-height: 0; color: var(--r-text); background: var(--r-bg); }
+.markdown-page.is-start-page { grid-template-columns: minmax(0, 1fr); }
 .markdown-page.has-inline-tabs { grid-template-rows: 35px minmax(0, 1fr); }
-.markdown-activity { max-width: 100%; }
+.markdown-activity { display: flex; height: 35px; max-width: 100%; min-width: 0; }
+.markdown-tab-scroll { flex: 0 1 auto; min-width: 0; }
 .markdown-tabs { display: flex; width: max-content; height: 35px; }
 .markdown-activity-fallback { grid-column: 1 / -1; min-width: 0; border-bottom: 1px solid var(--r-border); }
 .markdown-tab { display: flex; align-items: center; flex: 0 0 auto; height: 35px; max-width: 240px; border-right: 1px solid var(--r-border); border-bottom: 2px solid transparent; }
@@ -11,6 +13,20 @@
 .markdown-close:hover { background: var(--r-surface-2); }
 .markdown-tab.active button { color: var(--r-text); }
 .markdown-dirty { flex-shrink: 0; font-size: 8px; color: var(--r-primary); }
+/* 加号占 35px，置于标签滚动区外，标签溢出时仍可新建页面。 */
+.markdown-new-tab { display: grid; place-items: center; flex: 0 0 35px; width: 35px; height: 35px; padding: 0; border: 0; background: transparent; color: var(--r-subtle); cursor: pointer; }
+.markdown-new-tab:hover { background: var(--r-surface-2); color: var(--r-text); }
+/* 启动页使用无卡片的操作列表，窄窗口可滚动，字体和颜色跟随应用。 */
+.markdown-start { --markdown-start-accent: var(--r-primary); flex: 1; min-height: 0; overflow: auto; padding: clamp(32px, 8vh, 80px) clamp(24px, 7vw, 96px); scrollbar-width: thin; }
+.markdown-start-content { max-width: 560px; margin: 0 auto; }
+.app-shell[data-theme="dark"] .markdown-start { --markdown-start-accent: color-mix(in srgb, var(--r-primary) 55%, var(--r-text)); }
+.markdown-start-content > .rivet-svg-icon { color: var(--markdown-start-accent); }
+.markdown-start h1 { margin: 16px 0 36px; font-size: 32px; line-height: 1.2; font-weight: 500; }
+.markdown-start h2 { margin: 0 0 12px; font-size: 18px; font-weight: 500; }
+.markdown-start nav { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.markdown-start nav > button { display: flex; align-items: center; gap: 12px; max-width: 100%; min-height: 36px; padding: 6px 8px; margin-left: -8px; border: 0; border-radius: 5px; color: var(--markdown-start-accent); background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.markdown-start nav > button:hover { background: var(--r-surface-2); }
+.markdown-start nav .rivet-svg-icon { flex-shrink: 0; }
 .markdown-files { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-right: 1px solid var(--r-border); background: var(--r-surface); }
 .markdown-files > header { display: flex; align-items: center; justify-content: space-between; min-height: 42px; padding: 0 12px 0 16px; font-size: 12px; }
 .markdown-files > header > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -21,7 +37,10 @@
 .markdown-folder-create .rivet-input { flex: 1; min-width: 0; height: 28px; padding: 4px 6px; font-size: 12px; }
 .markdown-folder-create > button { width: 22px; }
 .markdown-files-list { flex: 1; min-height: 0; }
-.markdown-file-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 7px 16px; border: 0; background: transparent; color: var(--r-subtle); cursor: pointer; text-align: left; font-size: 12px; }
+/* 左侧补齐共享滚动视口右侧的 5px 留白，背景条两端保持对称。 */
+.markdown-files-list > .rivet-vertical-scrollbar-viewport { padding-left: 5px; }
+/* 文件和文件夹统一使用 24px 单行高度，上下各 2px，选中和悬停背景共用圆角。 */
+.markdown-file-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 24px; padding: 2px 16px; line-height: 20px; border: 0; border-radius: 5px; background: transparent; color: var(--r-subtle); cursor: pointer; text-align: left; font-size: 12px; }
 .markdown-file-row > .markdown-file-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .markdown-file-row:hover { background: var(--r-surface-2); }
 .markdown-file-row.active { background: color-mix(in srgb, var(--r-primary) 8%, transparent); color: var(--r-text); }
@@ -91,21 +110,21 @@
 .markdown-editor .milkdown .milkdown-slash-menu .menu-groups .menu-group li > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .markdown-editor .milkdown .milkdown-toolbar { border: 1px solid var(--r-border); }
 .markdown-editor .milkdown .cm-editor { background: var(--r-surface); color: var(--r-text); }
-/* 目录展开后延伸至编辑区底部上方 16px，列表独立滚动；正文额外预留 24px。 */
-.markdown-outline { position: absolute; z-index: 5; top: 48px; right: 16px; bottom: 16px; display: flex; flex-direction: column; width: 280px; max-width: calc(100% - 32px); padding: 8px; border: 1px solid var(--hao-border, var(--r-border)); border-radius: 12px; background: var(--r-bg); font-family: var(--hao-body-font, sans-serif); overflow: hidden; }
-.markdown-outline.is-collapsed { bottom: auto; width: 136px; }
-.markdown-outline-toggle { display: flex; flex-shrink: 0; align-items: center; gap: 6px; width: 100%; height: 32px; padding: 0 8px; color: var(--r-text); border: 0; background: transparent; cursor: pointer; text-align: left; }
-.markdown-outline-toggle strong { font-size: 16px; font-weight: 700; }
+/* 目录展开宽 240px，延伸至底部上方 16px；收起为 112×34px，正文与卡片间隔 24px。 */
+.markdown-outline { position: absolute; z-index: 5; top: 40px; right: 16px; bottom: 16px; display: flex; flex-direction: column; width: 240px; max-width: calc(100% - 32px); padding: 6px; border: 1px solid var(--hao-border, var(--r-border)); border-radius: 8px; background: var(--r-bg); font-family: var(--hao-body-font, sans-serif); overflow: hidden; }
+.markdown-outline.is-collapsed { bottom: auto; width: 112px; padding: 4px; }
+.markdown-outline-toggle { display: flex; flex-shrink: 0; align-items: center; gap: 6px; width: 100%; height: 24px; padding: 0 6px; color: var(--r-text); border: 0; background: transparent; cursor: pointer; text-align: left; }
+.markdown-outline-toggle strong { font-size: 13px; font-weight: 600; }
 .markdown-outline-list { flex: 1; min-height: 0; margin-top: 4px; }
-.markdown-outline-list nav > button { display: block; width: 100%; min-height: 28px; padding: 4px 8px; border: 0; color: #606266; background: transparent; text-align: left; white-space: normal; overflow-wrap: anywhere; font: inherit; font-size: 16px; line-height: 20px; cursor: pointer; }
+.markdown-outline-list nav > button { display: block; width: 100%; min-height: 26px; padding: 4px 8px; border: 0; color: #606266; background: transparent; text-align: left; white-space: normal; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 18px; cursor: pointer; }
 .markdown-outline-list nav > button:hover { color: var(--hao-accent, var(--r-primary)); }
-.markdown-outline-list nav > button.active { color: #34415c; font-size: 20px; line-height: 22px; font-weight: 700; background: transparent; }
+.markdown-outline-list nav > button.active { color: #34415c; font-size: 14px; line-height: 18px; font-weight: 600; background: transparent; }
 .app-shell[data-theme="dark"] .markdown-outline-list nav > button { color: #b6bac4; }
 .app-shell[data-theme="dark"] .markdown-outline-list nav > button.active { color: #f7f7fa; }
-.markdown-main:has(> .markdown-outline:not(.is-collapsed):not(.is-compact)) > .markdown-scroll { padding-right: 304px; }
+.markdown-main:has(> .markdown-outline:not(.is-collapsed):not(.is-compact)) > .markdown-scroll { padding-right: 264px; }
 .markdown-main:has(> .markdown-outline:not(.is-collapsed):not(.is-compact)) .markdown-editor .milkdown > .ProseMirror { padding-right: 24px; }
 @media (max-width: 760px) {
-  .markdown-page { grid-template-columns: 170px minmax(0, 1fr); }
+  .markdown-page:not(.is-start-page) { grid-template-columns: 170px minmax(0, 1fr); }
   .markdown-file-row { padding-inline: 12px; }
   .markdown-location { padding: 8px 12px; }
   .markdown-editor .milkdown .ProseMirror { padding: 24px 48px 100px var(--markdown-block-gutter); }
@@ -132,3 +151,6 @@
 .markdown-remote-entry:hover { background: var(--r-surface); }
 .markdown-remote-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 32px 18px; color: var(--r-subtle); font-size: 13px; }
 .markdown-remote-dialog > .markdown-remote-empty { flex: 1; }
+
+/* 命名区保留在有界目录列表下方，按钮沿用共享弹窗样式。 */
+.markdown-remote-create { display: flex; flex-direction: column; flex-shrink: 0; gap: 8px; padding-top: 12px; border-top: 1px solid var(--r-border); font-size: var(--r-font-size-base); }

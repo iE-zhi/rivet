@@ -6,6 +6,8 @@ export const MAX_MARKDOWN_BYTES = 2 * 1024 * 1024;
 export const MAX_OPEN_DOCUMENTS = 8;
 /** 单层远程目录和文件树缓存最多保留一万项，限制前端列表与展开树的内存。 */
 export const MAX_DIRECTORY_ENTRIES = 10_000;
+/** SFTP 单个文件名上限，单位为 UTF-8 字节；不包含父目录。 */
+export const MAX_REMOTE_FILENAME_BYTES = 255;
 /** 本机未保存草稿的专用存储键，不含服务器密码。 */
 export const DRAFT_STORAGE_KEY = "rivet.markdownDrafts";
 /** 草稿 JSON 最多三 MiB 字符；存储空间不足时界面明确报错。 */

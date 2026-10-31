@@ -41,6 +41,19 @@ interface WorkspaceFolder extends LocalFolderDirectory {
   remote: RemoteMarkdownSession | null;
 }
 
+/** 一个标题栏页面；启动页无文件栏，文件夹和文档页各自保留目录来源。 */
+interface MarkdownPageTab {
+  /** 页面会话标识；文档页与 MarkdownDocument.id 相同。 */
+  id: string;
+  /** start 显示入口，folder 等待选择文件，document 挂载编辑器。 */
+  kind: "start" | "folder" | "document";
+  /** 仅本次页面持有的目录快照；启动页或未选目录的文档为 null。 */
+  folder: WorkspaceFolder | null;
+}
+
+/** 页面总数上限为文档上限加一，保证恢复八份草稿后仍能显示初始启动页。 */
+const MAX_WORKSPACE_TABS = MAX_OPEN_DOCUMENTS + 1;
+
 /** 按根目录来源读取一层；失败向调用方传播，保留原树和所有文档。 */
 async function readWorkspaceFolder(folder: WorkspaceFolder, path = folder.path): Promise<WorkspaceFolder> {
   const directory = folder.remote
@@ -51,11 +64,13 @@ async function readWorkspaceFolder(folder: WorkspaceFolder, path = folder.path):
 
 /** 恢复未保存文档；损坏草稿保留在存储中，向用户显示错误。 */
 function restoreWorkspace() {
+  /** 每次启动独立生成首页标识，不改变已恢复草稿的标识。 */
+  const startId = crypto.randomUUID();
   try {
     const drafts = deserializeDrafts(window.localStorage.getItem(DRAFT_STORAGE_KEY));
-    return { documents: drafts.length ? drafts : [newDocument()], error: "" };
+    return { documents: drafts, startId, error: "" };
   } catch (error) {
-    return { documents: [newDocument()], error: String(error) };
+    return { documents: [], startId, error: String(error) };
   }
 }
 
@@ -69,7 +84,12 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
   const [documents, setDocuments] = useState(initial.documents);
   /** 同步引用用于编辑事件和异步结果，避免尚未渲染的新正文被旧快照覆盖。 */
   const documentsRef = useRef(documents);
-  const [activeId, setActiveId] = useState(initial.documents[0].id);
+  /** 页面顺序独立于文档；每个新页面先显示启动页，操作后原位替换。 */
+  const [tabs, setTabs] = useState<MarkdownPageTab[]>([
+    { id: initial.startId, kind: "start", folder: null },
+    ...initial.documents.map(/** 恢复草稿只恢复标签，初始仍选中启动页。 */ (document): MarkdownPageTab => ({ id: document.id, kind: "document", folder: null })),
+  ]);
+  const [activeId, setActiveId] = useState<string>(initial.startId);
   /** 同一时间只执行一次文件操作；编辑正文仍然可用。 */
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -83,22 +103,35 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
   const [closeId, setCloseId] = useState<string | null>(null);
   /** 右键菜单及远端选择器只在本页可见期间存在。 */
   const [fileMenu, setFileMenu] = useState<FileMenuState | null>(null);
-  /** null 关闭选择器；文件和目录使用相同的会话选择与浏览界面。 */
-  const [remotePickerMode, setRemotePickerMode] = useState<"file" | "folder" | null>(null);
+  /** null 关闭选择器；打开文件、打开目录与远程新建复用同一浏览界面。 */
+  const [remotePickerMode, setRemotePickerMode] = useState<"file" | "folder" | "create" | null>(null);
   /** 保存快捷键和文件栏操作在任一选择器打开时暂停。 */
   const remotePickerOpen = remotePickerMode !== null;
-  /** 当前本地或远程根目录快照；切换来源不丢弃已打开文档和草稿。 */
-  const [folder, setFolder] = useState<WorkspaceFolder | null>(null);
+  /** 页面类型与目录只取当前标签；启动页不会借用其他页面的文件栏。 */
+  const activeTab = tabs.find(/** 活动标签决定启动页、目录来源与正文是否可见。 */ (tab) => tab.id === activeId);
+  const startPage = activeTab?.kind === "start";
+  const folder = activeTab?.folder ?? null;
+  /** 目录更新绑定发起操作时的页面，不改变其他标签的目录与草稿。 */
+  const setFolder = useCallback((next: WorkspaceFolder | null) => {
+    setTabs(/** 选择目录会将当前启动页原位替换为文件夹工作区。 */ (current) => current.map(/** 目录只归属发起该操作的页面。 */ (tab) => tab.id === activeId ? { ...tab, folder: next, kind: tab.kind === "document" ? "document" : next ? "folder" : "start" } : tab));
+  }, [activeId]);
   /** null 表示未开始命名，空串表示正在输入新文件夹名称；失败保留输入以便更正。 */
   const [newFolderName, setNewFolderName] = useState<string | null>(null);
   /** 文件栏的临时命名输入，取消或成功后随控件释放。 */
   const folderNameInput = useRef<HTMLInputElement>(null);
   const namingFolder = newFolderName !== null;
+  /** 标题栏滚动容器；页面切换后仅将当前标签移入可见区域。 */
+  const tabStrip = useRef<HTMLDivElement>(null);
   /** 当前正文的独立滚动区，目录只读取其标题和滚动位置。 */
   const editorScroll = useRef<HTMLDivElement>(null);
   /** 记录已处理的请求对象，避免 StrictMode 和语言切换重复读取同一远端。 */
   const lastRemoteRequest = useRef<RemoteMarkdownTarget | null>(null);
-  const active = documents.find(/** 只挂载活动编辑器，其他文档保留正文与版本。 */ (document) => document.id === activeId) ?? documents[0];
+  const active = documents.find(/** 只挂载活动编辑器，其他文档保留正文与版本。 */ (document) => document.id === activeId);
+
+  /** 新建或切换时滚动标签自身，正文滚动位置保持不变。 */
+  useEffect(() => {
+    tabStrip.current?.querySelector('[role="tab"][aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeId, titlebarHost]);
 
   /** 恢复失败使用手动关闭通知，避免短暂消失后看不到草稿问题。 */
   useEffect(() => {
@@ -123,6 +156,22 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
     }
   }, [notify, zh]);
 
+  /** 文档操作替换当前启动/文件夹页；已有文件保持唯一标签，旧版本标识原位更新。 */
+  const activateDocument = useCallback((id: string, previousId?: string) => {
+    setTabs(/** current 保留其他页面顺序；目录来源随被替换的页面移交给文档。 */ (current) => {
+      const destination = current.find(/** 已打开文件不重复创建标签。 */ (tab) => tab.id === (previousId ?? id));
+      const placeholder = current.find(/** 启动页和尚未选择正文的目录页都可原位成为文档。 */ (tab) => tab.id === activeId && tab.kind !== "document");
+      if (destination) {
+        const updated: MarkdownPageTab = { ...destination, id, kind: "document" };
+        if (placeholder && placeholder !== destination) return current.flatMap(/** 当前启动页原位接收已打开文档，旧位置移除，正文始终只有一份。 */ (tab) => tab === placeholder ? [updated] : tab === destination ? [] : [tab]);
+        return current.map(/** 重新读取的干净文档使用新编辑器标识。 */ (tab) => tab === destination ? updated : tab);
+      }
+      const documentTab: MarkdownPageTab = { id, kind: "document", folder: placeholder?.folder ?? activeTab?.folder ?? null };
+      return placeholder ? current.map(/** 原位替换，不遗留启动页标签。 */ (tab) => tab === placeholder ? documentTab : tab) : [...current, documentTab];
+    });
+    setActiveId(id);
+  }, [activeId, activeTab?.folder]);
+
   /** 将已读取文件加入工作区；同一文件已打开时保留未保存正文，并更新远程连接。 */
   const acceptFile = useCallback((file: MarkdownFile, remote: RemoteMarkdownTarget | null) => {
     const current = documentsRef.current;
@@ -134,16 +183,15 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
       replaceDocuments(current.map(/** 只更新读取目标，其他文档和草稿保持不变。 */ (document) => document.id === existing.id
         ? { ...document, id, remote, ...(dirty ? {} : { content: file.content, savedContent: file.content, revision: file.revision }) }
         : document));
-      setActiveId(id);
+      activateDocument(id, existing.id);
       return;
     }
-    // 空白初始页可直接替换；其他页达到上限时拒绝打开，不淘汰未保存文档。
-    const blank = current.find(/** 仅无文件且没有正文的新页可被读取结果替换。 */ (document) => !document.path && !document.content);
-    if (!blank && current.length >= MAX_OPEN_DOCUMENTS) throw new Error(zh ? "最多打开八份文档，请先关闭一份。" : "Up to eight documents; close one first.");
+    // 只有当前启动页或目录页会被替换，不复用其他标签中的空白文档。
+    if (current.length >= MAX_OPEN_DOCUMENTS || (tabs.length >= MAX_WORKSPACE_TABS && activeTab?.kind === "document")) throw new Error(zh ? "页面或文档数量已达上限，请先关闭一页。" : "Page or document limit reached; close one first.");
     const document: MarkdownDocument = { id: crypto.randomUUID(), path: file.path, remote, content: file.content, savedContent: file.content, revision: file.revision };
-    replaceDocuments([...current.filter(/** 只淘汰空白占位页。 */ (item) => item.id !== blank?.id), document]);
-    setActiveId(document.id);
-  }, [replaceDocuments, reportError, zh]);
+    replaceDocuments([...current, document]);
+    activateDocument(document.id);
+  }, [activateDocument, activeTab?.kind, tabs.length, replaceDocuments, reportError, zh]);
 
   /** 执行一次文件操作，捕获错误并始终恢复按钮状态；正文编辑不受文件操作锁影响。 */
   const runFileAction = useCallback(async (action: () => Promise<void>) => {
@@ -159,7 +207,7 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
   useEffect(() => { if (namingFolder) folderNameInput.current?.focus(); }, [namingFolder]);
 
   /** 切换根目录后取消旧目录的命名，避免将名称提交到另一工作区。 */
-  useEffect(() => { setNewFolderName(null); }, [folder?.path, folder?.remote?.sessionId]);
+  useEffect(() => { setNewFolderName(null); }, [activeId, folder?.path, folder?.remote?.sessionId]);
 
   /** 在本地根目录创建文件夹；成功后关闭输入，刷新失败单独显示以防重复创建。 */
   const createNewFolder = () => {
@@ -187,10 +235,10 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
 
   /** 新建空白页；超过文档上限时不替换任何已有内容。 */
   const createDocument = () => {
-    if (documentsRef.current.length >= MAX_OPEN_DOCUMENTS) { reportError(zh ? "最多打开八份文档，请先关闭一份。" : "Up to eight documents; close one first."); return; }
+    if (documentsRef.current.length >= MAX_OPEN_DOCUMENTS || (tabs.length >= MAX_WORKSPACE_TABS && activeTab?.kind === "document")) { reportError(zh ? "页面或文档数量已达上限，请先关闭一页。" : "Page or document limit reached; close one first."); return; }
     const document = newDocument();
     replaceDocuments([...documentsRef.current, document]);
-    setActiveId(document.id);
+    activateDocument(document.id);
   };
 
   /** 使用原始快照保存；保存期间的新输入保留为未保存内容，不被成功结果覆盖。 */
@@ -225,19 +273,42 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
     if (!pageActive) { setFileMenu(null); setRemotePickerMode(null); setNewFolderName(null); setCloseId(null); }
   }, [pageActive]);
 
+  /** 加号新建独立启动页，保留所有既有标签与正文。 */
+  const createPage = () => {
+    if (tabs.length >= MAX_WORKSPACE_TABS) { reportError(zh ? "最多打开九个页面，请先关闭一个。" : "Up to nine pages; close one first."); return; }
+    const tab: MarkdownPageTab = { id: crypto.randomUUID(), kind: "start", folder: null };
+    setTabs([...tabs, tab]);
+    setActiveId(tab.id);
+    setCloseId(null);
+    setFileMenu(null);
+  };
+
+  /** 本地选择器取消或失败时保留现有工作区。 */
+  const openLocalFile = () => {
+    setFileMenu(null);
+    void runFileAction(/** file 为用户选择后读取的快照，取消时为空。 */ async () => { const file = await openLocal(); if (file) acceptFile(file, null); });
+  };
+
+  /** 选择本地目录后将启动页替换为目录工作区；已有文档页只更新文件树。 */
+  const openLocalFolder = () => {
+    setFileMenu(null);
+    void runFileAction(/** selected 为空表示用户取消，不改变目录来源。 */ async () => { const selected = await openFolder(); if (selected) setFolder({ ...selected, remote: null }); });
+  };
+
   /** 更新活动正文并立即保存草稿；超限正文保留在内存，原文件不会被覆盖。 */
   const changeContent = (content: string) => {
     const oversized = new TextEncoder().encode(content).length > MAX_MARKDOWN_BYTES;
     if (oversized && !oversizedContent.current) reportError(zh ? "正文超过 2 MiB，请精简后保存。" : "Content exceeds 2 MiB; reduce it before saving.");
     oversizedContent.current = oversized;
-    replaceDocuments(documentsRef.current.map(/** 只改变本编辑器对应文档的正文。 */ (document) => document.id === active.id ? { ...document, content } : document));
+    replaceDocuments(documentsRef.current.map(/** 只改变本编辑器对应文档的正文。 */ (document) => document.id === activeId ? { ...document, content } : document));
   };
 
-  /** 关闭指定页；调用前由界面完成丢弃确认，最后一页关闭后新建空白页。 */
+  /** 关闭已确认页面；最后一页关闭后补一份启动页，不自动创建文档。 */
   const closeDocument = (id: string) => {
-    const next = documentsRef.current.filter(/** 移除明确关闭的文档。 */ (document) => document.id !== id);
-    if (!next.length) next.push(newDocument());
-    replaceDocuments(next);
+    if (documentsRef.current.some(/** 关闭启动页不重写草稿存储。 */ (document) => document.id === id)) replaceDocuments(documentsRef.current.filter(/** 仅丢弃已确认关闭的那一份正文。 */ (document) => document.id !== id));
+    const next = tabs.filter(/** 不改变其他页面与目录归属。 */ (tab) => tab.id !== id);
+    if (!next.length) next.push({ id: crypto.randomUUID(), kind: "start", folder: null });
+    setTabs(next);
     if (id === activeId) setActiveId(next[0].id);
     setCloseId(null);
   };
@@ -258,38 +329,44 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
   };
 
   /** 在指针位置打开当前文件菜单，文件行和标题栏标签均复用同一套操作。 */
-  const contextMenu = (event: MouseEvent<HTMLElement>, documentId = active.id) => {
+  const contextMenu = (event: MouseEvent<HTMLElement>, documentId: string | null = activeId) => {
     event.preventDefault();
     event.stopPropagation();
     if (remotePickerOpen) return;
-    setActiveId(documentId);
+    if (documentId) setActiveId(documentId);
     setFileMenu({ point: { x: event.clientX, y: event.clientY }, documentId });
   };
 
   /** Shift+F10 或菜单键在当前文件控件下方打开同一个自绘菜单。 */
-  const menuKeyDown = (event: ReactKeyboardEvent<HTMLElement>, documentId = active.id) => {
+  const menuKeyDown = (event: ReactKeyboardEvent<HTMLElement>, documentId: string | null = activeId) => {
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
     event.stopPropagation();
     if (remotePickerOpen) return;
     const rect = (event.target instanceof HTMLElement ? event.target : event.currentTarget).getBoundingClientRect();
-    setActiveId(documentId);
+    if (documentId) setActiveId(documentId);
     setFileMenu({ point: { x: rect.left, y: rect.bottom }, documentId });
   };
 
   const menuDocument = documents.find(/** 菜单目标不存在时保存项不可用。 */ (document) => document.id === fileMenu?.documentId);
-  const activityBar = <HorizontalScrollbar className="markdown-activity" height="35px" viewportLabel={zh ? "Markdown 活动文档" : "Markdown document tabs"} hideTrack>
+  const activityBar = <div className="markdown-activity" ref={tabStrip}><HorizontalScrollbar className="markdown-tab-scroll" height="35px" viewportLabel={zh ? "Markdown 活动文档" : "Markdown document tabs"} hideTrack>
     <div className="markdown-tabs" role="tablist" aria-label={zh ? "Markdown 文档" : "Markdown documents"}>
-      {documents.map(/** 每份文件的标题栏标签保留独立关闭和未保存状态。 */ (document) => <div className={`markdown-tab${active.id === document.id ? " active" : ""}`} key={document.id} onContextMenu={/** 右键标签选择该文件，不使用系统菜单。 */ (event) => contextMenu(event, document.id)} onKeyDown={/** 键盘菜单绑定当前标签的文档。 */ (event) => menuKeyDown(event, document.id)}>
-        <button type="button" role="tab" aria-selected={active.id === document.id} title={document.path ?? undefined} disabled={busy || remotePickerOpen} onClick={/** 切换编辑器，保留所有文档正文。 */ () => { setActiveId(document.id); setCloseId(null); dismissFileMenu(); }}><SvgIcon name={document.remote ? "globe" : "file"} size={13} /><span className="markdown-file-name">{fileName(document)}</span>{isDocumentDirty(document) && <span className="markdown-dirty" aria-label={zh ? "未保存" : "Unsaved"}>●</span>}</button>
-        <button type="button" className="markdown-close" disabled={busy || remotePickerOpen} aria-label={`${zh ? "关闭" : "Close"} ${fileName(document)}`} onClick={/** 关闭前保护未保存正文。 */ () => isDocumentDirty(document) ? setCloseId(document.id) : closeDocument(document.id)}><SvgIcon name="close" size={12} /></button>
-      </div>)}
+      {tabs.map(/** 每个标签对应独立页面，启动页操作后标签原位变为文件或目录。 */ (tab) => {
+        const document = documents.find(/** 文档页使用文档标识读取标题和未保存状态。 */ (item) => item.id === tab.id);
+        const name = document ? fileName(document) : tab.kind === "start" ? (zh ? "启动页" : "Welcome") : tab.folder?.path.split(/[\\/]/).filter(Boolean).pop() || (zh ? "文件夹" : "Folder");
+        return <div className={`markdown-tab${activeId === tab.id ? " active" : ""}`} key={tab.id} onContextMenu={/** 启动页和目录页没有保存目标。 */ (event) => contextMenu(event, document?.id ?? null)} onKeyDown={/** 键盘菜单绑定该标签的真实文档。 */ (event) => menuKeyDown(event, document?.id ?? null)}>
+          <button type="button" role="tab" aria-selected={activeId === tab.id} title={document?.path ?? tab.folder?.path} disabled={busy || remotePickerOpen} onClick={/** 只切换当前页面，不改变任何正文和目录。 */ () => { setActiveId(tab.id); setCloseId(null); dismissFileMenu(); }}><SvgIcon name={document ? (document.remote ? "globe" : "file") : tab.kind === "folder" ? "folder" : "markdown"} size={13} /><span className="markdown-file-name">{name}</span>{document && isDocumentDirty(document) && <span className="markdown-dirty" aria-label={zh ? "未保存" : "Unsaved"}>●</span>}</button>
+          <button type="button" className="markdown-close" disabled={busy || remotePickerOpen} aria-label={`${zh ? "关闭" : "Close"} ${name}`} onClick={/** 启动页直接关闭，文档页关闭前保护未保存正文。 */ () => document && isDocumentDirty(document) ? setCloseId(document.id) : closeDocument(tab.id)}><SvgIcon name="close" size={12} /></button>
+        </div>;
+      })}
     </div>
-  </HorizontalScrollbar>;
+  </HorizontalScrollbar>
+    <button type="button" className="markdown-new-tab" aria-label={zh ? "新建页面" : "New page"} title={zh ? "新建页面" : "New page"} disabled={busy || remotePickerOpen} onClick={createPage}><SvgIcon name="plus" size={15} /></button>
+  </div>;
 
-  return <section className={`markdown-page${titlebarHost ? "" : " has-inline-tabs"}`} aria-label="Markdown" onContextMenu={contextMenu} onKeyDown={menuKeyDown}>
+  return <section className={`markdown-page${titlebarHost ? "" : " has-inline-tabs"}${startPage ? " is-start-page" : ""}`} aria-label="Markdown" onContextMenu={contextMenu} onKeyDown={menuKeyDown}>
     {titlebarHost ? createPortal(activityBar, titlebarHost) : <div className="markdown-activity-fallback">{activityBar}</div>}
-    <aside className="markdown-files" aria-label={zh ? "文件栏" : "Files"}>
+    {!startPage && <aside className="markdown-files" aria-label={zh ? "文件栏" : "Files"}>
       <header><strong title={folder?.remote ? `${folder.remote.sessionName} · ${folder.path}` : folder?.path}>{folder ? `${folder.remote ? `${folder.remote.sessionName} · ` : ""}${folder.path.split(/[\\/]/).filter(Boolean).pop() || folder.path}` : zh ? "文件" : "Files"}</strong><div className="markdown-file-actions">
         <button type="button" disabled={busy || remotePickerOpen} aria-label={zh ? "新建文件" : "New file"} title={zh ? "新建文件" : "New file"} onClick={createDocument}><SvgIcon name="new-file" size={16} /></button>
         <button type="button" disabled={!folder || !!folder.remote || busy || remotePickerOpen} aria-label={zh ? "新建文件夹" : "New folder"} title={!folder ? (zh ? "请先打开文件夹" : "Open a folder first") : folder.remote ? (zh ? "远程文件夹暂不支持新建文件夹" : "Creating remote folders is unavailable") : (zh ? "新建文件夹" : "New folder")} onClick={/** 在当前根目录下命名新文件夹，重复点击只聚焦已有输入。 */ () => { setFileMenu(null); setNewFolderName(newFolderName ?? ""); folderNameInput.current?.focus(); }}><SvgIcon name="new-folder" size={16} /></button>
@@ -301,33 +378,49 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
         <button type="button" disabled={busy} aria-label={zh ? "取消新建文件夹" : "Cancel new folder"} title={zh ? "取消" : "Cancel"} onClick={/** 取消只丢弃尚未提交的名称。 */ () => setNewFolderName(null)}><SvgIcon name="close" size={12} /></button>
       </form>}
       <VerticalScrollbar height="100%" className="markdown-files-list" viewportLabel={zh ? "文件列表" : "File list"}>
-        {folder ? <FolderTree key={`${folder.remote?.sessionId ?? "local"}:${folder.path}`} directory={folder} loadDirectory={/** 子目录读取固定当前根目录来源。 */ (path) => readWorkspaceFolder(folder, path)} activePath={active.remote?.connectionId === folder.remote?.connectionId ? active.path : null} disabled={busy || remotePickerOpen} zh={zh} onMenu={folderMenu} onOpen={/** 本地路径经过根目录校验，远程路径绑定当前服务器；两者都保护已有草稿。 */ (path) => { dismissFileMenu(); setCloseId(null); void runFileAction(/** 读取结果只能加入请求时选定的来源，不借用活动标签的会话。 */ async () => {
+        {folder ? <FolderTree key={`${folder.remote?.sessionId ?? "local"}:${folder.path}`} directory={folder} loadDirectory={/** 子目录读取固定当前根目录来源。 */ (path) => readWorkspaceFolder(folder, path)} activePath={active?.remote?.connectionId === folder.remote?.connectionId ? active?.path ?? null : null} disabled={busy || remotePickerOpen} zh={zh} onMenu={folderMenu} onOpen={/** 本地路径经过根目录校验，远程路径绑定当前服务器；两者都保护已有草稿。 */ (path) => { dismissFileMenu(); setCloseId(null); void runFileAction(/** 读取结果只能加入请求时选定的来源，不借用活动标签的会话。 */ async () => {
           if (folder.remote) {
             const target = { ...folder.remote, path };
             const file = await openRemote(target);
             acceptFile(file, { ...target, path: file.path });
           } else acceptFile(await openFolderFile(folder.path, path), null);
-        }); }} /> : documents.map(/** 未打开文件夹时保留已打开文档列表。 */ (document) => <button key={document.id} type="button" className={`markdown-file-row${active.id === document.id ? " active" : ""}`} aria-current={active.id === document.id ? "page" : undefined} disabled={busy || remotePickerOpen} title={document.remote ? `${document.remote.sessionName} · ${document.path}` : document.path ?? undefined} onClick={/** 单击打开已有文档，不重新读取并覆盖草稿。 */ () => { setActiveId(document.id); setCloseId(null); dismissFileMenu(); }} onContextMenu={/** 文件栏右键始终操作点击的这一份文件。 */ (event) => contextMenu(event, document.id)} onKeyDown={/** 文件行也支持键盘打开菜单。 */ (event) => menuKeyDown(event, document.id)}><SvgIcon name={document.remote ? "globe" : "markdown"} size={15} /><span className="markdown-file-name">{fileName(document)}</span>{isDocumentDirty(document) && <span className="markdown-dirty" aria-label={zh ? "未保存" : "Unsaved"}>●</span>}</button>)}
+        }); }} /> : documents.map(/** 未打开文件夹时保留已打开文档列表。 */ (document) => <button key={document.id} type="button" className={`markdown-file-row${activeId === document.id ? " active" : ""}`} aria-current={activeId === document.id ? "page" : undefined} disabled={busy || remotePickerOpen} title={document.remote ? `${document.remote.sessionName} · ${document.path}` : document.path ?? undefined} onClick={/** 单击打开已有文档，不重新读取并覆盖草稿。 */ () => { setActiveId(document.id); setCloseId(null); dismissFileMenu(); }} onContextMenu={/** 文件栏右键始终操作点击的这一份文件。 */ (event) => contextMenu(event, document.id)} onKeyDown={/** 文件行也支持键盘打开菜单。 */ (event) => menuKeyDown(event, document.id)}><SvgIcon name={document.remote ? "globe" : "markdown"} size={15} /><span className="markdown-file-name">{fileName(document)}</span>{isDocumentDirty(document) && <span className="markdown-dirty" aria-label={zh ? "未保存" : "Unsaved"}>●</span>}</button>)}
       </VerticalScrollbar>
-    </aside>
+    </aside>}
     <div className="markdown-main">
     <ConfirmDialog open={!!closeId && pageActive} title={zh ? "丢弃未保存修改？" : "Discard unsaved changes?"}
       message={zh ? "关闭后将丢失这份文档的未保存修改。" : "Closing will discard this document’s unsaved changes."}
       cancelLabel={zh ? "取消" : "Cancel"} confirmLabel={zh ? "丢弃" : "Discard"}
       onCancel={/** 取消关闭，正文和草稿保持不变。 */ () => setCloseId(null)}
       onConfirm={/** 仅丢弃用户已明确确认的文档。 */ () => { if (closeId) closeDocument(closeId); }} />
+    {active ? <>
     <div className="markdown-location"><span title={active.path ?? undefined}>{active.remote ? `${active.remote.sessionName} · ${active.path}` : active.path ?? (zh ? "新文档" : "New document")}</span></div>
     <div className="markdown-scroll" ref={editorScroll} role="tabpanel">
       <BlockEditor key={`${active.id}:${locale}`} content={active.content} zh={zh} onChange={changeContent} onError={editorError} />
     </div>
     <DocumentOutline key={active.id} scrollRoot={editorScroll} pageActive={pageActive} zh={zh} />
+    </> : startPage ? <div className="markdown-start" role="tabpanel" aria-label={zh ? "启动页" : "Welcome"}>
+      <div className="markdown-start-content">
+        <SvgIcon name="markdown" size={48} />
+        <h1>Markdown</h1>
+        <h2>{zh ? "开始" : "Start"}</h2>
+        <nav aria-label={zh ? "开始使用 Markdown" : "Get started with Markdown"}>
+          <button type="button" disabled={busy || remotePickerOpen} onClick={createDocument}><SvgIcon name="new-file" />{zh ? "新建本地文件" : "New local file"}</button>
+          <button type="button" disabled={busy || remotePickerOpen} onClick={/** 达到文档上限时先拒绝，避免创建了远端文件却无法打开。 */ () => { if (documentsRef.current.length >= MAX_OPEN_DOCUMENTS) { reportError(zh ? "最多打开八份文档，请先关闭一份。" : "Up to eight documents; close one first."); return; } setRemotePickerMode("create"); }}><SvgIcon name="new-file" />{zh ? "新建远程文件" : "New remote file"}</button>
+          <button type="button" disabled={busy || remotePickerOpen} onClick={openLocalFile}><SvgIcon name="file" />{zh ? "打开本地文件" : "Open local file"}</button>
+          <button type="button" disabled={busy || remotePickerOpen} onClick={openLocalFolder}><SvgIcon name="folder" />{zh ? "打开本地文件夹" : "Open local folder"}</button>
+          <button type="button" disabled={busy || remotePickerOpen} onClick={/** 启动页复用文件菜单的 SFTP 选择器。 */ () => setRemotePickerMode("file")}><SvgIcon name="globe" />{zh ? "打开远程文件" : "Open remote file"}</button>
+          <button type="button" disabled={busy || remotePickerOpen} onClick={/** 只切换选择器模式，确认目录前不改变文件栏。 */ () => setRemotePickerMode("folder")}><SvgIcon name="folder" />{zh ? "打开远程文件夹" : "Open remote folder"}</button>
+        </nav>
+      </div>
+    </div> : <div className="markdown-folder-workspace" role="tabpanel" aria-label={zh ? "文件夹工作区" : "Folder workspace"} />}
     </div>
     <PopupMenu open={!!fileMenu} point={fileMenu?.point} onClose={dismissFileMenu} width={230} ariaLabel={zh ? "文件操作" : "File actions"} className="markdown-file-menu">
       <PopupMenuItem disabled={busy || !menuDocument || (!!menuDocument.path && !isDocumentDirty(menuDocument))} onClick={/** 只保存右键目标，菜单先收起再等待 I/O。 */ () => { const id = fileMenu?.documentId; dismissFileMenu(); if (id) void save(false, id); }}>{zh ? "保存" : "Save"}<kbd>⌘/Ctrl S</kbd></PopupMenuItem>
       <PopupMenuItem disabled={busy || !menuDocument} onClick={/** 远程文件也能另存为本机副本。 */ () => { const id = fileMenu?.documentId; dismissFileMenu(); if (id) void save(true, id); }}>{zh ? "另存为" : "Save as"}</PopupMenuItem>
       <div role="separator" className="rivet-popup-menu-separator" />
-      <PopupMenuItem disabled={busy} onClick={/** 本地选择器取消或失败时保留现有工作区。 */ () => { dismissFileMenu(); void runFileAction(async () => { const file = await openLocal(); if (file) acceptFile(file, null); }); }}>{zh ? "打开本地文件" : "Open local file"}</PopupMenuItem>
-      <PopupMenuItem disabled={busy} onClick={/** 选择成功才切换文件栏，不改变标题栏文档或草稿。 */ () => { dismissFileMenu(); void runFileAction(/** 用户取消时不替换当前根目录或来源。 */ async () => { const selected = await openFolder(); if (selected) setFolder({ ...selected, remote: null }); }); }}>{zh ? "打开文件夹" : "Open folder"}</PopupMenuItem>
+      <PopupMenuItem disabled={busy} onClick={openLocalFile}>{zh ? "打开本地文件" : "Open local file"}</PopupMenuItem>
+      <PopupMenuItem disabled={busy} onClick={openLocalFolder}>{zh ? "打开文件夹" : "Open folder"}</PopupMenuItem>
       <PopupMenuItem disabled={busy} onClick={/** 打开自绘 SFTP 选择器，不新建连接或调用系统菜单。 */ () => { dismissFileMenu(); setRemotePickerMode("file"); }}>{zh ? "打开远程文件" : "Open remote file"}</PopupMenuItem>
       <PopupMenuItem disabled={busy} onClick={/** 复用 SFTP 选择器，确认后才替换文件栏根目录。 */ () => { dismissFileMenu(); setRemotePickerMode("folder"); }}>{zh ? "打开远程文件夹" : "Open remote folder"}</PopupMenuItem>
       {folder && <div role="separator" className="rivet-popup-menu-separator" />}

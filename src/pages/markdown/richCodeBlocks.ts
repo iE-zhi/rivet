@@ -1,4 +1,4 @@
-/** Mermaid/HTML 代码块预览；复用 CodeMirror 编辑器，渲染资源随节点销毁，不改变 Markdown 正文。 */
+/** 代码块折叠与 Mermaid/HTML 预览；复用 CodeMirror，视图状态与渲染资源随节点释放，不改变 Markdown 正文。 */
 import DOMPurify from "dompurify";
 import { codeBlockView } from "@milkdown/kit/component/code-block";
 import { codeBlockSchema } from "@milkdown/kit/preset/commonmark";
@@ -6,6 +6,7 @@ import { $view } from "@milkdown/kit/utils";
 import type { Node as ProseNode } from "@milkdown/kit/prose/model";
 import type { NodeView } from "@milkdown/kit/prose/view";
 import appFontCss from "../../styles/fonts.css?inline";
+import chevronIcon from "../../assets/svg/code-collapse.svg?raw";
 
 /** 单个预览最多处理 50,000 个字符，超限保留源码并通过应用通知报告。 */
 const MAX_PREVIEW_CHARACTERS = 50_000;
@@ -38,6 +39,39 @@ async function drainDiagrams(): Promise<void> {
 /** 将 CSS 属性作为文本安全嵌入隔离文档，不允许引号、标签或样式结束标记逃逸。 */
 function escapeAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** 折叠状态只属于当前节点视图；按钮放在 Vue 管理区之外，代码编辑器懒加载时不会丢失。 */
+function attachCodeCollapse(dom: HTMLElement, zh: boolean) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "markdown-code-collapse";
+  button.contentEditable = "false";
+  // 图标来自应用共用资源，不包含文档输入。
+  button.innerHTML = chevronIcon.trim();
+  button.querySelector("svg")?.setAttribute("aria-hidden", "true");
+  /** 同步本地可见状态和按钮读屏名称，不派发文档事务。 */
+  const setCollapsed = (collapsed: boolean) => {
+    dom.dataset.collapsed = String(collapsed);
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.title = collapsed ? (zh ? "展开代码" : "Expand code") : (zh ? "折叠代码" : "Collapse code");
+    button.setAttribute("aria-label", button.title);
+  };
+  /** 点击只改变视图，焦点留在按钮；Enter/Space 使用原生按钮行为。 */
+  const toggle = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setCollapsed(dom.dataset.collapsed !== "true");
+  };
+  button.addEventListener("click", toggle);
+  dom.append(button);
+  setCollapsed(false);
+  return {
+    /** 代码选区需要可见的编辑区，进入编辑前先展开。 */
+    expand: () => setCollapsed(false),
+    /** 按钮和监听器只由本节点拥有，卸载时释放。 */
+    destroy: () => { button.removeEventListener("click", toggle); button.remove(); },
+  };
 }
 
 /** 为一个代码节点创建预览；仅本对象拥有定时器、主题观察器及待执行布局任务。 */
@@ -184,6 +218,8 @@ function attachPreview(base: NodeView, initial: ProseNode, themeHost: HTMLElemen
   preview.addEventListener("dblclick", enterEditing);
   preview.addEventListener("keydown", previewKeyDown);
   sourceEditor.addEventListener("focusout", focusOut);
+  /** 折叠按钮属于外层节点，生命周期不受内部 CodeMirror 懒加载影响。 */
+  const collapse = attachCodeCollapse(dom, zh);
   schedule();
   return {
     dom,
@@ -198,17 +234,17 @@ function attachPreview(base: NodeView, initial: ProseNode, themeHost: HTMLElemen
       return true;
     },
     /** 渲染状态不把焦点交给隐藏的编辑器，源码状态继续复用原节点。 */
-    selectNode: () => sourceEditor.hidden ? preview.focus({ preventScroll: true }) : base.selectNode?.(),
+    selectNode: () => { collapse.expand(); if (sourceEditor.hidden) preview.focus({ preventScroll: true }); else base.selectNode?.(); },
     /** 取消选择不改变预览或正文。 */
     deselectNode: () => base.deselectNode?.(),
     /** CodeMirror 的选区继续使用其原生坐标和事务。 */
-    setSelection: (anchor, head, root) => sourceEditor.hidden ? preview.focus({ preventScroll: true }) : base.setSelection?.(anchor, head, root),
+    setSelection: (anchor, head, root) => { collapse.expand(); if (sourceEditor.hidden) preview.focus({ preventScroll: true }); else base.setSelection?.(anchor, head, root); },
     /** 预览和 CodeMirror 都拥有内部 DOM，不由 ProseMirror 反向解析。 */
     ignoreMutation: () => true,
     /** 保留原代码块的事件处理边界。 */
     stopEvent: (event) => base.stopEvent?.(event) ?? true,
     /** 销毁后取消尚未开始的工作，正在运行的布局通过代次丢弃。 */
-    destroy() { disposed = true; generation += 1; if (timer !== undefined) clearTimeout(timer); diagramQueue.delete(key); themeObserver.disconnect(); frameObserver?.disconnect(); preview.removeEventListener("dblclick", enterEditing); preview.removeEventListener("keydown", previewKeyDown); sourceEditor.removeEventListener("focusout", focusOut); preview.replaceChildren(); base.destroy?.(); },
+    destroy() { disposed = true; generation += 1; if (timer !== undefined) clearTimeout(timer); diagramQueue.delete(key); themeObserver.disconnect(); frameObserver?.disconnect(); preview.removeEventListener("dblclick", enterEditing); preview.removeEventListener("keydown", previewKeyDown); sourceEditor.removeEventListener("focusout", focusOut); preview.replaceChildren(); collapse.destroy(); base.destroy?.(); },
   };
 }
 

@@ -24,7 +24,8 @@
     "lxgw-wenkai-webfont": "1.7.0",
     "mermaid": "12.2.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "remark-highlight-mark": "1.4.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.4",

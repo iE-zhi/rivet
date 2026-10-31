@@ -99,6 +99,7 @@ pub fn run() -> tauri::Result<()> {
             markdown::markdown_save_local,
             markdown::markdown_open_remote,
             markdown::markdown_save_remote,
+            markdown::markdown_create_remote,
             log_export::save_log
         ])
         // 应用启动回调：Windows 同步主窗口图标，失败时将错误返回给启动流程。

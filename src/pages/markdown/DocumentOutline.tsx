@@ -37,6 +37,24 @@ export default function DocumentOutline({ scrollRoot, pageActive, zh }: Document
   /** null 使用窗口宽度决定默认展开状态，显式点击后保持用户选择。 */
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
   const expanded = headings.length > 0 && (userExpanded ?? !compact);
+  /** 目录条目属于独立滚动区；跟随阅读时只移动该视口，不移动正文或焦点。 */
+  const outlineNav = useRef<HTMLElement>(null);
+
+  /** 当前章节改变或重新展开目录时，仅在条目超出可见范围后就近滚动。 */
+  useEffect(() => {
+    if (!pageActive || !expanded) return;
+    const nav = outlineNav.current;
+    const viewport = nav?.closest<HTMLElement>(".markdown-outline-viewport");
+    const item = nav?.querySelector<HTMLElement>('[aria-current="location"]');
+    if (!viewport || !item || !viewport.clientHeight) return;
+    const bounds = viewport.getBoundingClientRect();
+    const entry = item.getBoundingClientRect();
+    const top = bounds.top + viewport.clientTop;
+    const bottom = top + viewport.clientHeight;
+    // 只修正目录的纵向位置；即时移动避免连续阅读时叠加平滑滚动。
+    if (entry.top < top || entry.height > viewport.clientHeight) viewport.scrollTop += entry.top - top;
+    else if (entry.bottom > bottom) viewport.scrollTop += entry.bottom - bottom;
+  }, [activeIndex, expanded, headings, pageActive]);
 
   /** 同帧编辑和滚动合并测量；卸载后清理 DOM 引用、帧任务及所有观察器。 */
   useEffect(() => {
@@ -104,7 +122,7 @@ export default function DocumentOutline({ scrollRoot, pageActive, zh }: Document
 
   return <aside className={`markdown-outline${expanded ? "" : " is-collapsed"}${compact ? " is-compact" : ""}`} aria-label={zh ? "文档目录" : "Document outline"}>
     <button type="button" className="markdown-outline-toggle" aria-expanded={expanded} disabled={!headings.length} title={headings.length ? (expanded ? (zh ? "收起目录" : "Collapse contents") : (zh ? "展开目录" : "Expand contents")) : zh ? "文档中暂无标题" : "No headings in this document"} onClick={/** 显式操作优先于宽度决定的默认状态。 */ () => setUserExpanded(!expanded)}><SvgIcon name="list" size={16} /><strong>{zh ? "文章目录" : "Contents"}</strong></button>
-    {expanded && <VerticalScrollbar height="100%" className="markdown-outline-list" viewportLabel={zh ? "标题目录" : "Headings"}><nav>
+    {expanded && <VerticalScrollbar height="100%" className="markdown-outline-list" viewportClassName="markdown-outline-viewport" viewportLabel={zh ? "标题目录" : "Headings"}><nav ref={outlineNav}>
       {headings.map(/** 标题按钮只使用纯文本，基础左缩进和每层增量均为 8px，最多六级。 */ (heading, index) => <button key={index} type="button" title={heading.text} className={index === activeIndex ? "active" : ""} aria-current={index === activeIndex ? "location" : undefined} style={{ paddingLeft: 8 + (heading.level - baseLevel) * 8 }} onClick={/** 跳转到本次渲染的标题，删除后由 jump 拒绝旧节点。 */ () => jump(heading)}>{heading.text || (zh ? "未命名标题" : "Untitled heading")}</button>)}
     </nav></VerticalScrollbar>}
   </aside>;

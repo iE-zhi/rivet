@@ -79,6 +79,12 @@ export async function openRemote(target: RemoteMarkdownTarget): Promise<Markdown
   return invoke("markdown_open_remote", { sessionId: target.sessionId, path: target.path });
 }
 
+/** 在已认证 SSH 上排他创建空 Markdown；失败不覆盖已有目标，超时需重新打开确认状态。 */
+export async function createRemote(target: RemoteMarkdownTarget): Promise<MarkdownFile> {
+  requireDesktop();
+  return invoke("markdown_create_remote", { sessionId: target.sessionId, path: target.path });
+}
+
 /** 浏览已认证 SSH 的一层 SFTP 目录；断线、读取失败或超过一万项时拒绝替换当前列表。 */
 export async function listRemoteDirectory(sessionId: string, path: string): Promise<RemoteMarkdownDirectory> {
   requireDesktop();

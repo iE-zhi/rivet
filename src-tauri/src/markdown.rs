@@ -243,3 +243,36 @@ pub(crate) async fn markdown_save_remote(
         receiver.await.map_err(|_| "SFTP 未返回保存结果 / Missing SFTP save result")?
     }).await.map_err(|_| "远端保存超时，请重新打开确认状态；草稿已保留 / Save timed out; reopen to check server state; draft retained".to_string())?
 }
+
+/// 在活动 SSH 会话创建空 Markdown，不覆盖同名节点。
+///
+/// # 参数
+/// - `service`：活动会话注册表，仅用于借用有界 SFTP 队列，不持锁等待 I/O。
+/// - `session_id`：用户在选择器中明确选择的已认证会话。
+/// - `path`：服务器新文件路径，最长 4096 字节，必须以 md/markdown 结尾。
+/// # Errors
+/// 参数、断线、权限或已有目标错误直接返回；超时不等于回滚，应重新打开路径确认。
+#[tauri::command]
+pub(crate) async fn markdown_create_remote(
+    service: State<'_, SshService>,
+    session_id: String,
+    path: String,
+) -> Result<MarkdownFile, String> {
+    markdown_file::validate_path(&path)?;
+    timeout(REQUEST_TIMEOUT, async {
+        let sender = request_sftp_sender(&service, &session_id).await?;
+        let (result, receiver) = oneshot::channel();
+        sender
+            .send(SftpCommand::CreateMarkdown { path, result })
+            .await
+            .map_err(|_| "SFTP worker 已停止 / SFTP worker stopped")?;
+        receiver
+            .await
+            .map_err(|_| "SFTP 未返回创建结果 / Missing SFTP creation result")?
+    })
+    .await
+    .map_err(|_| {
+        "远端创建超时，请重新打开确认状态 / Creation timed out; reopen to check server state"
+            .to_string()
+    })?
+}

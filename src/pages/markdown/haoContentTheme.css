@@ -5,15 +5,22 @@
   --hao-surface: #f7f9fe;
   --hao-border: #e3e8f7;
   --hao-quote: #fafcff;
+  /* 行内代码保留 Hao 配色；文字高亮单独使用用户指定颜色。 */
+  --hao-inline-code-bg: #ff7c7c;
+  --hao-highlight-bg: #f4a261;
+  --hao-inline-code-text: #fff;
+  --hao-inline-code-shadow: 0 8px 16px -4px #2c2d300c;
+  --hao-rule: #97bcfb;
   --hao-code-bg: #fafafa;
   --hao-code-text: #363636;
   --hao-code-bar: #edf0f7;
   --hao-code-muted: #687183;
   --hao-code-selection: #dce3fb;
-  --hao-code-frame: transparent;
-  --hao-code-divider: #e5e1e1;
+  /* 正文选区独立于菜单选中底色，文字颜色保持应用主题对比度。 */
+  --hao-text-selection: color-mix(in srgb, var(--r-primary) 30%, var(--r-bg));
+  --hao-code-divider: #b2a8a84d;
   --hao-code-shadow: 0 4px 10px #1f3b4d24;
-  --hao-code-radius: 6px;
+  --hao-code-radius: 7px;
   /* 正文、标题、目录和编辑菜单共同读取应用当前字体偏好。 */
   --hao-body-font: var(--rivet-font-family);
 }
@@ -23,15 +30,19 @@
   --hao-surface: #21232a;
   --hao-border: #3d3d3f;
   --hao-quote: #24252c;
+  --hao-inline-code-bg: #d44040;
+  --hao-highlight-bg: #2a9d8f;
+  --hao-inline-code-shadow: 0 8px 16px -4px #00000050;
+  --hao-rule: #ffffff4d;
   --hao-code-bg: #18171d;
   --hao-code-text: #e8eaf0;
   --hao-code-bar: #30323d;
   --hao-code-muted: #afb6c4;
   --hao-code-selection: #435274;
-  --hao-code-frame: var(--hao-border);
-  --hao-code-divider: var(--hao-border);
+  --hao-text-selection: color-mix(in srgb, var(--r-primary) 55%, var(--r-bg));
+  --hao-code-divider: #b2a8a84d;
   --hao-code-shadow: none;
-  --hao-code-radius: 10px;
+  --hao-code-radius: 7px;
 }
 .markdown-editor .milkdown {
   --crepe-font-title: var(--hao-body-font);
@@ -45,6 +56,12 @@
   line-height: 1.8;
   letter-spacing: .035em;
   overflow-wrap: anywhere;
+}
+/* 只增强正文文字选区；CodeMirror 的独立选区仍由代码主题绘制。 */
+.markdown-editor .milkdown .ProseMirror::selection,
+.markdown-editor .milkdown .ProseMirror :not(.milkdown-code-block, .milkdown-code-block *)::selection {
+  background: var(--hao-text-selection);
+  color: var(--r-text);
 }
 /* 占位文字以空段落自身为定位边界，使用同一字体和行高。 */
 .markdown-editor .milkdown .ProseMirror .crepe-placeholder { position: relative; }
@@ -68,7 +85,13 @@
 .markdown-editor .milkdown .ProseMirror p { margin: 14px 0; padding: 0; line-height: 1.8; }
 .markdown-editor .milkdown .ProseMirror a { color: var(--hao-text); font-weight: 600; text-decoration: underline dotted var(--hao-accent); text-underline-offset: 5px; }
 .markdown-editor .milkdown .ProseMirror a:hover { color: var(--hao-accent); }
-.markdown-editor .milkdown .ProseMirror code { padding: 2px 6px; color: var(--hao-accent); background: var(--hao-surface); border-radius: 5px; font-size: .875em; letter-spacing: 0; }
+/* 高亮与行内代码共用字号、字体、基线和上下各 1px 的内边距，只区分背景色；跨行时逐行绘制圆角背景。 */
+.markdown-editor .milkdown .ProseMirror :is(mark, code):not(.milkdown-code-block *) { display: inline; margin: 0 4px; padding: 1px 8px; color: var(--hao-inline-code-text); font-family: var(--hao-body-font); font-size: .875em; line-height: 1.25; letter-spacing: 0; vertical-align: baseline; border-radius: 4px; box-shadow: var(--hao-inline-code-shadow); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.markdown-editor .milkdown .ProseMirror mark { background: var(--hao-highlight-bg); }
+.markdown-editor .milkdown .milkdown-toolbar [data-toolbar-item="highlight"].active { background: var(--hao-highlight-bg); }
+.markdown-editor .milkdown .milkdown-toolbar [data-toolbar-item="highlight"].active svg { color: var(--hao-inline-code-text); fill: none; }
+.markdown-editor .milkdown .milkdown-toolbar [data-toolbar-item="highlight"] svg { fill: none; }
+.markdown-editor .milkdown .ProseMirror code:not(.milkdown-code-block *) { background: var(--hao-inline-code-bg); }
 .markdown-editor .milkdown .ProseMirror blockquote { box-sizing: border-box; margin: 20px 0; padding: 12px 18px; border: 1px solid var(--hao-border); border-left: 4px solid var(--hao-accent); border-radius: 10px; background: var(--hao-quote); }
 .markdown-editor .milkdown .ProseMirror blockquote::before { display: none; }
 .markdown-editor .milkdown .ProseMirror blockquote > :first-child { margin-top: 0; }
@@ -76,7 +99,8 @@
 .markdown-editor .milkdown .ProseMirror :is(ul, ol) { margin: 14px 0; }
 .markdown-editor .milkdown .milkdown-list-item-block .label-wrapper { --crepe-color-outline: var(--hao-accent); color: var(--hao-accent); }
 .markdown-editor .milkdown .milkdown-list-item-block .content-dom > p { margin: 2px 0; }
-.markdown-editor .milkdown .ProseMirror hr { margin: 24px 0; background-color: var(--hao-border); }
+/* 分隔线由上下各 2px 的虚线组成，上下各留 40px，不沿用编辑器的实线填充。 */
+.markdown-editor .milkdown .ProseMirror hr { box-sizing: content-box; height: 0; padding: 0; margin: 40px 0; border: 2px dashed var(--hao-rule); background: transparent; }
 .markdown-editor .milkdown .ProseMirror img { border-radius: 12px; }
 .markdown-editor .milkdown .milkdown-table-block { margin: 20px 0; }
 .markdown-editor .milkdown .milkdown-table-block :is(th, td) { padding: 10px 14px; border-color: var(--hao-border); }
@@ -97,29 +121,53 @@
   --crepe-color-hover: var(--hao-code-bar);
   --crepe-color-selected: var(--hao-code-selection);
   margin: 20px 0;
-  padding: 10px 16px 16px;
-  border: 1px solid var(--hao-code-frame);
+  padding: 35px 0 0;
+  border: 0;
   border-radius: var(--hao-code-radius);
   box-shadow: var(--hao-code-shadow);
   background: var(--hao-code-bg);
   color: var(--hao-code-text);
   letter-spacing: 0;
 }
-.markdown-editor .milkdown .milkdown-code-block .tools { position: relative; min-height: 30px; padding-left: 58px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--hao-code-divider); }
-/* 浅色工具栏的细分隔线延伸到代码块两侧，装饰层不拦截编辑和复制操作。 */
-.app-shell[data-theme="light"] .markdown-editor .milkdown .milkdown-code-block .tools { border-bottom: 0; }
-.app-shell[data-theme="light"] .markdown-editor .milkdown .milkdown-code-block .tools::after { content: ""; position: absolute; left: -16px; right: -16px; bottom: 0; height: 1px; background: var(--hao-code-divider); pointer-events: none; }
-/* 三个圆点仅作代码窗口装饰，不响应指针或占用键盘焦点。 */
-.markdown-editor .milkdown .milkdown-code-block .tools::before { content: ""; position: absolute; left: 0; top: 8px; width: 10px; height: 10px; border-radius: 50%; background: #fc625d; box-shadow: 16px 0 #fdbc40, 32px 0 #35cd4b; pointer-events: none; }
+/* 顶栏移植自 Hao templates/assets/libs/prism/code.css（GPL-3.0）：保留 35px 高、32px 行高及原始配色，适配 Milkdown 选择器并允许语言菜单溢出。 */
+.markdown-editor .milkdown .milkdown-code-block .tools { position: absolute; box-sizing: border-box; top: 0; left: 0; right: 0; display: block; height: 35px; min-height: 0; padding: 0; margin: 0; border: 0; border-bottom: 1px solid var(--hao-code-divider); font-size: 16px; line-height: 32px; text-align: center; }
+.markdown-editor .milkdown .milkdown-code-block .tools::after { display: none; }
+/* 原主题圆点直径 12px，左距 12px、上距 11px，圆心间隔 20px；不响应输入。 */
+.markdown-editor .milkdown .milkdown-code-block .tools::before { content: ""; position: absolute; left: 12px; top: 11px; width: 12px; height: 12px; border-radius: 50%; background: #fc625d; box-shadow: 20px 0 #fdbc40, 40px 0 #35cd4b; pointer-events: none; }
+/* 语言沿用主题的 .9em/700/#bbb，交互仍由原语言按钮负责；左右为圆点和图标留出空间。 */
+.markdown-editor .milkdown .milkdown-code-block .tools .language-button { display: inline-block; max-width: calc(100% - 144px); overflow: hidden; white-space: nowrap; margin: 0; padding: 0 .5em; background: transparent; color: #bbb; border-radius: .5em; font-size: .9em; font-weight: 700; line-height: 32px; vertical-align: top; opacity: 1; transition: none; }
+.markdown-editor .milkdown .milkdown-code-block .tools .language-button .expand-icon { display: none; }
+/* 原主题右侧两个 16px 图标相隔 8px、右距 12px；复制按钮与外层折叠按钮使用同一坐标。 */
+.markdown-editor .milkdown .milkdown-code-block .tools .tools-button-group { position: absolute; top: 9px; right: 36px; margin: 0; gap: 0; }
+.markdown-editor .milkdown .milkdown-code-block .tools .tools-button-group .copy-button { width: 16px; height: 16px; padding: 0; background: transparent; color: #999; border-radius: 0; font-size: 0; gap: 0; opacity: 1; transition: none; }
+.markdown-editor .milkdown .milkdown-code-block .tools .language-button:hover { background: transparent; color: var(--hao-text); }
+.markdown-editor .milkdown .milkdown-code-block .tools .copy-button:hover { color: var(--hao-accent); filter: brightness(1.2); }
+.markdown-editor .milkdown .milkdown-code-block .tools .copy-button svg { width: 16px; height: 16px; fill: currentColor; }
+.markdown-editor .milkdown .milkdown-code-block .language-picker { left: 50%; transform: translateX(-50%); }
+.markdown-editor .milkdown .milkdown-code-block :is(.codemirror-host, .milkdown-code-block-placeholder) { padding: 10px 16px; }
 .markdown-editor .milkdown .milkdown-code-block .cm-editor { color: var(--hao-code-text); background: var(--hao-code-bg); font-size: 14px; line-height: 1.7; }
 .markdown-editor .milkdown .milkdown-code-block .cm-gutters { color: var(--hao-code-muted); background: var(--hao-code-bg); }
+/* 行内折叠标记按实际代码行高居中，使用 12px 共享 SVG，避免字符箭头的字形落在基线下方。 */
+.markdown-editor .milkdown .milkdown-code-block .cm-foldGutter .cm-gutterElement > span { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 12px; height: 100%; padding: 0; font-size: 0; vertical-align: top; }
+.markdown-editor .milkdown .milkdown-code-block .cm-foldGutter .cm-gutterElement > span::before { content: ""; width: 12px; height: 12px; background: currentColor; mask: url("../../assets/svg/code-collapse.svg") center / contain no-repeat; }
+/* CodeMirror 默认用这两个 title 区分状态；应用未覆写其短语，关闭状态的箭头转向右侧。 */
+.markdown-editor .milkdown .milkdown-code-block .cm-foldGutter .cm-gutterElement > span[title="Unfold line"]::before { transform: rotate(-90deg); }
 .markdown-editor .milkdown .milkdown-code-block .cm-activeLine,
 .markdown-editor .milkdown .milkdown-code-block .cm-activeLineGutter { background: transparent; }
 .markdown-editor .milkdown .milkdown-code-block .cm-cursor { border-left-color: var(--hao-code-text); }
 .markdown-editor .milkdown .milkdown-code-block .cm-selectionBackground,
 .markdown-editor .milkdown .milkdown-code-block .cm-focused .cm-selectionBackground { background: var(--hao-code-selection); }
 /* 预览位于代码编辑器之后；HTML 的内部样式只能影响隔离文档。 */
-.markdown-rich-code { margin: 20px 0; }
+.markdown-rich-code { position: relative; margin: 20px 0; }
+.markdown-code-collapse { position: absolute; top: 9px; right: 12px; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 0; background: transparent; color: #999; line-height: 16px; cursor: pointer; }
+.markdown-code-collapse:hover { color: var(--hao-accent); filter: brightness(1.2); }
+.markdown-code-collapse:focus-visible { outline: 2px solid var(--hao-accent); outline-offset: 1px; }
+.markdown-code-collapse svg { display: block; width: 100%; height: 100%; }
+.markdown-code-collapse[aria-expanded="false"] svg { transform: rotate(90deg); }
+/* 折叠只隐藏编辑区，不修改文档或撤销历史；渲染块沿用双击编辑，不显示折叠按钮。 */
+.markdown-rich-code[data-rich="true"] > .markdown-code-collapse { display: none; }
+.markdown-rich-code[data-collapsed="true"][data-rich="false"] .tools { border-bottom: 0; }
+.markdown-rich-code[data-collapsed="true"][data-rich="false"] :is(.codemirror-host, .milkdown-code-block-placeholder) { display: none; }
 .markdown-editor .milkdown .markdown-rich-code > .milkdown-code-block { margin: 0; }
 .markdown-rich-code > [hidden] { display: none; }
 .markdown-editor .milkdown .markdown-rich-code[data-rich="true"] > .milkdown-code-block { border: 0; box-shadow: none; }

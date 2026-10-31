@@ -10,7 +10,10 @@ import { autoUpdate, flip, offset, shift, size, type Middleware } from "@floatin
 import { bindBlockDrag } from "./blockDrag";
 import { richCodeBlocks } from "./richCodeBlocks";
 import { configureHtmlBlocks, htmlBlockPlugin } from "./htmlBlocks";
-import { clearTextInCurrentBlockCommand, codeBlockSchema, setBlockTypeCommand } from "@milkdown/kit/preset/commonmark";
+import { configureHighlight, highlightInputRule, highlightPlugin, highlightSchema, highlightSyntaxPlugin, toggleHighlightCommand } from "./highlight";
+import highlightIcon from "../../assets/svg/highlight.svg?raw";
+import codeCopyIcon from "../../assets/svg/code-copy.svg?raw";
+import { clearTextInCurrentBlockCommand, codeBlockSchema, isMarkSelectedCommand, setBlockTypeCommand } from "@milkdown/kit/preset/commonmark";
 import { commandsCtx } from "@milkdown/kit/core";
 import type { Ctx } from "@milkdown/kit/ctx";
 import { safeImageUrl } from "./model";
@@ -94,7 +97,20 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
             group.addItem("html", { label: "HTML", icon, /** 创建可编辑的静态 HTML 内容块。 */ onRun: (ctx) => insertRichCode(ctx, "html") });
           },
         },
-        [Crepe.Feature.Toolbar]: { boldLabel: zh ? "粗体" : "Bold", italicLabel: zh ? "斜体" : "Italic", codeLabel: zh ? "行内代码" : "Code", linkLabel: zh ? "链接" : "Link", strikethroughLabel: zh ? "删除线" : "Strikethrough" },
+        [Crepe.Feature.Toolbar]: {
+          boldLabel: zh ? "粗体" : "Bold", italicLabel: zh ? "斜体" : "Italic", codeLabel: zh ? "行内代码" : "Code", linkLabel: zh ? "链接" : "Link", strikethroughLabel: zh ? "删除线" : "Strikethrough",
+          /** 复用现有文字格式分组，高亮的状态与操作始终读取当前编辑器。 */
+          buildToolbar(builder) {
+            builder.getGroup("formatting").addItem("highlight", {
+              icon: highlightIcon,
+              label: zh ? "高亮" : "Highlight",
+              /** ctx 的选区发生变化时，由现有工具栏重新计算选中状态。 */
+              active: (ctx) => ctx.get(commandsCtx).call(isMarkSelectedCommand.key, highlightSchema.type(ctx)),
+              /** 只切换当前文字选区，历史与草稿由现有事务管线处理。 */
+              onRun: (ctx) => { ctx.get(commandsCtx).call(toggleHighlightCommand.key); },
+            });
+          },
+        },
         [Crepe.Feature.LinkTooltip]: {
           inputPlaceholder: zh ? "输入链接" : "Enter a link",
           /** 将 link 作为纯文本复制；剪贴板不可用或拒绝访问时向页面显示错误。 */
@@ -103,7 +119,7 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
             void navigator.clipboard.writeText(link).catch(/** 复制失败不改变文档内容。 */ (error: unknown) => callbacks.current.onError(error));
           },
         },
-        [Crepe.Feature.CodeMirror]: { theme: themeHost?.dataset.theme === "dark" ? oneDark : [], searchPlaceholder: zh ? "搜索语言" : "Search language", noResultText: zh ? "无匹配语言" : "No language found", copyText: zh ? "复制" : "Copy" },
+        [Crepe.Feature.CodeMirror]: { theme: themeHost?.dataset.theme === "dark" ? oneDark : [], searchPlaceholder: zh ? "搜索语言" : "Search language", noResultText: zh ? "无匹配语言" : "No language found", copyText: zh ? "复制" : "Copy", copyIcon: codeCopyIcon },
         [Crepe.Feature.ImageBlock]: {
           proxyDomURL: safeImageUrl,
           blockUploadPlaceholderText: zh ? "粘贴图片链接或上传" : "Paste an image URL or upload",
@@ -116,7 +132,7 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
         },
       },
     });
-    editor.editor.config(configureHtmlBlocks).use(htmlBlockPlugin).use(richCodeBlocks(themeHost, zh, /** 预览失败保留源码并交给应用右上角通知。 */ (error) => callbacks.current.onError(error)));
+    editor.editor.config(configureHtmlBlocks).config(configureHighlight).use(highlightSchema).use(toggleHighlightCommand).use(highlightInputRule).use(highlightSyntaxPlugin).use(highlightPlugin).use(htmlBlockPlugin).use(richCodeBlocks(themeHost, zh, /** 预览失败保留源码并交给应用右上角通知。 */ (error) => callbacks.current.onError(error)));
     // 同步消费文档事务，不依赖库的延迟通知，立即保存或切页也能拿到最后一次输入。
     editor.editor.use($prose(/** ctx 在本编辑器存活期间提供 Markdown 序列化器。 */ (ctx) => new Plugin({
       /** 插件视图随编辑器一起销毁，不持有外部资源。 */

@@ -59,6 +59,38 @@ pub(crate) async fn read_remote(sftp: &SftpSession, path: &str) -> Result<Markdo
     })
 }
 
+/// 排他创建空 Markdown，已有文件、目录和链接均拒绝覆盖。
+///
+/// # 参数
+/// - `sftp`：worker 借用的已认证会话，创建和关闭按队列顺序执行。
+/// - `path`：新文件的服务器路径，扩展名必须为 md/markdown，最长 4096 字节。
+/// # Errors
+/// 路径、权限或同名目标错误不修改已有节点；关闭失败时空文件可能已创建，返回路径供重新打开确认。
+/// 操作开始后即使前端停止等待仍完成关闭，不自动删除可能已被其他客户端使用的新文件。
+pub(crate) async fn create_remote(sftp: &SftpSession, path: &str) -> Result<MarkdownFile, String> {
+    markdown_file::validate_path(path)?;
+    let file = sftp
+        .open_with_flags_and_attributes(
+            path,
+            OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+            FileAttributes {
+                permissions: Some(PRIVATE_FILE_PERMISSIONS),
+                ..FileAttributes::empty()
+            },
+        )
+        .await
+        // 排他打开由服务器完成，检查与创建之间没有覆盖已有目标的窗口。
+        .map_err(|error| format!("创建远端文件失败（同名目标不会覆盖） / Cannot create remote file (existing targets are protected): {error}"))?;
+    file.close().await.map_err(|error| {
+        format!("远端文件可能已创建，请重新打开确认 {path} / File may have been created; reopen to check: {error}")
+    })?;
+    Ok(MarkdownFile {
+        path: path.into(),
+        content: String::new(),
+        revision: markdown_file::revision(b""),
+    })
+}
+
 /// 准备完整新文件，再将原文件移到备份并提交；不依赖服务器的覆盖式 rename。
 ///
 /// # 参数

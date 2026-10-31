@@ -111,6 +111,13 @@ pub(crate) enum SftpCommand {
         /// 消费方关闭后仅放弃结果，不中断已开始的文件操作。
         result: oneshot::Sender<Result<crate::markdown_file::MarkdownFile, String>>,
     },
+    /// 排他创建空 Markdown，服务器拒绝已有文件、目录和链接。
+    CreateMarkdown {
+        /// 用户确认的新文件路径，不经 Shell。
+        path: String,
+        /// 超时尚未开始时跳过；已开始后始终完成句柄关闭。
+        result: oneshot::Sender<Result<crate::markdown_file::MarkdownFile, String>>,
+    },
     /// 检查摘要后保存 Markdown；失败恢复与临时文件由 markdown_remote 负责。
     WriteMarkdown {
         /// 已打开的服务器文件路径。
@@ -444,6 +451,13 @@ async fn run_sftp_worker(sftp: SftpSession, mut commands: mpsc::Receiver<SftpCom
             SftpCommand::ReadMarkdown { path, result } => {
                 // 前端取消只丢弃回复，不把通道关闭当作文件操作失败。
                 drop(result.send(crate::markdown_remote::read_remote(&sftp, &path).await));
+            }
+            SftpCommand::CreateMarkdown { path, result } => {
+                // 取消排队请求不创建文件，已执行请求只放弃回复。
+                if result.is_closed() {
+                    continue;
+                }
+                drop(result.send(crate::markdown_remote::create_remote(&sftp, &path).await));
             }
             SftpCommand::WriteMarkdown {
                 path,

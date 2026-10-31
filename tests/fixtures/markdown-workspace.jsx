@@ -7,6 +7,7 @@ import MarkdownPage from "../../src/pages/MarkdownPage";
 import "../../src/App.css";
 import contentSample from "./markdown-content.md?raw";
 import richSample from "./markdown-rich.md?raw";
+import highlightSample from "./markdown-highlight.md?raw";
 
 /** 两台模拟服务器具有相同路径，用于检查读取和保存是否始终绑定正确会话。 */
 const sessions = [
@@ -17,6 +18,12 @@ const sessions = [
 const revision = "a".repeat(43);
 /** 记录最后一次保存请求，只有断言用的公开测试文本，不读取用户存储或凭据。 */
 let lastSave = "尚未保存";
+/** 已模拟保存的本地正文；同一页面内重新打开时回读，避免用固定样例代替持久化结果。 */
+let savedLocalContent = null;
+/** 模拟远程创建的文件路径，含会话标识以隔离不同服务器。 */
+const remoteCreatedFiles = new Set();
+/** 六十个章节让正文与目录均可独立滚动，用于验收上下阅读和收起后重新展开的跟随。 */
+const outlineSample = Array.from({ length: 60 }, /** index 对应从一开始的章节号；每章含独立段落以形成真实正文滚动距离。 */ (_, index) => `## 章节 ${String(index + 1).padStart(2, "0")}\n\n${"目录应随当前阅读章节滚动，正文位置和输入焦点保持不变。\n\n".repeat(3)}`).join("\n");
 /** 模拟本次页面会话创建的根目录子项；只保存在测试内存中。 */
 const createdFolders = new Set();
 Object.defineProperty(globalThis, "isTauri", { value: true, configurable: true });
@@ -36,6 +43,12 @@ mockIPC(/** command 和 args 是生产组件发出的真实 IPC 参数；未声�
       { name: "link.md", path: "/notes/link.md", kind: "symlink" },
     ] };
   }
+  if (command === "markdown_create_remote") {
+    const key = `${args.sessionId}:${args.path}`;
+    if (remoteCreatedFiles.has(key) || args.path === "/notes/文档.md") throw new Error("文件已存在");
+    remoteCreatedFiles.add(key);
+    return { path: args.path, content: "", revision };
+  }
   if (command === "markdown_open_remote") {
     return { path: args.path, content: `# ${args.sessionId === "test-a" ? "服务器 A" : "服务器 B"}\n\n远程正文\n`, revision };
   }
@@ -44,7 +57,7 @@ mockIPC(/** command 和 args 是生产组件发出的真实 IPC 参数；未声�
     window.dispatchEvent(new Event("markdown-test-saved"));
     return { path: args.path, content: args.content, revision };
   }
-  if (command === "markdown_open_local") return { path: "/test/local.md", content: new URLSearchParams(location.search).get("sample") === "rich" ? richSample : new URLSearchParams(location.search).has("sample") ? contentSample : "# 本地文件\n", revision };
+  if (command === "markdown_open_local") return { path: "/test/local.md", content: savedLocalContent ?? (new URLSearchParams(location.search).get("sample") === "highlight" ? highlightSample : new URLSearchParams(location.search).get("sample") === "outline" ? outlineSample : new URLSearchParams(location.search).get("sample") === "rich" ? richSample : new URLSearchParams(location.search).has("sample") ? contentSample : "# 本地文件\n"), revision };
   if (command === "markdown_create_folder") {
     if (!args.name || /[\\/\u0000]/.test(args.name)) throw new Error("文件夹名称无效");
     if (createdFolders.has(args.name) || ["notes", "empty", "denied"].includes(args.name)) throw new Error("文件夹已存在");
@@ -67,6 +80,7 @@ mockIPC(/** command 和 args 是生产组件发出的真实 IPC 参数；未声�
   }
   if (command === "markdown_open_folder_file") return { path: args.path, content: `# ${args.path.endsWith("child.md") ? "子目录正文" : "文件夹正文"}\n`, revision };
   if (command === "markdown_save_local") {
+    if (args.path === "/test/local.md") savedLocalContent = args.content;
     lastSave = `local · ${args.path ?? "/test/copy.md"} · ${args.content}`;
     window.dispatchEvent(new Event("markdown-test-saved"));
     return { path: args.path ?? "/test/copy.md", content: args.content, revision };
