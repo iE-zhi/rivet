@@ -4,9 +4,12 @@
   --r-overlay-fade-duration: 160ms;
 
   --r-bg: #FFFFFF;
-  --r-surface: #F8FAFC;
-  --r-surface-2: #F1F5F9;
-  --r-border: #E2E8F0;
+  /* 浅色标题栏、导航栏、工具栏及共享面板的暖白底色。 */
+  --r-surface: #F9F8F7;
+  /* 浅色悬停、次级按钮和辅助区域的浅暖灰底色。 */
+  --r-surface-2: #F0EFED;
+  /* 浅色控件边框和区域分隔线的低对比度暖灰。 */
+  --r-border: #EAE8E6;
   --r-muted: #94A3B8;
   --r-subtle: #475569;
   --r-text: #0F172A;
