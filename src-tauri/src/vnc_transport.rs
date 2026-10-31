@@ -1,4 +1,6 @@
-//! VNC TCP 连接与认证策略边界：显式选择密码或无认证，不允许自动降级。
+//! VNC TCP 连接与认证策略边界：显式选择 VNC、Apple 或无认证，不允许自动降级。
+
+use crate::vnc_apple_auth;
 
 use std::{
     io,
@@ -12,6 +14,10 @@ use tokio::{
 
 /// RFB 版本消息固定为十二字节，协议引擎的首次写入由本适配器消费。
 const VERSION_BYTES: usize = 12;
+/// Apple 屏幕共享的 DH/AES 用户名认证安全类型。
+const APPLE_AUTH: u8 = 30;
+/// 服务端拒绝连接的说明最多读取四 KiB，避免恶意长度造成无界分配。
+const MAX_REASON_BYTES: usize = 4096;
 
 /// 已完成版本协商的 TCP 流；向协议引擎重放协商头，随后直接转交网络 I/O。
 /// 独占 socket，丢弃时关闭；不保留凭据，也不生成后台任务。
@@ -22,8 +28,10 @@ pub(crate) struct VncTransport {
     prefix: Vec<u8>,
     /// 重放头已读取的字节数，不超过 prefix.len()。
     read_offset: usize,
-    /// 协议引擎版本写入已消费的字节数，范围 0..=12。
+    /// 引擎重放写入已消费的字节数，范围 0..=write_prefix.len()。
     write_offset: usize,
+    /// 已写给服务端、需从引擎写入中消费的版本及可选安全类型选择。
+    write_prefix: Vec<u8>,
 }
 
 impl VncTransport {
@@ -31,37 +39,45 @@ impl VncTransport {
     ///
     /// # 参数
     /// - `stream`：转移所有权的 TCP socket；失败或取消时自动关闭。
-    /// - `password_auth`：true 必须使用 VNC 密码，false 必须显式使用无认证。
+    /// - `auth_type`：已校验的 password、apple 或 none，不允许协商降级。
+    /// - `username`：Apple 账户名；其他认证模式忽略。
+    /// - `password`：Apple 握手临时密码；其他模式由协议引擎处理。
     ///
     /// # Errors
     /// 网络、非法版本、认证方式不匹配均返回错误；超时和取消由调用方包围整个握手。
     pub(crate) async fn negotiate(
         mut stream: TcpStream,
-        password_auth: bool,
+        auth_type: &str,
+        username: &str,
+        password: &str,
     ) -> Result<Self, String> {
         let mut banner = [0; VERSION_BYTES];
         stream
             .read_exact(&mut banner)
             .await
             .map_err(|error| format!("读取 VNC 版本失败：{error}"))?;
-        let version = match &banner {
-            b"RFB 003.003\n" => *b"RFB 003.003\n",
-            b"RFB 003.007\n" => *b"RFB 003.007\n",
-            b"RFB 003.008\n" => *b"RFB 003.008\n",
-            _ => return Err("不支持此 VNC 协议版本（支持 RFB 3.3/3.7/3.8）".into()),
-        };
+        let version = negotiate_version(&banner)?;
         stream
             .write_all(&version)
             .await
             .map_err(|error| format!("发送 VNC 版本失败：{error}"))?;
-        // RFB 安全类型：1 为无认证，2 为传统 VNC 密码。禁止替用户改变认证要求。
-        let selected = if password_auth { 2 } else { 1 };
+        // 只选择配置明确指定的安全类型；Apple 账户密码不允许流入传统八字节认证。
+        let selected = match auth_type {
+            "password" => 2,
+            "apple" => APPLE_AUTH,
+            "none" => 1,
+            _ => return Err("VNC 认证方式无效".into()),
+        };
         let mut prefix = version.to_vec();
+        let mut write_prefix = version.to_vec();
         if &version == b"RFB 003.003\n" {
             let security = stream
                 .read_u32()
                 .await
                 .map_err(|error| format!("读取 VNC 认证方式失败：{error}"))?;
+            if security == 0 {
+                return Err(read_reason(&mut stream).await?);
+            }
             if security != u32::from(selected) {
                 return Err("VNC 服务端认证方式与连接配置不匹配".into());
             }
@@ -72,7 +88,7 @@ impl VncTransport {
                 .await
                 .map_err(|error| format!("读取 VNC 认证方式失败：{error}"))?;
             if count == 0 {
-                return Err("VNC 服务端拒绝连接".into());
+                return Err(read_reason(&mut stream).await?);
             }
             let mut methods = vec![0; usize::from(count)];
             stream
@@ -80,15 +96,48 @@ impl VncTransport {
                 .await
                 .map_err(|error| format!("读取 VNC 认证列表失败：{error}"))?;
             if !methods.contains(&selected) {
-                return Err("服务端不支持所选认证方式（当前支持 VNC 密码或无认证）".into());
+                if selected != APPLE_AUTH && methods.contains(&APPLE_AUTH) {
+                    return Err(
+                        "服务端提供 macOS 账户认证，请选择“macOS 用户名和密码”并填写用户名".into(),
+                    );
+                }
+                return Err(format!(
+                    "服务端不支持所选认证方式：{auth_type}（提供的安全类型：{methods:?}）"
+                ));
             }
-            prefix.extend_from_slice(&[1, selected]);
+            if selected == APPLE_AUTH {
+                stream
+                    .write_u8(APPLE_AUTH)
+                    .await
+                    .map_err(|error| format!("选择 Apple 认证失败：{error}"))?;
+                vnc_apple_auth::authenticate(&mut stream, username, password).await?;
+                let result = stream
+                    .read_u32()
+                    .await
+                    .map_err(|error| format!("读取 Apple 认证结果失败：{error}"))?;
+                if result != 0 {
+                    return Err(if &version == b"RFB 003.008\n" {
+                        read_reason(&mut stream).await?
+                    } else {
+                        "Apple 用户名或密码认证失败".into()
+                    });
+                }
+                // Apple 认证已完成；向引擎重放成功握手并消费其 None 选择，不向远端发送 None。
+                prefix.extend_from_slice(&[1, 1]);
+                if &version == b"RFB 003.008\n" {
+                    prefix.extend_from_slice(&0u32.to_be_bytes());
+                }
+                write_prefix.push(1);
+            } else {
+                prefix.extend_from_slice(&[1, selected]);
+            }
         }
         Ok(Self {
             stream,
             prefix,
             read_offset: 0,
             write_offset: 0,
+            write_prefix,
         })
     }
 }
@@ -133,9 +182,9 @@ impl AsyncWrite for VncTransport {
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
-        if this.write_offset < VERSION_BYTES {
-            let count = buf.len().min(VERSION_BYTES - this.write_offset);
-            if buf[..count] != this.prefix[this.write_offset..this.write_offset + count] {
+        if this.write_offset < this.write_prefix.len() {
+            let count = buf.len().min(this.write_prefix.len() - this.write_offset);
+            if buf[..count] != this.write_prefix[this.write_offset..this.write_offset + count] {
                 return Poll::Ready(Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "VNC 版本重放不一致",
@@ -168,4 +217,62 @@ impl AsyncWrite for VncTransport {
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.get_mut().stream).poll_shutdown(cx)
     }
+}
+
+/// 将 RFB 3.x 的服务端公告降至双方支持的标准版本，兼容 Apple 3.889。
+///
+/// # 参数
+/// - `banner`：恰好十二字节的网络版本公告，只接受固定格式 ASCII 数字。
+///
+/// # Errors
+/// 格式错误、主版本不是三或次版本小于三时拒绝，不写入网络。
+pub(crate) fn negotiate_version(
+    banner: &[u8; VERSION_BYTES],
+) -> Result<[u8; VERSION_BYTES], String> {
+    if &banner[..8] != b"RFB 003."
+        || banner[11] != b'\n'
+        || !banner[8..11].iter().all(u8::is_ascii_digit)
+    {
+        return Err("VNC 协议版本公告无效".into());
+    }
+    let minor = (banner[8] - b'0') as u16 * 100
+        + (banner[9] - b'0') as u16 * 10
+        + (banner[10] - b'0') as u16;
+    match minor {
+        0..=2 => Err("不支持低于 RFB 3.3 的协议".into()),
+        3..=6 => Ok(*b"RFB 003.003\n"),
+        7 => Ok(*b"RFB 003.007\n"),
+        _ => Ok(*b"RFB 003.008\n"),
+    }
+}
+
+/// 读取有界远端失败说明，仅返回移除控制字符的文本，不自动重试认证。
+///
+/// # 参数
+/// - `stream`：正在等待长度前缀失败说明的独占连接。
+///
+/// # Errors
+/// 长度超限或连接截断返回本地错误，不分配超过四 KiB 的缓冲。
+async fn read_reason(stream: &mut TcpStream) -> Result<String, String> {
+    let length = stream
+        .read_u32()
+        .await
+        .map_err(|error| format!("读取 VNC 拒绝说明失败：{error}"))? as usize;
+    if length > MAX_REASON_BYTES {
+        return Err("VNC 拒绝说明过长".into());
+    }
+    let mut bytes = vec![0; length];
+    stream
+        .read_exact(&mut bytes)
+        .await
+        .map_err(|error| format!("读取 VNC 拒绝说明失败：{error}"))?;
+    let reason: String = String::from_utf8_lossy(&bytes)
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect();
+    Ok(if reason.is_empty() {
+        "VNC 服务端拒绝认证或连接".into()
+    } else {
+        format!("VNC 服务端拒绝：{reason}")
+    })
 }

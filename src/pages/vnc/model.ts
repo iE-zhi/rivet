@@ -46,7 +46,9 @@ export interface VncConnection {
   /** TCP 端口，整数 1..65535。 */
   port: number;
   /** 用户显式指定的认证策略，不允许自动降级。 */
-  authType: "password" | "none";
+  authType: "password" | "apple" | "none";
+  /** macOS 账户名，Apple 认证要求 1..63 个 UTF-8 字节；旧连接可省略。 */
+  username?: string;
   /** 建立会话后由 Rust 强制执行的只读约束。 */
   readOnly: boolean;
 }
@@ -99,7 +101,16 @@ export function isVncConnection(value: unknown): value is VncConnection {
     Number.isInteger(item.port) &&
     item.port > 0 &&
     item.port <= 65535 &&
-    (item.authType === "password" || item.authType === "none") &&
+    (item.authType === "password" || item.authType === "apple" || item.authType === "none") &&
+    // Apple 的六十四字节字段须为 NUL 留出一字节，其他模式的旧连接允许省略用户名。
+    (item.username === undefined || (
+      typeof item.username === "string" &&
+      new TextEncoder().encode(item.username).length < 64 &&
+      !/[\u0000-\u001f\u007f-\u009f]/u.test(item.username)
+    )) &&
+    (item.authType !== "apple" || (
+      typeof item.username === "string" && item.username.trim().length > 0
+    )) &&
     typeof item.readOnly === "boolean"
   );
 }
@@ -113,8 +124,23 @@ export function copyConnection(item: VncConnection): VncConnection {
     host: item.host,
     port: item.port,
     authType: item.authType,
+    ...(item.username !== undefined ? { username: item.username } : {}),
     readOnly: item.readOnly,
   };
+}
+
+/** 按显式认证方式验证密码长度；Apple 使用 UTF-8 字节长度，传统 VNC 禁止静默截断。 */
+export function isVncPassword(
+  password: string,
+  authType: VncConnection["authType"],
+): boolean {
+  if (authType === "none") return true;
+  if (authType === "password") return /^[\x20-\x7e]{1,8}$/u.test(password);
+  return (
+    password.length > 0 &&
+    new TextEncoder().encode(password).length < 64 &&
+    !/[\u0000-\u001f\u007f-\u009f]/u.test(password)
+  );
 }
 
 /** 严格恢复连接数组；任何损坏、重复 ID 或超限均拒绝，保留原始存储供用户修复。 */

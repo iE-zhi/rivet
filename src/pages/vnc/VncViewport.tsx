@@ -13,9 +13,14 @@ import {
   SvgIcon,
   VerticalScrollbar,
 } from "../../components/ui";
-import { closeSession, pollFrame, sendInput, type VncInput } from "./api";
+import {
+  closeSession,
+  pollFrame,
+  sendInput,
+  type VncInput,
+} from "./api";
 import { decodeFrame, type VncState } from "./model";
-import { keySymbol, pointerButtons } from "./keyboard";
+import { keyTransitions, pointerButtons } from "./keyboard";
 import { VncFramePump } from "./framePump";
 
 /** 前端最多排队一百二十八个键鼠事件；超限断开会话以释放远端按键。 */
@@ -24,6 +29,8 @@ const MAX_QUEUED_INPUTS = 128;
 const INPUT_BATCH_SIZE = 64;
 /** Ctrl+Alt+Delete 的标准左侧 X11 keysym。 */
 const SECURE_ATTENTION_KEYS = [0xffe3, 0xffe9, 0xffff];
+/** 当前 WebView 是否使用 macOS 锁定键事件语义，不改变其他平台的按键配对。 */
+const MACOS_KEYBOARD = navigator.platform.startsWith("Mac");
 
 /** 单个独立桌面窗格的运行时输入；回调只更新所属 VNC 会话。 */
 interface VncViewportProps {
@@ -48,7 +55,11 @@ export default function VncViewport({
   onState,
 }: VncViewportProps) {
   const zh = locale === "zh";
+  /** 全屏包含桌面和浮动操作栏，不改变远端会话或分辨率。 */
+  const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** 零长度安全输入只捕获按键；WebView 在获焦时限制本地组合输入，失焦后自动恢复。 */
+  const keyboardRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   /** Canvas 固有像素大小与可见容器大小，单位均为像素。 */
   const [screen, setScreen] = useState({ width: 0, height: 0 });
@@ -68,7 +79,6 @@ export default function VncViewport({
   /** 按物理 code 保存按下时的 keysym，修饰键变化不会改变释放目标。 */
   const pressed = useRef(new Map<string, number>());
   const pointer = useRef({ x: 0, y: 0, buttons: 0 });
-
   /** 使当前会话进入错误状态并关闭协议资源；关闭失败通过控制台保留诊断。 */
   const fail = useCallback(
     (error: unknown) => {
@@ -238,7 +248,10 @@ export default function VncViewport({
   /** 可见性变化只暂停或恢复同一个调度器；隐藏时释放已按下的键鼠。 */
   useEffect(() => {
     framePump.current?.setActive(active);
-    if (!active) releaseInputs();
+    if (!active) {
+      keyboardRef.current?.blur();
+      releaseInputs();
+    }
   }, [active, releaseInputs, sessionId, fail, onState]);
 
   /** 使用非 passive 原生监听拦截远端滚轮，仅在桌面已连接且允许输入时发送脉冲。 */
@@ -261,22 +274,23 @@ export default function VncViewport({
     return () => canvas.removeEventListener("wheel", wheel);
   }, [active, connected, readOnly, enqueue]);
 
-  /** 处理键盘按下/释放，阻止浏览器快捷键；IME 中间态不转发。 */
+  /** 转发非组合键盘事件并阻止本地快捷键；macOS 锁定键独立于普通按键配对。 */
   const handleKey = (
-    event: KeyboardEvent<HTMLCanvasElement>,
+    event: KeyboardEvent<HTMLInputElement>,
     down: boolean,
   ) => {
-    if (!connected || readOnly || !active || event.nativeEvent.isComposing)
+    // Caps Lock 是状态通知，即使输入法尚有组合文本也必须完整处理开关。
+    if (
+      !connected || readOnly || !active ||
+      (down && event.nativeEvent.isComposing &&
+        !(MACOS_KEYBOARD && event.code === "CapsLock"))
+    )
       return;
-    const symbol = down
-      ? keySymbol(event.key, event.location)
-      : pressed.current.get(event.code);
-    if (symbol === null || symbol === undefined) return;
+    const events = keyTransitions(event, down, pressed.current, MACOS_KEYBOARD);
+    if (!events.length) return;
     event.preventDefault();
     event.stopPropagation();
-    if (down) pressed.current.set(event.code, symbol);
-    else pressed.current.delete(event.code);
-    enqueue({ kind: "key", key: symbol, down });
+    for (const input of events) enqueue({ kind: "key", ...input });
   };
 
   /** 将缩放后的鼠标位置反算为远端像素；捕获仅持续到全部鼠标按钮释放。 */
@@ -336,7 +350,7 @@ export default function VncViewport({
   const fullscreen = () => {
     const operation = document.fullscreenElement
       ? document.exitFullscreen()
-      : containerRef.current?.parentElement?.requestFullscreen();
+      : viewportRef.current?.requestFullscreen();
     void operation?.catch((error: unknown) => setToolError(String(error)));
   };
 
@@ -349,35 +363,50 @@ export default function VncViewport({
         )
       : 1;
   return (
-    <div className="vnc-viewport">
-      <div className="vnc-pane-tools">
-        <span>
-          {screen.width ? `${screen.width} × ${screen.height}` : ""}
-          {readOnly ? (zh ? " · 只读" : " · View only") : ""}
-        </span>
-        <Button
-          variant="secondary"
-          onClick={() => setFit((value) => !value)}
-          aria-pressed={fit}
-        >
-          {fit ? (zh ? "适应窗口" : "Fit") : "1:1"}
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={secureAttention}
-          disabled={!connected || readOnly}
-        >
-          Ctrl+Alt+Del
-        </Button>
+    <div ref={viewportRef} className="vnc-viewport">
+      <div className="vnc-notch">
         <button
           type="button"
-          className="vnc-icon-button"
-          title={zh ? "全屏" : "Full screen"}
-          aria-label={zh ? "全屏" : "Full screen"}
-          onClick={fullscreen}
+          className="vnc-notch-handle"
+          aria-label={zh ? "远程桌面操作" : "Remote desktop controls"}
+          title={zh ? "远程桌面操作" : "Remote desktop controls"}
+          onClick={/** 点击或触摸后保留焦点，使操作栏在指针离开时仍可操作。 */ (event) => event.currentTarget.focus()}
         >
-          <SvgIcon name="display" />
+          <span aria-hidden="true" />
         </button>
+        <div
+          className="vnc-pane-tools"
+          role="toolbar"
+          aria-label={zh ? "远程桌面操作" : "Remote desktop controls"}
+        >
+          <span>
+            {screen.width ? `${screen.width} × ${screen.height}` : ""}
+            {readOnly ? (zh ? " · 只读" : " · View only") : ""}
+          </span>
+          <Button
+            variant="secondary"
+            onClick={/** 仅切换本地画布缩放，不请求远端改变桌面尺寸。 */ () => setFit((value) => !value)}
+            aria-pressed={fit}
+          >
+            {fit ? (zh ? "适应窗口" : "Fit") : "1:1"}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={secureAttention}
+            disabled={!connected || readOnly}
+          >
+            Ctrl+Alt+Del
+          </Button>
+          <button
+            type="button"
+            className="vnc-icon-button"
+            title={zh ? "全屏" : "Full screen"}
+            aria-label={zh ? "全屏" : "Full screen"}
+            onClick={fullscreen}
+          >
+            <SvgIcon name="display" />
+          </button>
+        </div>
       </div>
       {toolError && (
         <div className="vnc-error" role="alert">
@@ -412,14 +441,34 @@ export default function VncViewport({
                   width: screen.width * scale,
                   height: screen.height * scale,
                 }}
-                onKeyDown={(event) => handleKey(event, true)}
-                onKeyUp={(event) => handleKey(event, false)}
-                onBlur={releaseInputs}
+                onFocus={/** 画布使用独立输入上下文捕获键盘，像素元素只接收指针。 */ () => {
+                  if (active && connected && !readOnly) keyboardRef.current?.focus({ preventScroll: true });
+                }}
                 onPointerDown={handlePointer}
                 onPointerMove={handlePointer}
                 onPointerUp={handlePointer}
                 onPointerCancel={handlePointer}
                 onContextMenu={(event) => event.preventDefault()}
+              />
+              <input
+                ref={keyboardRef}
+                className="vnc-keyboard-input"
+                type="password"
+                maxLength={0}
+                tabIndex={-1}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                aria-label={zh ? "远程桌面键盘" : "Remote desktop keyboard"}
+                onBlur={releaseInputs}
+                onKeyDown={/** 完整转发按下事件，阻止本地文本写入。 */ (event) => handleKey(event, true)}
+                onKeyUp={/** 沿用同一会话按下时记录的键值释放。 */ (event) => handleKey(event, false)}
+                onBeforeInput={/** 本地输入框不保存按键、输入法或自动填充文本。 */ (event) => event.preventDefault()}
+                onInput={/** 清理不可取消的文本输入事件，不转发未知文本。 */ (event) => {
+                  event.currentTarget.value = "";
+                }}
+                onPaste={/** 剪贴板不经过键盘捕获元素。 */ (event) => event.preventDefault()}
               />
             </div>
           </HorizontalScrollbar>

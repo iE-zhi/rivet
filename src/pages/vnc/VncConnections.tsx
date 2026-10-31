@@ -12,7 +12,12 @@ import {
   VerticalScrollbar,
 } from "../../components/ui";
 import { loadPassword } from "./api";
-import { DEFAULT_VNC_PORT, isVncConnection, type VncConnection } from "./model";
+import {
+  DEFAULT_VNC_PORT,
+  isVncConnection,
+  isVncPassword,
+  type VncConnection,
+} from "./model";
 
 /** 表单只在组件内暂存密码；取消、保存或卸载时清空。 */
 interface Draft {
@@ -184,14 +189,15 @@ export default function VncConnections({
       );
       return;
     }
-    if (
-      connection.authType === "password" &&
-      (!draft.password || !/^[\x20-\x7e]{1,8}$/u.test(draft.password))
-    ) {
+    if (!isVncPassword(draft.password, connection.authType)) {
       setError(
-        zh
-          ? "标准 VNC 密码为 1–8 个 ASCII 字符"
-          : "Standard VNC passwords require 1–8 ASCII characters",
+        connection.authType === "apple"
+          ? zh
+            ? "macOS 密码须为 1–63 个 UTF-8 字节"
+            : "macOS passwords require 1–63 UTF-8 bytes"
+          : zh
+            ? "标准 VNC 密码为 1–8 个 ASCII 字符"
+            : "Standard VNC passwords require 1–8 ASCII characters",
       );
       return;
     }
@@ -475,19 +481,37 @@ export default function VncConnections({
                       value: "password",
                       label: zh ? "VNC 密码" : "VNC password",
                     },
+                    {
+                      value: "apple",
+                      label: zh ? "macOS 用户名和密码" : "macOS username and password",
+                    },
                     { value: "none", label: zh ? "无认证" : "None" },
                   ]}
                   onChange={(value) => update("authType", value)}
                 />
               </label>
-              {draft.connection.authType === "password" && (
+              {draft.connection.authType === "apple" && (
+                <label className="vnc-field">
+                  <span>{zh ? "用户名" : "Username"}</span>
+                  <Input
+                    autoComplete="off"
+                    maxLength={63}
+                    value={draft.connection.username ?? ""}
+                    disabled={busy}
+                    onChange={/** 账户名随连接保存，UTF-8 长度在提交时验证。 */ (event) =>
+                      update("username", event.currentTarget.value)
+                    }
+                  />
+                </label>
+              )}
+              {draft.connection.authType !== "none" && (
                 <>
                   <label className="vnc-field">
                     <span>{zh ? "密码" : "Password"}</span>
                     <Input
                       type="password"
                       autoComplete="off"
-                      maxLength={8}
+                      maxLength={draft.connection.authType === "apple" ? 63 : 8}
                       value={draft.password}
                       disabled={busy}
                       onChange={(event) => {
@@ -568,7 +592,7 @@ export default function VncConnections({
                   })}
                 </section>
               )}
-            {groups.map((group) => {
+            {groups.map(/** 按搜索结果显示分组，组名按钮保留折叠操作。 */ (group) => {
               const items = filtered.filter((item) => item.group === group);
               if (!items.length) return null;
               return (
@@ -585,11 +609,6 @@ export default function VncConnections({
                       )
                     }
                   >
-                    <SvgIcon
-                      name="chevron"
-                      className={collapsed.includes(group) ? "" : "is-expanded"}
-                      size={12}
-                    />
                     <strong>{group}</strong>
                     <span>{items.length}</span>
                   </button>

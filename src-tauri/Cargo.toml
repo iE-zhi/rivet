@@ -34,8 +34,15 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync"
 tempfile = "3"
 # VNC 客户端协议引擎；固定已审查的 MIT/Apache-2.0 版本。
 vnc-rs = "=0.6.0"
+# Apple 屏幕共享认证的协议算法；复用现有依赖图中的固定版本。
+aes = { version = "=0.9.3", features = ["zeroize"] }
+crypto-bigint = { version = "=0.7.5", features = ["alloc", "zeroize"] }
+md5 = "=0.8.1"
+zeroize = "=1.9.0"
 
 [dev-dependencies]
+# Apple 协议假服务器使用独立大整数实现核对 DH 结果，不进入生产认证路径。
+num-bigint = "=0.5.1"
 # 独立 SFTP 集成测试启动系统 OpenSSH 子进程，不进入生产运行时。
 tokio = { version = "1", features = ["process"] }
 

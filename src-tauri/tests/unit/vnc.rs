@@ -5,6 +5,11 @@ use crate::{
     vnc::{validate_password, VncInput, VncOpenRequest, VncService},
     vnc_frame::{VncFrame, FRAME_HEADER_BYTES},
 };
+use aes::{
+    cipher::{BlockCipherDecrypt, KeyInit},
+    Aes128,
+};
+use num_bigint::BigUint;
 use std::time::Duration;
 use std::{
     future::{poll_fn, Future},
@@ -18,6 +23,217 @@ use tokio::{
 };
 use vnc::Rect;
 
+/// RFC 2409 的公开 1024 位 DH 测试组；仅用于独立假服务器。
+const APPLE_TEST_MODULUS: &str = concat!(
+    "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E08",
+    "8A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B",
+    "302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9",
+    "A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE6",
+    "49286651ECE65381FFFFFFFFFFFFFFFF"
+);
+
+/// 将假服务器数值补到 Apple 公钥的 128 字节线上宽度。
+///
+/// # 参数
+/// - `number`：测试组中不超过 1024 位的公开数或假服务器共享值。
+fn apple_test_bytes(number: &BigUint) -> Vec<u8> {
+    let bytes = number.to_bytes_be();
+    let mut result = vec![0; 128 - bytes.len()];
+    result.extend_from_slice(&bytes);
+    result
+}
+
+/// 假服务器使用独立大整数 DH 运算解密真实客户端响应，核对长密码和用户名的字节布局。
+///
+/// # 参数
+/// - `stream`：loopback 假服务器的唯一连接，不访问真实服务器或凭据。
+/// - `reject`：true 返回认证拒绝并断言客户端不再发送 ClientInit。
+async fn apple_handshake(stream: &mut TcpStream, reject: bool) {
+    stream.write_all(b"RFB 003.889\n").await.unwrap();
+    let mut banner = [0; 12];
+    stream.read_exact(&mut banner).await.unwrap();
+    assert_eq!(&banner, b"RFB 003.008\n");
+    stream.write_all(&[3, 1, 2, 30]).await.unwrap();
+    assert_eq!(stream.read_u8().await.unwrap(), 30);
+    let modulus = BigUint::parse_bytes(APPLE_TEST_MODULUS.as_bytes(), 16).unwrap();
+    let exponent = BigUint::from(7u8);
+    let public = BigUint::from(2u8).modpow(&exponent, &modulus);
+    stream.write_u16(2).await.unwrap();
+    stream.write_u16(128).await.unwrap();
+    stream.write_all(&apple_test_bytes(&modulus)).await.unwrap();
+    stream.write_all(&apple_test_bytes(&public)).await.unwrap();
+    let mut encrypted = [0; 128];
+    let mut client_public = [0; 128];
+    stream.read_exact(&mut encrypted).await.unwrap();
+    stream.read_exact(&mut client_public).await.unwrap();
+    let shared = BigUint::from_bytes_be(&client_public).modpow(&exponent, &modulus);
+    let key = md5::compute(apple_test_bytes(&shared));
+    let cipher = Aes128::new_from_slice(&key.0).unwrap();
+    for block in encrypted.as_chunks_mut::<16>().0 {
+        cipher.decrypt_block(block.into());
+    }
+    assert_eq!(&encrypted[..7], b"viewer\0");
+    assert_eq!(&encrypted[64..81], b"abcdefghijklmno.\0");
+    if reject {
+        stream.write_u32(1).await.unwrap();
+        stream.write_u32(6).await.unwrap();
+        stream.write_all(b"denied").await.unwrap();
+        let mut rest = Vec::new();
+        stream.read_to_end(&mut rest).await.unwrap();
+        assert!(
+            rest.is_empty(),
+            "rejection must not trigger fallback or ClientInit"
+        );
+        return;
+    }
+    stream.write_u32(0).await.unwrap();
+    // 认证后唯一的客户端字节是共享 ClientInit；不能把合成的 None 选择发送到远端。
+    assert_eq!(stream.read_u8().await.unwrap(), 1);
+    stream.write_u16(2).await.unwrap();
+    stream.write_u16(2).await.unwrap();
+    stream
+        .write_all(&[32, 24, 0, 1, 0, 255, 0, 255, 0, 255, 16, 8, 0, 0, 0, 0])
+        .await
+        .unwrap();
+    stream.write_u32(4).await.unwrap();
+    stream.write_all(b"test").await.unwrap();
+    let mut rest = Vec::new();
+    stream.read_to_end(&mut rest).await.unwrap();
+}
+
+/// 完整经过 Apple 版本协商、DH/AES 账户认证和图像引擎初始化；拒绝不降级，关闭释放 socket。
+#[tokio::test]
+async fn apple_account_authentication_reaches_desktop_and_rejection_never_downgrades() {
+    for reject in [false, true] {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // listener/reject 移交本次假服务器任务；任务由三秒测试超时及下方 join 收束。
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            apple_handshake(&mut stream, reject).await;
+        });
+        let service = VncService::default();
+        let mut config = request("apple-account", port);
+        config.auth_type = "apple".into();
+        config.username = "viewer".into();
+        config.password = Some("abcdefghijklmno.".into());
+        service.open(config).unwrap();
+        let frame = wait_state(&service, "apple-account", if reject { 3 } else { 1 }).await;
+        if reject {
+            assert!(String::from_utf8_lossy(&frame[FRAME_HEADER_BYTES..]).contains("denied"));
+        }
+        service.close("apple-account").unwrap();
+        timeout(TEST_TIMEOUT, server).await.unwrap().unwrap();
+    }
+}
+
+/// 校验 Apple 凭据的 UTF-8 字节边界、无效 DH 公钥及版本公告格式；所有错误在响应生成前返回。
+#[test]
+fn apple_validation_rejects_invalid_key_parameters_and_credential_boundaries() {
+    use crate::{
+        vnc_apple_auth::{response, validate_credential},
+        vnc_transport::negotiate_version,
+    };
+    assert!(validate_credential(&"中".repeat(21)).is_ok());
+    for invalid in [String::new(), "中".repeat(22), "a\0b".into(), "x\ny".into()] {
+        assert!(validate_credential(&invalid).is_err());
+    }
+    let modulus =
+        apple_test_bytes(&BigUint::parse_bytes(APPLE_TEST_MODULUS.as_bytes(), 16).unwrap());
+    for peer in [
+        vec![0; 128],
+        apple_test_bytes(&BigUint::from(1u8)),
+        modulus.clone(),
+    ] {
+        assert!(response(2, &modulus, &peer, "viewer", "secret").is_err());
+    }
+    assert!(response(1, &modulus, &modulus, "viewer", "secret").is_err());
+    assert!(response(2, &[1; 127], &[2; 127], "viewer", "secret").is_err());
+    assert!(response(2, &[1; 1025], &[2; 1025], "viewer", "secret").is_err());
+    assert_eq!(
+        negotiate_version(b"RFB 003.889\n").unwrap(),
+        *b"RFB 003.008\n"
+    );
+    assert_eq!(
+        negotiate_version(b"RFB 003.006\n").unwrap(),
+        *b"RFB 003.003\n"
+    );
+    assert!(negotiate_version(b"RFB 004.008\n").is_err());
+    assert!(negotiate_version(b"RFB 003.00x\n").is_err());
+}
+
+/// Apple 策略遇到只提供传统密码/无认证的服务器时，在发送凭据或 ClientInit 前关闭。
+#[tokio::test]
+async fn apple_policy_never_falls_back_to_legacy_password_or_no_authentication() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    // 假服务器只声明类型 1/2；收到任何后续字节都说明客户端错误降级。
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        stream.write_all(b"RFB 003.008\n").await.unwrap();
+        let mut version = [0; 12];
+        stream.read_exact(&mut version).await.unwrap();
+        stream.write_all(&[2, 1, 2]).await.unwrap();
+        let mut rest = Vec::new();
+        stream.read_to_end(&mut rest).await.unwrap();
+        assert!(rest.is_empty());
+    });
+    let service = VncService::default();
+    let mut config = request("apple-required", port);
+    config.auth_type = "apple".into();
+    config.username = "viewer".into();
+    config.password = Some("abcdefghijklmno.".into());
+    service.open(config).unwrap();
+    let frame = wait_state(&service, "apple-required", 3).await;
+    assert!(String::from_utf8_lossy(&frame[FRAME_HEADER_BYTES..]).contains("不支持"));
+    service.close("apple-required").unwrap();
+    timeout(TEST_TIMEOUT, server).await.unwrap().unwrap();
+}
+
+/// RFB 3.3/3.8 的拒绝原因均有界读取；过长声明不等待载荷，控制字符不进入错误文本。
+#[tokio::test]
+async fn server_rejection_reasons_are_bounded_and_sanitized_for_legacy_and_modern_versions() {
+    for (legacy, oversized) in [(true, false), (false, false), (false, true)] {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // 假服务器仅发送拒绝头；超长长度后不发送载荷，以验证客户端不会等待无界读取。
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let version = if legacy {
+                b"RFB 003.003\n"
+            } else {
+                b"RFB 003.008\n"
+            };
+            stream.write_all(version).await.unwrap();
+            let mut response = [0; 12];
+            stream.read_exact(&mut response).await.unwrap();
+            if legacy {
+                stream.write_u32(0).await.unwrap();
+            } else {
+                stream.write_u8(0).await.unwrap();
+            }
+            stream
+                .write_u32(if oversized { 4097 } else { 7 })
+                .await
+                .unwrap();
+            if !oversized {
+                stream.write_all(b"de\nnied").await.unwrap();
+            }
+            let mut rest = Vec::new();
+            stream.read_to_end(&mut rest).await.unwrap();
+            assert!(rest.is_empty());
+        });
+        let service = VncService::default();
+        service.open(request("rejected", port)).unwrap();
+        let frame = wait_state(&service, "rejected", 3).await;
+        let error = String::from_utf8_lossy(&frame[FRAME_HEADER_BYTES..]);
+        assert!(error.contains(if oversized { "过长" } else { "denied" }));
+        assert!(!error.contains('\n'));
+        service.close("rejected").unwrap();
+        timeout(TEST_TIMEOUT, server).await.unwrap().unwrap();
+    }
+}
+
 /// 测试连接和异步事件最多等待三秒，超时直接失败，不依赖长期随机等待。
 const TEST_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -29,6 +245,7 @@ fn request(id: &str, port: u16) -> VncOpenRequest {
         host: "127.0.0.1".into(),
         port,
         auth_type: "none".into(),
+        username: String::new(),
         password: Some(String::new()),
         read_only: false,
     }

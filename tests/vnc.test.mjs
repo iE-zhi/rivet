@@ -5,9 +5,32 @@ import {
   parseConnections,
   serializeConnections,
   VNC_CONNECTIONS_KEY,
+  isVncPassword,
 } from "../src/pages/vnc/model.ts";
-import { keySymbol, pointerButtons } from "../src/pages/vnc/keyboard.ts";
+import {
+  keySymbol,
+  keyTransitions,
+  pointerButtons,
+} from "../src/pages/vnc/keyboard.ts";
 import { deserializeNavigationSettings } from "../src/preferences/navigationSettings.ts";
+
+/** Apple 用户名独立持久化，秘密不进入配置；UTF-8 字节边界与旧认证分别校验。 */
+test("Apple VNC configurations preserve usernames and enforce credential byte limits", () => {
+  const connection = { id: "apple", name: "Mac", group: "Default", host: "localhost", port: 5900,
+    authType: "apple", username: "viewer", readOnly: false, password: "hidden" };
+  const saved = serializeConnections([connection]);
+  assert.equal(saved.includes("hidden"), false);
+  assert.equal(parseConnections(saved)[0].username, "viewer");
+  assert.throws(() => serializeConnections([{ ...connection, username: "" }]));
+  assert.throws(() => serializeConnections([{ ...connection, username: "中".repeat(22) }]));
+  assert.equal(isVncPassword("abcdefghijklmno.", "apple"), true);
+  assert.equal(isVncPassword("中".repeat(21), "apple"), true);
+  assert.equal(isVncPassword("中".repeat(22), "apple"), false);
+  assert.equal(isVncPassword("a\u0000b", "apple"), false);
+  assert.equal(isVncPassword("", "apple"), false);
+  assert.equal(isVncPassword("123456789", "password"), false);
+  assert.equal(isVncPassword("12345678", "password"), true);
+});
 
 /** 合法 VNC 配置不含秘密；附加 password 字段不能进入序列化结果。 */
 test("VNC configuration uses an independent key and strips credentials", () => {
@@ -166,6 +189,78 @@ test("VNC key and mouse mappings preserve modifier sides and button order", () =
   assert.equal(pointerButtons(2), 4);
   assert.equal(pointerButtons(4), 2);
   assert.equal(pointerButtons(7), 7);
+});
+
+/** 中文输入法的非组合句点键还原为英文句点，其他键位和独立 Unicode 文本保持原值。 */
+test("VNC physical period bypasses local Chinese punctuation without changing Unicode text", () => {
+  assert.equal(keySymbol("。", 0, "Period"), ".".charCodeAt(0));
+  assert.equal(keySymbol(".", 0, "Period"), ".".charCodeAt(0));
+  assert.equal(keySymbol(">", 0, "Period"), ">".charCodeAt(0));
+  assert.equal(keySymbol("。"), 0x01003002);
+  assert.equal(keySymbol("。", 0, "KeyA"), 0x01003002);
+  assert.equal(keySymbol("中", 0, "KeyZ"), 0x01004e2d);
+});
+
+/** macOS 连续开启、关闭大写只有交替的 down/up 通知；每次均须切换且不留下按住状态。 */
+test("macOS Caps Lock toggles on both state notifications without retaining a held key", () => {
+  const pressed = new Map();
+  const event = { key: "CapsLock", code: "CapsLock", location: 0, repeat: false };
+  /** Caps Lock 的标准 X11 点击，每次仅切换一次锁定状态。 */
+  const click = [
+    { key: 0xffe5, down: true },
+    { key: 0xffe5, down: false },
+  ];
+  for (const down of [true, false, true, false]) {
+    assert.deepEqual(keyTransitions(event, down, pressed, true), click);
+    assert.equal(pressed.size, 0);
+  }
+  assert.deepEqual(
+    keyTransitions({ ...event, repeat: true }, true, pressed, true),
+    [],
+  );
+});
+
+/** 其他平台保留普通 Caps Lock 配对；自动重复和修饰键变化不改变原按键的释放目标。 */
+test("non-macOS Caps Lock remains paired and character repeats retain the original symbol", () => {
+  const pressed = new Map();
+  const caps = { key: "CapsLock", code: "CapsLock", location: 0, repeat: false };
+  assert.deepEqual(keyTransitions(caps, true, pressed, false), [
+    { key: 0xffe5, down: true },
+  ]);
+  assert.equal(pressed.size, 1);
+  assert.deepEqual(keyTransitions(caps, false, pressed, false), [
+    { key: 0xffe5, down: false },
+  ]);
+  assert.equal(pressed.size, 0);
+  const letter = { key: "a", code: "KeyA", location: 0, repeat: false };
+  assert.deepEqual(keyTransitions(letter, true, pressed, true), [
+    { key: 97, down: true },
+  ]);
+  assert.deepEqual(
+    keyTransitions({ ...letter, key: "A", repeat: true }, true, pressed, true),
+    [{ key: 97, down: true }],
+  );
+  assert.deepEqual(
+    keyTransitions({ ...letter, key: "A" }, false, pressed, true),
+    [{ key: 97, down: false }],
+  );
+  assert.deepEqual(keyTransitions(letter, false, pressed, true), []);
+  assert.equal(pressed.size, 0);
+});
+
+/** macOS Command 组合缺少字符 keyup 时仍须释放字符，Command 本身保留正常配对。 */
+test("macOS Command chords release characters even when their native keyup is absent", () => {
+  const pressed = new Map();
+  const command = { key: "Meta", code: "MetaLeft", location: 1, repeat: false, metaKey: true };
+  keyTransitions(command, true, pressed, true);
+  const letter = { key: "c", code: "KeyC", location: 0, repeat: false, metaKey: true };
+  assert.deepEqual(keyTransitions(letter, true, pressed, true), [
+    { key: 99, down: true }, { key: 99, down: false },
+  ]);
+  assert.equal(pressed.size, 1);
+  assert.deepEqual(keyTransitions(command, false, pressed, true), [{ key: 0xffeb, down: false }]);
+  assert.equal(pressed.size, 0);
+  assert.deepEqual(keyTransitions(letter, false, pressed, true), []);
 });
 
 /** 旧版导航保留排序和隐藏状态，追加 VNC 与 Markdown；新配置可往返，重复项回退默认。 */

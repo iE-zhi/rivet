@@ -18,6 +18,8 @@ mod sync;
 mod sync_secrets;
 #[path = "../src/vnc.rs"]
 mod vnc;
+#[path = "../src/vnc_apple_auth.rs"]
+mod vnc_apple_auth;
 #[path = "../src/vnc_frame.rs"]
 mod vnc_frame;
 #[path = "../src/vnc_transport.rs"]

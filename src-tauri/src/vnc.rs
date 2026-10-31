@@ -1,7 +1,7 @@
 //! 独立 VNC 会话服务与 Tauri 命令；拥有 TCP/协议任务、有界输入队列和最新桌面。
 //! 仅支持直连标准 RFB，不访问 SSH 的连接、配置或会话状态。
 
-use crate::{credential_store, vnc_frame::VncFrame, vnc_transport::VncTransport};
+use crate::{credential_store, vnc_apple_auth, vnc_frame::VncFrame, vnc_transport::VncTransport};
 use serde::Deserialize;
 use std::{
     collections::HashMap,
@@ -15,6 +15,7 @@ use tokio::{
     time::{interval, timeout, MissedTickBehavior},
 };
 use vnc::{PixelFormat, VncClient, VncConnector, VncEncoding, VncEvent, X11Event};
+use zeroize::{Zeroize, Zeroizing};
 
 /// 同时最多四个 VNC 桌面，限制连接和图像内存总量。
 pub(crate) const MAX_VNC_SESSIONS: usize = 4;
@@ -53,12 +54,24 @@ pub(crate) struct VncOpenRequest {
     pub(crate) host: String,
     /// TCP 端口，范围 1..=65535。
     pub(crate) port: u16,
-    /// password 使用传统 VNC 密码；none 必须由用户显式选择。
+    /// password 为传统密码，apple 为 macOS 用户名认证，none 为显式无认证。
     pub(crate) auth_type: String,
+    /// Apple 认证账户名；旧配置及其他认证方式可省略，不作为密码保存。
+    #[serde(default)]
+    pub(crate) username: String,
     /// 临时密码；None 从本地加密存储读取，不写入连接列表。
     pub(crate) password: Option<String>,
     /// 此会话是否拒绝所有键鼠写入；建立后不可被前端输入绕过。
     pub(crate) read_only: bool,
+}
+
+impl Drop for VncOpenRequest {
+    /// 请求被拒绝、取消或任务退出时清零尚未交给握手的密码；不执行 I/O 或阻塞清理。
+    fn drop(&mut self) {
+        if let Some(password) = self.password.as_mut() {
+            password.zeroize();
+        }
+    }
 }
 
 /// 一个输入事件；使用带标签 JSON，未知字段与未知种类均被拒绝。
@@ -159,12 +172,22 @@ impl VncOpenRequest {
         {
             return Err("VNC 主机或端口无效".into());
         }
-        if self.auth_type != "password" && self.auth_type != "none" {
+        if !["password", "apple", "none"].contains(&self.auth_type.as_str()) {
             return Err("VNC 认证方式无效".into());
         }
+        if self.auth_type == "apple" {
+            if self.username.trim().is_empty() {
+                return Err("请输入 macOS 用户名".into());
+            }
+            vnc_apple_auth::validate_credential(&self.username)?;
+        }
         if let Some(password) = &self.password {
-            validate_password(password)?;
-            if self.auth_type == "password" && password.is_empty() {
+            if self.auth_type == "apple" {
+                vnc_apple_auth::validate_credential(password)?;
+            } else {
+                validate_password(password)?;
+            }
+            if self.auth_type != "none" && password.is_empty() {
                 return Err("请输入 VNC 密码".into());
             }
         }
@@ -420,7 +443,7 @@ pub(crate) async fn load_vnc_password(connection_id: String) -> Result<String, S
 ///
 /// # 参数
 /// - `connection_id`：VNC 连接 ID，不影响同名 SSH 凭据。
-/// - `password`：最多八字节 ASCII；空值删除，无浏览器持久化副作用。
+/// - `password`：最多六十三字节 UTF-8；空值删除，具体认证限制在建立连接时校验。
 ///
 /// # Errors
 /// 非法输入、加密或磁盘写入失败时返回错误，原凭据保留。
@@ -429,8 +452,11 @@ pub(crate) async fn save_vnc_password(
     connection_id: String,
     password: String,
 ) -> Result<(), String> {
+    let password = Zeroizing::new(password);
     validate_id(&connection_id)?;
-    validate_password(&password)?;
+    if !password.is_empty() {
+        vnc_apple_auth::validate_credential(&password)?;
+    }
     tauri::async_runtime::spawn_blocking(move || {
         credential_store::save_vnc_password(&connection_id, &password)
     })
@@ -447,13 +473,17 @@ pub(crate) async fn save_vnc_password(
 /// 密码缺失、连接、握手及认证失败均返回错误，不自动重试认证。
 async fn connect(request: &mut VncOpenRequest) -> Result<VncClient, String> {
     let password = if request.auth_type == "none" {
-        String::new()
+        Zeroizing::new(String::new())
     } else {
-        let value = match request.password.take() {
+        let value = Zeroizing::new(match request.password.take() {
             Some(value) => value,
             None => load_vnc_password(request.connection_id.clone()).await?,
-        };
-        validate_password(&value)?;
+        });
+        if request.auth_type == "apple" {
+            vnc_apple_auth::validate_credential(&value)?;
+        } else {
+            validate_password(&value)?;
+        }
         if value.is_empty() {
             return Err("请输入 VNC 密码".into());
         }
@@ -465,10 +495,17 @@ async fn connect(request: &mut VncOpenRequest) -> Result<VncClient, String> {
     stream
         .set_nodelay(true)
         .map_err(|error| format!("配置 VNC TCP 失败：{error}"))?;
-    let transport = VncTransport::negotiate(stream, request.auth_type == "password").await?;
+    let transport =
+        VncTransport::negotiate(stream, &request.auth_type, &request.username, &password).await?;
+    // Apple 凭据已经在适配器内使用，不再交给只支持传统密码的图像协议引擎。
+    let engine_password = if request.auth_type == "password" {
+        password.to_string()
+    } else {
+        String::new()
+    };
     VncConnector::new(transport)
         // 密码只移动给一次认证 Future，不记录日志或转交图像通道。
-        .set_auth_method(async move { Ok(password) })
+        .set_auth_method(async move { Ok(engine_password) })
         .set_pixel_format(PixelFormat::rgba())
         .allow_shared(true)
         .add_encoding(VncEncoding::Zrle)

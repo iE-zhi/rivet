@@ -20,6 +20,7 @@ mod sync;
 mod sync_secrets;
 mod terminal_serial;
 mod vnc;
+mod vnc_apple_auth;
 mod vnc_frame;
 mod vnc_transport;
 #[cfg(windows)]

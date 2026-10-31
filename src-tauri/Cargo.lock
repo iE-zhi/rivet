@@ -3652,8 +3652,12 @@ dependencies = [
 name = "rivet"
 version = "0.2.3"
 dependencies = [
+ "aes",
  "base64 0.22.1",
+ "crypto-bigint",
  "getrandom 0.4.3",
+ "md5",
+ "num-bigint",
  "portable-pty",
  "reqwest 0.12.28",
  "ring",
@@ -3670,6 +3674,7 @@ dependencies = [
  "tokio",
  "vnc-rs",
  "windows 0.61.3",
+ "zeroize",
 ]
 
 [[package]]

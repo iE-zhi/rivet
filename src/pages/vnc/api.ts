@@ -24,6 +24,7 @@ export async function openSession(
       host: connection.host,
       port: connection.port,
       authType: connection.authType,
+      username: connection.username ?? "",
       readOnly: connection.readOnly,
       password: password ?? null,
     },

@@ -1,4 +1,4 @@
-/* VNC 独立布局；尺寸与现有终端的标题栏、浮层和底部工具栏一致。 */
+/* VNC 布局：会话标签、浮动操作栏、桌面和连接浮层。 */
 .vnc-page {
   position: relative;
   display: flex;
@@ -148,27 +148,78 @@
   overflow: hidden;
 }
 .vnc-viewport {
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
   flex: 1;
   flex-direction: column;
 }
+/* 刘海覆盖桌面，不占布局高度；透明区域与收起的操作栏不拦截远端输入。 */
+.vnc-notch {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 50%;
+  display: flex;
+  width: max-content;
+  max-width: calc(100% - 16px);
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.vnc-notch-handle {
+  display: grid;
+  width: 64px;
+  height: 14px;
+  flex: 0 0 14px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--r-border);
+  border-top: 0;
+  border-radius: 0 0 9px 9px;
+  background: var(--r-surface);
+  color: var(--r-subtle);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 12%);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.vnc-notch-handle > span {
+  width: 24px;
+  height: 3px;
+  border-radius: 2px;
+  background: currentColor;
+}
 .vnc-pane-tools {
   display: flex;
-  height: 34px;
-  flex: 0 0 34px;
+  max-width: 100%;
   align-items: center;
   gap: 5px;
-  padding: 0 6px;
-  border-bottom: 1px solid var(--r-border);
+  padding: 6px;
+  border: 1px solid var(--r-border);
+  border-radius: 10px;
   background: var(--r-surface);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--r-overlay-fade-duration) ease,
+    visibility var(--r-overlay-fade-duration) ease;
+}
+/* 悬停和键盘焦点共享展开状态；离开并失焦后自动收起，无定时器。 */
+.vnc-notch:hover .vnc-pane-tools,
+.vnc-notch:focus-within .vnc-pane-tools {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 .vnc-pane-tools > span {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  color: var(--r-muted);
+  color: var(--r-subtle);
   font-size: var(--r-font-size-secondary);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -179,13 +230,30 @@
   padding: 0 7px;
   font-size: var(--r-font-size-secondary);
 }
+/* 窄窗省略分辨率，操作按钮可分行显示。 */
+@media (max-width: 480px) {
+  .vnc-pane-tools {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .vnc-pane-tools > span {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vnc-pane-tools {
+    transition: none;
+  }
+}
 .vnc-desktop {
   min-width: 0;
   min-height: 0;
   flex: 1;
   background: var(--r-terminal-bg);
 }
-.vnc-desktop:fullscreen {
+.vnc-viewport:fullscreen {
+  width: 100%;
+  height: 100%;
   background: var(--r-terminal-bg);
 }
 .vnc-desktop-y,
@@ -208,7 +276,7 @@
 }
 .vnc-session-status {
   position: absolute;
-  inset: 34px 0 0;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -349,9 +417,6 @@
 .vnc-group-heading > span:last-child {
   color: var(--r-muted);
   font-size: var(--r-font-size-secondary);
-}
-.vnc-group-heading .is-expanded {
-  transform: rotate(90deg);
 }
 .vnc-connection-row {
   position: relative;
@@ -516,4 +581,13 @@
   .vnc-pane-tools {
     gap: 2px;
   }
+}
+.vnc-keyboard-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
 }

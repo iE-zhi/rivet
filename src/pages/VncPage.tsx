@@ -17,6 +17,7 @@ import {
 } from "./vnc/api";
 import {
   copyConnection,
+  isVncPassword,
   MAX_CONNECTIONS,
   MAX_RECENT,
   MAX_SESSIONS,
@@ -188,7 +189,7 @@ export default function VncPage({
       const oldPassword = await loadPassword(connection.id);
       await savePassword(
         connection.id,
-        connection.authType === "password" && remember ? secret : "",
+        connection.authType !== "none" && remember ? secret : "",
       );
       try {
         localStorage.setItem(VNC_CONNECTIONS_KEY, serialized);
@@ -202,7 +203,7 @@ export default function VncPage({
         }
         throw cause;
       }
-      if (connection.authType === "password" && !remember)
+      if (connection.authType !== "none" && !remember)
         passwords.current.set(connection.id, secret);
       else passwords.current.delete(connection.id);
       connectionsRef.current = next;
@@ -324,11 +325,11 @@ export default function VncPage({
     operation.current = true;
     try {
       const secret =
-        connection.authType === "password"
+        connection.authType !== "none"
           ? (passwords.current.get(connection.id) ??
             (await loadPassword(connection.id)))
           : "";
-      if (connection.authType === "password" && !secret) {
+      if (connection.authType !== "none" && !secret) {
         setPassword("");
         setPrompt({ connection, replacing });
         return;
@@ -344,7 +345,10 @@ export default function VncPage({
   /** 临时认证只用于本次连接，提交后清除弹窗密码。 */
   const authenticate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (operation.current || !prompt || !/^[\x20-\x7e]{1,8}$/u.test(password))
+    if (
+      operation.current || !prompt ||
+      !isVncPassword(password, prompt.connection.authType)
+    )
       return;
     operation.current = true;
     const pending = prompt,
@@ -597,12 +601,16 @@ export default function VncPage({
           >
             <strong id="vnc-auth-title">{prompt.connection.name}</strong>
             <label className="vnc-field">
-              <span>{zh ? "VNC 密码" : "VNC password"}</span>
+              <span>
+                {prompt.connection.authType === "apple"
+                  ? zh ? "macOS 密码" : "macOS password"
+                  : zh ? "VNC 密码" : "VNC password"}
+              </span>
               <Input
                 autoFocus
                 type="password"
                 autoComplete="off"
-                maxLength={8}
+                maxLength={prompt.connection.authType === "apple" ? 63 : 8}
                 value={password}
                 onChange={(event) => setPassword(event.currentTarget.value)}
               />
@@ -620,7 +628,7 @@ export default function VncPage({
               </Button>
               <Button
                 type="submit"
-                disabled={!/^[\x20-\x7e]{1,8}$/u.test(password)}
+                disabled={!isVncPassword(password, prompt.connection.authType)}
               >
                 {zh ? "连接" : "Connect"}
               </Button>
