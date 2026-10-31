@@ -8,6 +8,7 @@ import "../../src/App.css";
 import contentSample from "./markdown-content.md?raw";
 import richSample from "./markdown-rich.md?raw";
 import highlightSample from "./markdown-highlight.md?raw";
+import mathSample from "./markdown-math.md?raw";
 
 /** 两台模拟服务器具有相同路径，用于检查读取和保存是否始终绑定正确会话。 */
 const sessions = [
@@ -57,7 +58,7 @@ mockIPC(/** command 和 args 是生产组件发出的真实 IPC 参数；未声�
     window.dispatchEvent(new Event("markdown-test-saved"));
     return { path: args.path, content: args.content, revision };
   }
-  if (command === "markdown_open_local") return { path: "/test/local.md", content: savedLocalContent ?? (new URLSearchParams(location.search).get("sample") === "scrollbars" ? contentSample + "\n" + outlineSample : new URLSearchParams(location.search).get("sample") === "highlight" ? highlightSample : new URLSearchParams(location.search).get("sample") === "outline" ? outlineSample : new URLSearchParams(location.search).get("sample") === "rich" ? richSample : new URLSearchParams(location.search).has("sample") ? contentSample : "# 本地文件\n"), revision };
+  if (command === "markdown_open_local") return { path: "/test/local.md", content: savedLocalContent ?? (new URLSearchParams(location.search).get("sample") === "math" ? mathSample : new URLSearchParams(location.search).get("sample") === "scrollbars" ? contentSample + "\n" + outlineSample : new URLSearchParams(location.search).get("sample") === "highlight" ? highlightSample : new URLSearchParams(location.search).get("sample") === "outline" ? outlineSample : new URLSearchParams(location.search).get("sample") === "rich" ? richSample : new URLSearchParams(location.search).has("sample") ? contentSample : "# 本地文件\n"), revision };
   if (command === "markdown_create_folder") {
     if (!args.name || /[\\/\u0000]/.test(args.name)) throw new Error("文件夹名称无效");
     if (createdFolders.has(args.name) || ["notes", "empty", "denied"].includes(args.name)) throw new Error("文件夹已存在");

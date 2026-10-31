@@ -9,6 +9,7 @@ import { $prose } from "@milkdown/kit/utils";
 import { autoUpdate, flip, offset, shift, size, type Middleware } from "@floating-ui/dom";
 import { bindBlockDrag } from "./blockDrag";
 import { richCodeBlocks } from "./richCodeBlocks";
+import { mathEditing } from "./mathEditing";
 import { configureHtmlBlocks, htmlBlockPlugin } from "./htmlBlocks";
 import { configureHighlight, highlightInputRule, highlightPlugin, highlightSchema, highlightSyntaxPlugin, toggleHighlightCommand } from "./highlight";
 import highlightIcon from "../../assets/svg/highlight.svg?raw";
@@ -70,8 +71,10 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
     const editor = new Crepe({
       root: host,
       defaultValue: content,
-      features: { [Crepe.Feature.Latex]: false },
+      features: { [Crepe.Feature.Latex]: true },
       featureConfigs: {
+        // 块公式不允许外部资源指令；宏最多展开 1000 次，尺寸指令最多为 20em。
+        [Crepe.Feature.Latex]: { katexOptions: { trust: false, maxExpand: 1000, maxSize: 20 } },
         // 原生插入光标与文字共享浏览器排版位置，代码块重排后无需另行计算坐标。
         [Crepe.Feature.Cursor]: { virtual: false },
         [Crepe.Feature.Placeholder]: { text: zh ? "输入 / 添加内容" : "Type / to add a block", mode: "block" },
@@ -88,7 +91,7 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
           })] } },
           textGroup: { label: zh ? "基础" : "Basic", text: { label: zh ? "正文" : "Text" }, h1: { label: zh ? "标题 1" : "Heading 1" }, h2: { label: zh ? "标题 2" : "Heading 2" }, h3: { label: zh ? "标题 3" : "Heading 3" }, h4: { label: zh ? "标题 4" : "Heading 4" }, h5: { label: zh ? "标题 5" : "Heading 5" }, h6: null, quote: { label: zh ? "引用" : "Quote" }, divider: { label: zh ? "分隔线" : "Divider" } },
           listGroup: { label: zh ? "列表" : "Lists", bulletList: { label: zh ? "无序列表" : "Bullet list" }, orderedList: { label: zh ? "有序列表" : "Numbered list" }, taskList: { label: zh ? "待办事项" : "To-do list" } },
-          advancedGroup: { label: zh ? "更多" : "More", image: { label: zh ? "图片" : "Image" }, codeBlock: { label: zh ? "代码块" : "Code" }, table: { label: zh ? "表格" : "Table" }, math: null },
+          advancedGroup: { label: zh ? "更多" : "More", image: { label: zh ? "图片" : "Image" }, codeBlock: { label: zh ? "代码块" : "Code" }, table: { label: zh ? "表格" : "Table" }, math: { label: zh ? "数学公式" : "Math formula" } },
           /** 复用预设代码图标与插入动作，英文命令键也参与现有斜杠搜索。 */
           buildMenu(builder) {
             const group = builder.getGroup("advanced");
@@ -98,7 +101,7 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
           },
         },
         [Crepe.Feature.Toolbar]: {
-          boldLabel: zh ? "粗体" : "Bold", italicLabel: zh ? "斜体" : "Italic", codeLabel: zh ? "行内代码" : "Code", linkLabel: zh ? "链接" : "Link", strikethroughLabel: zh ? "删除线" : "Strikethrough",
+          boldLabel: zh ? "粗体" : "Bold", italicLabel: zh ? "斜体" : "Italic", codeLabel: zh ? "行内代码" : "Code", linkLabel: zh ? "链接" : "Link", strikethroughLabel: zh ? "删除线" : "Strikethrough", latexLabel: zh ? "行内公式" : "Inline math",
           /** 复用现有文字格式分组，高亮的状态与操作始终读取当前编辑器。 */
           buildToolbar(builder) {
             builder.getGroup("formatting").addItem("highlight", {
@@ -119,7 +122,12 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
             void navigator.clipboard.writeText(link).catch(/** 复制失败不改变文档内容。 */ (error: unknown) => callbacks.current.onError(error));
           },
         },
-        [Crepe.Feature.CodeMirror]: { theme: themeHost?.dataset.theme === "dark" ? oneDark : [], searchPlaceholder: zh ? "搜索语言" : "Search language", noResultText: zh ? "无匹配语言" : "No language found", copyText: zh ? "复制" : "Copy", copyIcon: codeCopyIcon },
+        [Crepe.Feature.CodeMirror]: {
+          theme: themeHost?.dataset.theme === "dark" ? oneDark : [], searchPlaceholder: zh ? "搜索语言" : "Search language", noResultText: zh ? "无匹配语言" : "No language found", copyText: zh ? "复制" : "Copy", copyIcon: codeCopyIcon,
+          previewLabel: zh ? "公式预览" : "Formula preview",
+          /** 只切换公式源码的显示，正文和撤销历史由现有编辑器管理。 */
+          previewToggleText: (previewOnly) => previewOnly ? (zh ? "编辑公式" : "Edit formula") : (zh ? "隐藏源码" : "Hide source"),
+        },
         [Crepe.Feature.ImageBlock]: {
           proxyDomURL: safeImageUrl,
           blockUploadPlaceholderText: zh ? "粘贴图片链接或上传" : "Paste an image URL or upload",
@@ -132,7 +140,7 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
         },
       },
     });
-    editor.editor.config(configureHtmlBlocks).config(configureHighlight).use(highlightSchema).use(toggleHighlightCommand).use(highlightInputRule).use(highlightSyntaxPlugin).use(highlightPlugin).use(htmlBlockPlugin).use(richCodeBlocks(themeHost, zh, /** 预览失败保留源码并交给应用右上角通知。 */ (error) => callbacks.current.onError(error)));
+    editor.editor.config(configureHtmlBlocks).config(configureHighlight).use(highlightSchema).use(toggleHighlightCommand).use(highlightInputRule).use(highlightSyntaxPlugin).use(highlightPlugin).use(htmlBlockPlugin).use(mathEditing).use(richCodeBlocks(themeHost, zh, /** 预览失败保留源码并交给应用右上角通知。 */ (error) => callbacks.current.onError(error)));
     // 同步消费文档事务，不依赖库的延迟通知，立即保存或切页也能拿到最后一次输入。
     editor.editor.use($prose(/** ctx 在本编辑器存活期间提供 Markdown 序列化器。 */ (ctx) => new Plugin({
       /** 插件视图随编辑器一起销毁，不持有外部资源。 */
@@ -168,6 +176,10 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
         const editable = host.querySelector<HTMLElement>(".ProseMirror");
         editable?.setAttribute("aria-label", zh ? "Markdown 内容" : "Markdown content");
         editable?.setAttribute("spellcheck", "false");
+        // 内置确认按钮没有读屏名称，使用当前应用语言补齐。
+        const formulaConfirm = host.querySelector<HTMLButtonElement>(".milkdown-latex-inline-edit button");
+        formulaConfirm?.setAttribute("aria-label", zh ? "确认公式" : "Apply formula");
+        formulaConfirm?.setAttribute("title", zh ? "确认公式" : "Apply formula");
         setLoading(false);
       }
     }).catch(/** 初始化失败直接展示错误，避免留下永久加载状态。 */ (error: unknown) => {

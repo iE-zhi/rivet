@@ -84,9 +84,9 @@ export function configureHighlight(ctx: Ctx): void {
   ctx.update(remarkStringifyOptionsCtx, /** previous 保留所有已注册的 Markdown 输出规则。 */ (previous) => {
     /** node 是本 schema 生成的行内容器；子文字仍经过现有转义、链接和格式输出。 */
     const serializeHighlight: NonNullable<NonNullable<typeof previous.handlers>["html"]> = (node, _parent, state, info) => `<mark>${state.containerPhrasing(node as Parameters<typeof state.containerPhrasing>[0], { ...info, before: ">", after: "<" })}</mark>`;
-    /** 普通双等号必须经过扩展转义，不能走预设直接返回带尾空格文本的分支。 */
+    /** 普通双等号和美元符号必须经过扩展转义，避免保存后重新解释成高亮或公式。 */
     const serializeText: NonNullable<NonNullable<typeof previous.handlers>["text"]> = (node, parent, state, info) => {
-      if (node.type === "text" && node.value.includes("==")) return state.safe(node.value, { ...info, encode: [] });
+      if (node.type === "text" && (node.value.includes("==") || node.value.includes("$"))) return state.safe(node.value, { ...info, encode: [] });
       if (previous.handlers?.text) return previous.handlers.text(node, parent, state, info);
       if (node.type === "text") return state.safe(node.value, { ...info, encode: [] });
       throw new Error("文字节点格式无效 / Invalid text node");

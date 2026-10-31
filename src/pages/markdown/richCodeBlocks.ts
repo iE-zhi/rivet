@@ -1,4 +1,4 @@
-/** 代码块折叠与 Mermaid/HTML 预览；复用 CodeMirror，视图状态与渲染资源随节点释放，不改变 Markdown 正文。 */
+/** 代码块折叠与 Mermaid/HTML/公式预览；复用 CodeMirror，视图状态与渲染资源随节点释放，不改变 Markdown 正文。 */
 import DOMPurify from "dompurify";
 import { codeBlockView } from "@milkdown/kit/component/code-block";
 import { codeBlockSchema } from "@milkdown/kit/preset/commonmark";
@@ -90,8 +90,8 @@ function attachPreview(base: NodeView, initial: ProseNode, themeHost: HTMLElemen
   const key = Symbol("markdown-diagram");
   let node = initial;
   let disposed = false;
-  /** 空内容的新块立即输入；已有 Mermaid/HTML 默认只展示渲染结果。 */
-  let editing = ["mermaid", "html"].includes(String(initial.attrs.language).toLowerCase()) && !initial.textContent.trim();
+  /** 空内容的新块立即输入；已有渲染块默认只展示结果。 */
+  let editing = ["mermaid", "html", "latex"].includes(String(initial.attrs.language).toLowerCase()) && !initial.textContent.trim();
   /** 每次输入或主题变化递增，正在运行的旧布局结果不会回填新内容。 */
   let generation = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -124,6 +124,11 @@ function attachPreview(base: NodeView, initial: ProseNode, themeHost: HTMLElemen
   /** 预览可通过 Enter/F2 编辑，提供双击之外的键盘入口。 */
   const previewKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Enter" || event.key === "F2") enterEditing(event);
+  };
+
+  /** 公式复用 CodeMirror 内置预览；只接管预览双击，不干扰源码的文字选择。 */
+  const formulaDoubleClick = (event: MouseEvent) => {
+    if (dom.dataset.formula === "true" && (event.target as Element).closest(".preview-panel")) enterEditing(event);
   };
 
   /** 错误只进入应用通知；预览区清空，但可编辑源码与磁盘版本保持原样。 */
@@ -179,7 +184,11 @@ function attachPreview(base: NodeView, initial: ProseNode, themeHost: HTMLElemen
     diagramQueue.delete(key);
     const language = String(node.attrs.language ?? "").toLowerCase();
     const supported = language === "mermaid" || language === "html";
+    // 空公式没有可双击的渲染内容，保留源码入口。
+    if (language === "latex" && !node.textContent.trim()) editing = true;
     dom.dataset.rich = String(supported);
+    dom.dataset.formula = String(language === "latex");
+    dom.dataset.editing = String(editing);
     sourceEditor.hidden = supported && !editing;
     preview.setAttribute("aria-label", language === "mermaid" ? (zh ? "Mermaid 图表" : "Mermaid diagram") : (zh ? "HTML 预览" : "HTML preview"));
     preview.hidden = !supported || editing;
@@ -218,6 +227,7 @@ function attachPreview(base: NodeView, initial: ProseNode, themeHost: HTMLElemen
   preview.addEventListener("dblclick", enterEditing);
   preview.addEventListener("keydown", previewKeyDown);
   sourceEditor.addEventListener("focusout", focusOut);
+  sourceEditor.addEventListener("dblclick", formulaDoubleClick);
   /** 折叠按钮属于外层节点，生命周期不受内部 CodeMirror 懒加载影响。 */
   const collapse = attachCodeCollapse(dom, zh);
   schedule();
@@ -233,18 +243,18 @@ function attachPreview(base: NodeView, initial: ProseNode, themeHost: HTMLElemen
       if (changed) schedule();
       return true;
     },
-    /** 渲染状态不把焦点交给隐藏的编辑器，源码状态继续复用原节点。 */
-    selectNode: () => { collapse.expand(); if (sourceEditor.hidden) preview.focus({ preventScroll: true }); else base.selectNode?.(); },
+    /** 键盘选中公式时先显示源码，避免焦点落在隐藏的 CodeMirror。 */
+    selectNode: () => { collapse.expand(); if (dom.dataset.formula === "true") { editing = true; schedule(); } if (sourceEditor.hidden) preview.focus({ preventScroll: true }); else base.selectNode?.(); },
     /** 取消选择不改变预览或正文。 */
     deselectNode: () => base.deselectNode?.(),
-    /** CodeMirror 的选区继续使用其原生坐标和事务。 */
-    setSelection: (anchor, head, root) => { collapse.expand(); if (sourceEditor.hidden) preview.focus({ preventScroll: true }); else base.setSelection?.(anchor, head, root); },
+    /** CodeMirror 的选区继续使用其原生坐标和事务，公式先恢复可见编辑区。 */
+    setSelection: (anchor, head, root) => { collapse.expand(); if (dom.dataset.formula === "true") { editing = true; schedule(); } if (sourceEditor.hidden) preview.focus({ preventScroll: true }); else base.setSelection?.(anchor, head, root); },
     /** 预览和 CodeMirror 都拥有内部 DOM，不由 ProseMirror 反向解析。 */
     ignoreMutation: () => true,
     /** 保留原代码块的事件处理边界。 */
     stopEvent: (event) => base.stopEvent?.(event) ?? true,
     /** 销毁后取消尚未开始的工作，正在运行的布局通过代次丢弃。 */
-    destroy() { disposed = true; generation += 1; if (timer !== undefined) clearTimeout(timer); diagramQueue.delete(key); themeObserver.disconnect(); frameObserver?.disconnect(); preview.removeEventListener("dblclick", enterEditing); preview.removeEventListener("keydown", previewKeyDown); sourceEditor.removeEventListener("focusout", focusOut); preview.replaceChildren(); collapse.destroy(); base.destroy?.(); },
+    destroy() { disposed = true; generation += 1; if (timer !== undefined) clearTimeout(timer); diagramQueue.delete(key); themeObserver.disconnect(); frameObserver?.disconnect(); preview.removeEventListener("dblclick", enterEditing); preview.removeEventListener("keydown", previewKeyDown); sourceEditor.removeEventListener("focusout", focusOut); sourceEditor.removeEventListener("dblclick", formulaDoubleClick); preview.replaceChildren(); collapse.destroy(); base.destroy?.(); },
   };
 }
 

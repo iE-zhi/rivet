@@ -177,3 +177,16 @@
 .markdown-code-preview svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 /* HTML 加载前预留 32px，加载后由节点视图按内容高度适配。 */
 .markdown-code-preview iframe { display: block; width: 100%; height: 32px; border: 0; background: var(--r-bg); }
+/* 公式使用 KaTeX 数学字体，文字颜色与正文一致；行内源码编辑框采用紧凑布局。 */
+.markdown-editor .milkdown .ProseMirror span[data-type="math_inline"] { color: var(--hao-text); vertical-align: baseline; }
+.markdown-editor .milkdown .milkdown-latex-inline-edit { background: var(--r-bg); color: var(--r-text); border: 1px solid var(--r-border); }
+.markdown-editor .milkdown .milkdown-latex-inline-edit .ProseMirror { min-height: 0; padding: 0; font-family: var(--crepe-font-code); }
+.markdown-editor .milkdown .milkdown-latex-inline-edit .ProseMirror p { margin: 0; }
+/* 公式源码切换与代码栏的复制、折叠一样只显示图标，保留按钮文字供辅助技术读取。 */
+.markdown-editor .milkdown .milkdown-code-block .tools .tools-button-group .preview-toggle-button { width: 16px; height: 16px; padding: 0; border-radius: 0; background: transparent; font-size: 0; gap: 0; opacity: 1; }
+.markdown-editor .milkdown .milkdown-code-block .preview-panel { padding: 0 16px 12px; color: var(--hao-text); }
+/* 公式渲染后隐藏源码外壳；懒加载占位仍保留高度，确保离屏公式能初始化。 */
+.markdown-rich-code[data-formula="true"] > .markdown-code-collapse { display: none; }
+.markdown-editor .milkdown .markdown-rich-code[data-formula="true"][data-editing="false"] > .milkdown-code-block:has(.preview-panel) { padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+.markdown-editor .milkdown .markdown-rich-code[data-formula="true"][data-editing="false"] .milkdown-code-block:has(.preview-panel) :is(.tools, .codemirror-host, .preview-label, .preview-divider) { display: none; }
+.markdown-editor .milkdown .markdown-rich-code[data-formula="true"][data-editing="false"] .preview-panel { padding: 0; }
