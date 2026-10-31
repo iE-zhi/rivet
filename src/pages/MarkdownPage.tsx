@@ -1,5 +1,5 @@
 /** 独立 Markdown 工作区；本地/SFTP 文档共享编辑器，未保存正文仅保存在本机草稿中。 */
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { ConfirmDialog, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, SvgIcon, VerticalScrollbar, ViewportScrollbars, useNotification, type PopupMenuPoint } from "../components/ui";
 import type { Locale } from "./SerialPage";
@@ -23,6 +23,8 @@ interface MarkdownPageProps {
   remoteSessions: RemoteMarkdownSession[];
   /** 应用标题栏的真实标签宿主；为空时在页面内保留可操作标签。 */
   titlebarHost: HTMLElement | null;
+  /** 标题栏非按钮区域复用应用的窗口拖拽入口；无原生宿主时可省略。 */
+  onTitlebarPointerDown?: (event: ReactPointerEvent<HTMLElement>) => void;
   /** 没有连接时前往终端，保留本页文档与草稿。 */
   onRequestTerminal: () => void;
 }
@@ -75,7 +77,7 @@ function restoreWorkspace() {
 }
 
 /** 本地和远程 Markdown 编辑页；异步读取/保存均按文档标识回填，失败不覆盖草稿。 */
-export default function MarkdownPage({ locale, pageActive, remoteRequest, remoteSessions, titlebarHost, onRequestTerminal }: MarkdownPageProps) {
+export default function MarkdownPage({ locale, pageActive, remoteRequest, remoteSessions, titlebarHost, onTitlebarPointerDown, onRequestTerminal }: MarkdownPageProps) {
   /** 当前页面内第三方视口复用应用轨道，关闭页面时统一释放绑定。 */
   const [scrollbarRoot, setScrollbarRoot] = useState<HTMLElement | null>(null);
   const zh = locale === "zh";
@@ -351,6 +353,11 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
   };
 
   const menuDocument = documents.find(/** 菜单目标不存在时保存项不可用。 */ (document) => document.id === fileMenu?.documentId);
+  /** 文件栏标题与操作按钮挂载到标题栏，正文侧栏只保留文件列表。 */
+  const filesHeading = <div className="markdown-files-heading" role="group" aria-label={zh ? "文件操作" : "File actions"} onPointerDown={/** 按钮保留自身操作，标题和空白区域可拖拽窗口。 */ (event) => { if (!(event.target instanceof Element) || !event.target.closest("button")) onTitlebarPointerDown?.(event); }}><strong title={folder?.remote ? `${folder.remote.sessionName} · ${folder.path}` : folder?.path}>{folder ? `${folder.remote ? `${folder.remote.sessionName} · ` : ""}${folder.path.split(/[\\/]/).filter(Boolean).pop() || folder.path}` : zh ? "文件" : "Files"}</strong><div className="markdown-file-actions">
+        <button type="button" disabled={busy || remotePickerOpen} aria-label={zh ? "新建文件" : "New file"} title={zh ? "新建文件" : "New file"} onClick={createDocument}><SvgIcon name="new-file" size={16} /></button>
+        <button type="button" disabled={!folder || !!folder.remote || busy || remotePickerOpen} aria-label={zh ? "新建文件夹" : "New folder"} title={!folder ? (zh ? "请先打开文件夹" : "Open a folder first") : folder.remote ? (zh ? "远程文件夹暂不支持新建文件夹" : "Creating remote folders is unavailable") : (zh ? "新建文件夹" : "New folder")} onClick={/** 在当前根目录下命名新文件夹，重复点击只聚焦已有输入。 */ () => { setFileMenu(null); setNewFolderName(newFolderName ?? ""); folderNameInput.current?.focus(); }}><SvgIcon name="new-folder" size={16} /></button>
+      </div></div>;
   const activityBar = <div className="markdown-activity" ref={tabStrip}><HorizontalScrollbar className="markdown-tab-scroll" height="35px" viewportLabel={zh ? "Markdown 活动文档" : "Markdown document tabs"} hideTrack>
     <div className="markdown-tabs" role="tablist" aria-label={zh ? "Markdown 文档" : "Markdown documents"}>
       {tabs.map(/** 每个标签对应独立页面，启动页操作后标签原位变为文件或目录。 */ (tab) => {
@@ -366,14 +373,12 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
     <button type="button" className="markdown-new-tab" aria-label={zh ? "新建页面" : "New page"} title={zh ? "新建页面" : "New page"} disabled={busy || remotePickerOpen} onClick={createPage}><SvgIcon name="plus" size={15} /></button>
   </div>;
 
+  const titleBar = <div className="markdown-titlebar">{!startPage && filesHeading}{activityBar}</div>;
+
   return <section ref={setScrollbarRoot} className={`markdown-page${titlebarHost ? "" : " has-inline-tabs"}${startPage ? " is-start-page" : ""}`} aria-label="Markdown" onContextMenu={contextMenu} onKeyDown={menuKeyDown}>
     <ViewportScrollbars root={scrollbarRoot} selector=".markdown-scroll, .markdown-start, .menu-groups, .language-list" />
-    {titlebarHost ? createPortal(activityBar, titlebarHost) : <div className="markdown-activity-fallback">{activityBar}</div>}
+    {titlebarHost ? createPortal(titleBar, titlebarHost) : <div className="markdown-activity-fallback">{titleBar}</div>}
     {!startPage && <aside className="markdown-files" aria-label={zh ? "文件栏" : "Files"}>
-      <header><strong title={folder?.remote ? `${folder.remote.sessionName} · ${folder.path}` : folder?.path}>{folder ? `${folder.remote ? `${folder.remote.sessionName} · ` : ""}${folder.path.split(/[\\/]/).filter(Boolean).pop() || folder.path}` : zh ? "文件" : "Files"}</strong><div className="markdown-file-actions">
-        <button type="button" disabled={busy || remotePickerOpen} aria-label={zh ? "新建文件" : "New file"} title={zh ? "新建文件" : "New file"} onClick={createDocument}><SvgIcon name="new-file" size={16} /></button>
-        <button type="button" disabled={!folder || !!folder.remote || busy || remotePickerOpen} aria-label={zh ? "新建文件夹" : "New folder"} title={!folder ? (zh ? "请先打开文件夹" : "Open a folder first") : folder.remote ? (zh ? "远程文件夹暂不支持新建文件夹" : "Creating remote folders is unavailable") : (zh ? "新建文件夹" : "New folder")} onClick={/** 在当前根目录下命名新文件夹，重复点击只聚焦已有输入。 */ () => { setFileMenu(null); setNewFolderName(newFolderName ?? ""); folderNameInput.current?.focus(); }}><SvgIcon name="new-folder" size={16} /></button>
-      </div></header>
       {namingFolder && <form className="markdown-folder-create" aria-label={zh ? "新建文件夹" : "New folder"} onSubmit={/** Enter 或确认按钮提交，禁止浏览器导航。 */ (event) => { event.preventDefault(); createNewFolder(); }}>
         <SvgIcon name="folder" size={14} />
         <Input ref={folderNameInput} value={newFolderName} disabled={busy} aria-label={zh ? "文件夹名称" : "Folder name"} placeholder={zh ? "文件夹名称" : "Folder name"} onChange={/** 用户输入保持原样，跨平台名称校验由后端统一处理。 */ (event) => setNewFolderName(event.target.value)} onKeyDown={/** Escape 取消；中文输入法确认候选字时不提前创建。 */ (event) => { if (event.nativeEvent.isComposing && event.key === "Enter") event.preventDefault(); else if (event.key === "Escape" && !busyRef.current) { event.preventDefault(); setNewFolderName(null); } }} />

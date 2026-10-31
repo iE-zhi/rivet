@@ -1,7 +1,10 @@
-.markdown-page { position: relative; display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 100%; min-width: 0; min-height: 0; color: var(--r-text); background: var(--r-bg); }
+/* 文件栏与标题栏文件区域共用宽度：桌面 220px、窄窗口 170px，包含右侧 1px 分隔线。 */
+.app-shell { --markdown-files-width: 220px; }
+.markdown-page { position: relative; display: grid; grid-template-columns: var(--markdown-files-width) minmax(0, 1fr); height: 100%; min-width: 0; min-height: 0; color: var(--r-text); background: var(--r-bg); }
 .markdown-page.is-start-page { grid-template-columns: minmax(0, 1fr); }
 .markdown-page.has-inline-tabs { grid-template-rows: 35px minmax(0, 1fr); }
-.markdown-activity { display: flex; height: 35px; max-width: 100%; min-width: 0; }
+.markdown-titlebar { display: flex; height: 35px; max-width: 100%; min-width: 0; }
+.markdown-activity { display: flex; flex: 0 1 auto; height: 35px; max-width: 100%; min-width: 0; }
 .markdown-tab-scroll { flex: 0 1 auto; min-width: 0; }
 .markdown-tabs { display: flex; width: max-content; height: 35px; }
 .markdown-activity-fallback { grid-column: 1 / -1; min-width: 0; border-bottom: 1px solid var(--r-border); }
@@ -28,8 +31,8 @@
 .markdown-start nav > button:hover { background: var(--r-surface-2); }
 .markdown-start nav .rivet-svg-icon { flex-shrink: 0; }
 .markdown-files { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-right: 1px solid var(--r-border); background: var(--r-surface); }
-.markdown-files > header { display: flex; align-items: center; justify-content: space-between; min-height: 42px; padding: 0 12px 0 16px; font-size: 12px; }
-.markdown-files > header > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.markdown-files-heading { display: flex; flex: 0 0 var(--markdown-files-width); align-items: center; justify-content: space-between; width: var(--markdown-files-width); height: 35px; padding: 0 12px 0 16px; border-right: 1px solid var(--r-border); background: var(--r-surface); color: var(--r-text); font-size: 12px; }
+.markdown-files-heading > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .markdown-file-actions { display: flex; flex-shrink: 0; gap: 2px; margin-left: 8px; }
 .markdown-file-actions button, .markdown-folder-create > button { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--r-subtle); cursor: pointer; }
 .markdown-file-actions button:hover, .markdown-folder-create > button:hover { background: var(--r-surface-2); color: var(--r-text); }
@@ -59,8 +62,8 @@
 /* 块按钮共 66px，距正文 16px，再留 14px 边缘空隙；窄窗口也保留同一操作区。 */
 .markdown-editor { --markdown-block-gutter: 96px; max-width: 960px; min-height: 100%; margin: 0 auto; position: relative; }
 .markdown-loading { color: var(--r-subtle); padding: 32px 64px; }
-.markdown-page button:focus-visible, .markdown-tabs button:focus-visible { outline: 2px solid var(--r-primary); outline-offset: -2px; }
-.markdown-page button:disabled, .markdown-tabs button:disabled { opacity: .5; cursor: default; }
+.markdown-page button:focus-visible, .markdown-tabs button:focus-visible, .markdown-files-heading button:focus-visible { outline: 2px solid var(--r-primary); outline-offset: -2px; }
+.markdown-page button:disabled, .markdown-tabs button:disabled, .markdown-files-heading button:disabled { opacity: .5; cursor: default; }
 .markdown-drop-marker { position: fixed; height: 2px; background: #3b82f6; pointer-events: none; z-index: 1000; }
 .markdown-drop-marker[hidden] { display: none; }
 .markdown-editor .is-block-dragging { cursor: grabbing; user-select: none; }
@@ -119,7 +122,8 @@
 .markdown-main:has(> .markdown-outline:not(.is-collapsed):not(.is-compact)) > .markdown-scroll { padding-right: 264px; }
 .markdown-main:has(> .markdown-outline:not(.is-collapsed):not(.is-compact)) .markdown-editor .milkdown > .ProseMirror { padding-right: 24px; }
 @media (max-width: 760px) {
-  .markdown-page:not(.is-start-page) { grid-template-columns: 170px minmax(0, 1fr); }
+  .app-shell { --markdown-files-width: 170px; }
+  .app-titlebar-host.app-titlebar-markdown-host { left: 48px; max-width: calc(100% - 180px); }
   .markdown-file-row { padding-inline: 12px; }
   .markdown-location { padding: 8px 12px; }
   .markdown-editor .milkdown .ProseMirror { padding: 24px 48px 100px var(--markdown-block-gutter); }

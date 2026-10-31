@@ -106,7 +106,7 @@ function WorkspaceFixture() {
   return <div className="app-shell rivet-ui" data-theme={theme} data-font={options.get("font") === "system" ? "system" : "builtin"} style={options.has("narrow") ? { width: 680, maxWidth: "100vw" } : undefined}>
     <NotificationProvider locale={locale}>
     <header className="app-titlebar"><div ref={setHost} className="app-titlebar-host app-titlebar-markdown-host" /></header>
-    <div style={{ minHeight: 0 }}><MarkdownPage locale={locale} pageActive remoteRequest={null} remoteSessions={options.has("noSessions") ? [] : sessions} titlebarHost={host} onRequestTerminal={/** 测试不启动本机终端；无连接场景只验证引导和关闭。 */ () => { throw new Error("测试不应请求终端"); }} /></div>
+    <div className="app-body"><div aria-hidden="true" style={{ background: "var(--r-surface)", borderRight: "1px solid var(--r-border)" }} /><MarkdownPage locale={locale} pageActive remoteRequest={null} remoteSessions={options.has("noSessions") ? [] : sessions} titlebarHost={host} onRequestTerminal={/** 测试不启动本机终端；无连接场景只验证引导和关闭。 */ () => { throw new Error("测试不应请求终端"); }} /></div>
     </NotificationProvider>
     <output hidden={!options.has("verify")} style={{ position: "fixed", bottom: 0, left: 24, fontSize: 11 }} aria-label="保存目标">{saved}</output>
     {options.has("themeToggle") && <Button style={{ position: "fixed", bottom: 12, right: 20 }} onClick={/** 仅切换当前测试页面的属性，不写入应用偏好。 */ () => setTheme(theme === "light" ? "dark" : "light")}>切换测试主题</Button>}
