@@ -12,6 +12,7 @@ export * from "./Switch";
 export * from "./Slider";
 export * from "./Terminal";
 export * from "./VerticalScrollbar";
+export * from "./ViewportScrollbars";
 export * from "./HorizontalScrollbar";
 export * from "./GroupManager";
 export { NotificationProvider } from "./Notification";

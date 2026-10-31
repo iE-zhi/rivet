@@ -143,7 +143,9 @@
 .markdown-editor .milkdown .milkdown-code-block .tools .language-button:hover { background: transparent; color: var(--hao-text); }
 .markdown-editor .milkdown .milkdown-code-block .tools .copy-button:hover { color: var(--hao-accent); filter: brightness(1.2); }
 .markdown-editor .milkdown .milkdown-code-block .tools .copy-button svg { width: 16px; height: 16px; fill: currentColor; }
-.markdown-editor .milkdown .milkdown-code-block .language-picker { left: 50%; transform: translateX(-50%); }
+.markdown-editor .milkdown .milkdown-code-block .language-picker { left: 50%; transform: translateX(-50%); text-align: left; }
+/* 语言列表和搜索区使用应用背景色。 */
+.markdown-editor .milkdown .milkdown-code-block .language-picker .list-wrapper { background: var(--r-bg); }
 .markdown-editor .milkdown .milkdown-code-block :is(.codemirror-host, .milkdown-code-block-placeholder) { padding: 10px 16px; }
 .markdown-editor .milkdown .milkdown-code-block .cm-editor { color: var(--hao-code-text); background: var(--hao-code-bg); font-size: 14px; line-height: 1.7; }
 .markdown-editor .milkdown .milkdown-code-block .cm-gutters { color: var(--hao-code-muted); background: var(--hao-code-bg); }

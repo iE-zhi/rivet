@@ -574,6 +574,12 @@
   background: var(--r-primary-light);
 }
 
+/* 外部编辑器保留原滚动模型，轨道与应用其他列表使用同一个组件。 */
+.rivet-shared-scroll-viewport { scrollbar-width: none; }
+.rivet-shared-scroll-viewport::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.rivet-viewport-scrollbar { position: absolute; z-index: 1; pointer-events: none; }
+.rivet-viewport-scrollbar > .rivet-vertical-scrollbar-track:not(.is-hidden) { pointer-events: auto; }
+
 .rivet-horizontal-scrollbar {
   position: relative;
   min-width: 0;

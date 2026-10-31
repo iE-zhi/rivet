@@ -18,6 +18,7 @@ import {
   Terminal,
   Textarea,
   VerticalScrollbar,
+  ViewportScrollbars,
   useNotification,
   type PopupMenuPoint,
 } from "../components/ui";
@@ -30,6 +31,17 @@ const terminalLines = [
   { kind: "tx" as const, prefix: "[12:00:03] TX", text: "AT+VERSION\\r\\n" },
   { kind: "ok" as const, prefix: "[12:00:03] OK", text: `Rivet v${APP_VERSION}` },
 ];
+
+/** 展示第三方视口接入共用轨道的实际组件，与普通列表使用同一外观和拖动行为。 */
+function ExternalScrollbarPreview() {
+  const [host, setHost] = useState<HTMLDivElement | null>(null);
+  return <div ref={setHost} className="preview-scroll">
+    <ViewportScrollbars root={host} selector=".preview-external-viewport" />
+    <div className="preview-external-viewport" style={{ height: 320, overflowY: "auto" }}>
+      {Array.from({ length: 24 }, /** 固定示例内容只用于展示纵向溢出。 */ (_, index) => <div className="preview-scroll-line" key={index}>第 {index + 1} 行 · 外部滚动视口</div>)}
+    </div>
+  </div>;
+}
 
 function Row({ label, children, open = false }: { label: string; children: ReactNode; open?: boolean }) {
   return (
@@ -208,6 +220,7 @@ function ComponentPreview({ id, dark }: { id: string; dark: boolean }) {
       );
     case "vertical-scrollbar":
       return (
+        <>
         <Row label="Default">
           <div className="preview-scroll">
             <VerticalScrollbar height={320}>
@@ -221,6 +234,8 @@ function ComponentPreview({ id, dark }: { id: string; dark: boolean }) {
             </VerticalScrollbar>
           </div>
         </Row>
+        <Row label="External viewport"><ExternalScrollbarPreview /></Row>
+        </>
       );
     case "horizontal-scrollbar":
       return (

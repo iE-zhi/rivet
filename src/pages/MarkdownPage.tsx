@@ -1,7 +1,7 @@
 /** 独立 Markdown 工作区；本地/SFTP 文档共享编辑器，未保存正文仅保存在本机草稿中。 */
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
-import { ConfirmDialog, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, SvgIcon, VerticalScrollbar, useNotification, type PopupMenuPoint } from "../components/ui";
+import { ConfirmDialog, HorizontalScrollbar, Input, PopupMenu, PopupMenuItem, SvgIcon, VerticalScrollbar, ViewportScrollbars, useNotification, type PopupMenuPoint } from "../components/ui";
 import type { Locale } from "./SerialPage";
 import BlockEditor from "./markdown/BlockEditor";
 import { createFolder, listFolder, listRemoteDirectory, openFolder, openFolderFile, openLocal, openRemote, saveDocument, type LocalFolderDirectory } from "./markdown/api";
@@ -76,6 +76,8 @@ function restoreWorkspace() {
 
 /** 本地和远程 Markdown 编辑页；异步读取/保存均按文档标识回填，失败不覆盖草稿。 */
 export default function MarkdownPage({ locale, pageActive, remoteRequest, remoteSessions, titlebarHost, onRequestTerminal }: MarkdownPageProps) {
+  /** 当前页面内第三方视口复用应用轨道，关闭页面时统一释放绑定。 */
+  const [scrollbarRoot, setScrollbarRoot] = useState<HTMLElement | null>(null);
   const zh = locale === "zh";
   const { notify } = useNotification();
   /** 普通操作错误统一交给应用右上角通知，页面不再放置独立提示条。 */
@@ -364,7 +366,8 @@ export default function MarkdownPage({ locale, pageActive, remoteRequest, remote
     <button type="button" className="markdown-new-tab" aria-label={zh ? "新建页面" : "New page"} title={zh ? "新建页面" : "New page"} disabled={busy || remotePickerOpen} onClick={createPage}><SvgIcon name="plus" size={15} /></button>
   </div>;
 
-  return <section className={`markdown-page${titlebarHost ? "" : " has-inline-tabs"}${startPage ? " is-start-page" : ""}`} aria-label="Markdown" onContextMenu={contextMenu} onKeyDown={menuKeyDown}>
+  return <section ref={setScrollbarRoot} className={`markdown-page${titlebarHost ? "" : " has-inline-tabs"}${startPage ? " is-start-page" : ""}`} aria-label="Markdown" onContextMenu={contextMenu} onKeyDown={menuKeyDown}>
+    <ViewportScrollbars root={scrollbarRoot} selector=".markdown-scroll, .markdown-start, .menu-groups, .language-list" />
     {titlebarHost ? createPortal(activityBar, titlebarHost) : <div className="markdown-activity-fallback">{activityBar}</div>}
     {!startPage && <aside className="markdown-files" aria-label={zh ? "文件栏" : "Files"}>
       <header><strong title={folder?.remote ? `${folder.remote.sessionName} · ${folder.path}` : folder?.path}>{folder ? `${folder.remote ? `${folder.remote.sessionName} · ` : ""}${folder.path.split(/[\\/]/).filter(Boolean).pop() || folder.path}` : zh ? "文件" : "Files"}</strong><div className="markdown-file-actions">
