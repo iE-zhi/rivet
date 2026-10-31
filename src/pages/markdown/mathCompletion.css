@@ -1,0 +1,10 @@
+/* 尺寸沿用紧凑操作菜单；公式符号与源码固定为两列，长模板省略，不产生横向滚动。 */
+.math-completion-menu.rivet-popup-menu { display: flex; flex-direction: column; overflow: hidden; background: var(--r-bg); font-family: var(--rivet-font-family); }
+.math-completion-menu .math-completion-item { position: absolute; left: 0; display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: center; gap: 10px; height: 44px; padding: 3px 12px 3px 8px; }
+.math-completion-menu .math-completion-item.is-selected { background: var(--r-surface-2); }
+.math-completion-symbol { display: flex; align-items: center; justify-content: center; height: 36px; overflow: hidden; color: var(--r-text); }
+.math-completion-symbol:empty::after { content: "⋯"; color: var(--r-muted); }
+.math-completion-symbol .katex { font-size: 16px; }
+.math-completion-symbol .katex-display { margin: 0; }
+.math-completion-code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: "JetBrains Mono Variable", monospace; font-size: 12px; }
+.math-completion-empty { padding: 12px; color: var(--r-muted); font-size: 12px; }

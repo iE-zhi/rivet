@@ -190,3 +190,7 @@
 .markdown-editor .milkdown .markdown-rich-code[data-formula="true"][data-editing="false"] > .milkdown-code-block:has(.preview-panel) { padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
 .markdown-editor .milkdown .markdown-rich-code[data-formula="true"][data-editing="false"] .milkdown-code-block:has(.preview-panel) :is(.tools, .codemirror-host, .preview-label, .preview-divider) { display: none; }
 .markdown-editor .milkdown .markdown-rich-code[data-formula="true"][data-editing="false"] .preview-panel { padding: 0; }
+/* 公式源码与预览按内容撑高；长行保留横向滚动，不显示系统滚动条或预留其空间。 */
+.markdown-editor .milkdown .markdown-rich-code[data-formula="true"] .cm-editor { height: auto; max-height: none; }
+.markdown-editor .milkdown .markdown-rich-code[data-formula="true"] :is(.cm-scroller, .preview) { height: auto; max-height: none; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.markdown-editor .milkdown .markdown-rich-code[data-formula="true"] :is(.cm-scroller, .preview)::-webkit-scrollbar { display: none; width: 0; height: 0; }

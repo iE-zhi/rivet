@@ -10,6 +10,8 @@ import { autoUpdate, flip, offset, shift, size, type Middleware } from "@floatin
 import { bindBlockDrag } from "./blockDrag";
 import { richCodeBlocks } from "./richCodeBlocks";
 import { mathEditing } from "./mathEditing";
+import { createMathCompletion, type MathCompletionController } from "./mathCompletion";
+import { blockMathCompletion, inlineMathCompletion } from "./mathCompletionEditors";
 import { configureHtmlBlocks, htmlBlockPlugin } from "./htmlBlocks";
 import { configureHighlight, highlightInputRule, highlightPlugin, highlightSchema, highlightSyntaxPlugin, toggleHighlightCommand } from "./highlight";
 import highlightIcon from "../../assets/svg/highlight.svg?raw";
@@ -62,6 +64,10 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
     let ready = false;
     let baseline = "";
     let disposeDrag: (() => void) | undefined;
+    /** 文档内行内/块公式共用一份补全菜单，卸载时先释放，避免残留全局按键监听。 */
+    let mathCompletion: MathCompletionController | undefined;
+    /** 内层编辑器延迟创建时读取当前文档的控制器，不跨文档共享源码。 */
+    const getMathCompletion = () => mathCompletion;
     /** 菜单的尺寸和滚动监听随本实例一起释放，定位边界为当前文档滚动区。 */
     let disposeMenu: (() => void) | undefined;
     /** 仅跟踪应用的已解析主题；切换高亮不重建文档或清空撤销历史。 */
@@ -74,7 +80,7 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
       features: { [Crepe.Feature.Latex]: true },
       featureConfigs: {
         // 块公式不允许外部资源指令；宏最多展开 1000 次，尺寸指令最多为 20em。
-        [Crepe.Feature.Latex]: { katexOptions: { trust: false, maxExpand: 1000, maxSize: 20 } },
+        [Crepe.Feature.Latex]: { katexOptions: { trust: false, maxExpand: 1000, maxSize: 20 }, inlineEditorPlugins: [inlineMathCompletion(getMathCompletion)] },
         // 原生插入光标与文字共享浏览器排版位置，代码块重排后无需另行计算坐标。
         [Crepe.Feature.Cursor]: { virtual: false },
         [Crepe.Feature.Placeholder]: { text: zh ? "输入 / 添加内容" : "Type / to add a block", mode: "block" },
@@ -123,6 +129,7 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
           },
         },
         [Crepe.Feature.CodeMirror]: {
+          extensions: [blockMathCompletion(getMathCompletion)],
           theme: themeHost?.dataset.theme === "dark" ? oneDark : [], searchPlaceholder: zh ? "搜索语言" : "Search language", noResultText: zh ? "无匹配语言" : "No language found", copyText: zh ? "复制" : "Copy", copyIcon: codeCopyIcon,
           previewLabel: zh ? "公式预览" : "Formula preview",
           /** 只切换公式源码的显示，正文和撤销历史由现有编辑器管理。 */
@@ -162,6 +169,7 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
         // 创建后显式设置主题；浅色模式移除编辑器预设的深色高亮，不改动正文。
         editor.editor.action(setCodeMirrorTheme(themeHost?.dataset.theme === "dark" ? oneDark : []));
         const view = editor.editor.ctx.get(editorViewCtx);
+        mathCompletion = createMathCompletion(host, zh);
         disposeDrag = bindBlockDrag(host, view, zh);
         if (themeHost) {
           themeObserver = new MutationObserver(/** 主题属性变化时只重配代码高亮，正文和光标保持不变。 */ () => {
@@ -189,6 +197,8 @@ export default function BlockEditor({ content, zh, onChange, onError }: BlockEdi
       disposed = true;
       ready = false;
       disposeDrag?.();
+      mathCompletion?.destroy();
+      mathCompletion = undefined;
       disposeMenu?.();
       themeObserver?.disconnect();
       // 销毁必须晚于初始化，旧实例的宿主与下一次挂载相互隔离。

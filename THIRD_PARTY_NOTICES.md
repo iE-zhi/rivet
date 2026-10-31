@@ -8,7 +8,7 @@
 - EPL-2.0：`elkjs@0.9.3`，附 `licenses/EPL-2.0-elkjs.txt`；[对应版本源码](https://github.com/kieler/elkjs/tree/v0.9.3)，库未修改。
 - Unlicense：`robust-predicates@3.0.3`，附 `licenses/Unlicense-robust-predicates.txt`；[源码](https://github.com/mourner/robust-predicates)。
 - MIT：`@milkdown/crepe@7.23.0`、`@milkdown/kit@7.23.0`；随安装包附带 `licenses/MIT-Milkdown.txt`。对应源码：[Milkdown/milkdown](https://github.com/Milkdown/milkdown)。
-- MIT：`katex@0.19.1`（Milkdown 公式渲染）；附 `licenses/MIT-KaTeX.txt`；[源码](https://github.com/KaTeX/KaTeX/tree/v0.19.1)。
+- MIT：`katex@0.19.1`（公式渲染及补全目录，目录改编自该版本 `docs/support_table.md`）；附 `licenses/MIT-KaTeX.txt`；[源码](https://github.com/KaTeX/KaTeX/tree/v0.19.1)。
 - MIT：`@codemirror/theme-one-dark@6.1.3`；随安装包附带 `licenses/MIT-CodeMirror.txt`。对应源码：[codemirror/theme-one-dark](https://github.com/codemirror/theme-one-dark)。
 - MIT：`@floating-ui/dom@1.8.0`；随安装包附带 `licenses/MIT-Floating-UI.txt`。对应源码：[floating-ui/floating-ui](https://github.com/floating-ui/floating-ui)。
 - MIT：`remark-highlight-mark@1.4.0` 及新增间接依赖，许可文本见 `licenses/MIT-Markdown-Highlight.txt`；[源码](https://github.com/shlroland/remark-highlight-mark)。

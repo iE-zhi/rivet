@@ -1,0 +1,4975 @@
+{
+  "version": "0.19.1",
+  "source": "https://github.com/KaTeX/KaTeX/blob/v0.19.1/docs/support_table.md",
+  "sha256": "c96f4387c87b00fd85da08772cbd7c2f9b5e7860188045c5562490001b1fcf16",
+  "entries": [
+    {
+      "name": "\\!",
+      "code": "a\\!b",
+      "preview": "a\\!b"
+    },
+    {
+      "name": "\\#",
+      "code": "\\#",
+      "preview": "\\#"
+    },
+    {
+      "name": "\\%",
+      "code": "\\%",
+      "preview": "\\%"
+    },
+    {
+      "name": "\\&",
+      "code": "\\&",
+      "preview": "\\&"
+    },
+    {
+      "name": "\\'",
+      "code": "\\text{\\'{a}}",
+      "preview": "\\text{\\'{a}}"
+    },
+    {
+      "name": "\\",
+      "code": "a\\ b",
+      "preview": "a\\ b"
+    },
+    {
+      "name": "\\\"",
+      "code": "\\text{\\\"{a}}",
+      "preview": "\\text{\\\"{a}}"
+    },
+    {
+      "name": "\\$",
+      "code": "\\text{\\textdollar}",
+      "preview": "\\text{\\textdollar}"
+    },
+    {
+      "name": "\\,",
+      "code": "a\\,\\,{b}",
+      "preview": "a\\,\\,{b}"
+    },
+    {
+      "name": "\\.",
+      "code": "\\text{\\.{a}}",
+      "preview": "\\text{\\.{a}}"
+    },
+    {
+      "name": "\\:",
+      "code": "a\\:\\:{b}",
+      "preview": "a\\:\\:{b}"
+    },
+    {
+      "name": "\\;",
+      "code": "a\\;\\;{b}",
+      "preview": "a\\;\\;{b}"
+    },
+    {
+      "name": "\\_",
+      "code": "\\_",
+      "preview": "\\_"
+    },
+    {
+      "name": "\\`",
+      "code": "\\text{\\`{a}}",
+      "preview": "\\text{\\`{a}}"
+    },
+    {
+      "name": "\\=",
+      "code": "\\text{\\={a}}",
+      "preview": "\\text{\\={a}}"
+    },
+    {
+      "name": "\\>",
+      "code": "a\\>\\>{b}",
+      "preview": "a\\>\\>{b}"
+    },
+    {
+      "name": "\\{",
+      "code": "\\{",
+      "preview": "\\{"
+    },
+    {
+      "name": "\\}",
+      "code": "\\}",
+      "preview": "\\}"
+    },
+    {
+      "name": "\\|",
+      "code": "\\Vert",
+      "preview": "\\Vert"
+    },
+    {
+      "name": "\\~",
+      "code": "\\text{\\~{a}}",
+      "preview": "\\text{\\~{a}}"
+    },
+    {
+      "name": "\\\\",
+      "code": "\\begin{matrix} a & b\\\\ c & d\\end{matrix}",
+      "preview": "\\begin{matrix} a & b\\\\ c & d\\end{matrix}"
+    },
+    {
+      "name": "\\^",
+      "code": "\\text{\\^{a}}",
+      "preview": "\\text{\\^{a}}"
+    },
+    {
+      "name": "\\AA",
+      "code": "\\text{\\AA}",
+      "preview": "\\text{\\AA}"
+    },
+    {
+      "name": "\\aa",
+      "code": "\\text{\\aa}",
+      "preview": "\\text{\\aa}"
+    },
+    {
+      "name": "\\above",
+      "code": "{a \\above{2pt} b+1}",
+      "preview": "{a \\above{2pt} b+1}"
+    },
+    {
+      "name": "\\acute",
+      "code": "\\acute e",
+      "preview": "\\acute e"
+    },
+    {
+      "name": "\\AE",
+      "code": "\\text{\\AE}",
+      "preview": "\\text{\\AE}"
+    },
+    {
+      "name": "\\ae",
+      "code": "\\text{\\ae}",
+      "preview": "\\text{\\ae}"
+    },
+    {
+      "name": "\\alef",
+      "code": "\\alef",
+      "preview": "\\alef"
+    },
+    {
+      "name": "\\alefsym",
+      "code": "\\alefsym",
+      "preview": "\\alefsym"
+    },
+    {
+      "name": "\\aleph",
+      "code": "\\aleph",
+      "preview": "\\aleph"
+    },
+    {
+      "name": "\\begin{align}",
+      "code": "\\begin{align}a&=b+c\\\\d+e&=f\\end{align}",
+      "preview": "\\begin{align}a&=b+c\\\\d+e&=f\\end{align}"
+    },
+    {
+      "name": "\\begin{align*}",
+      "code": "\\begin{align*}a&=b+c\\\\d+e&=f\\end{align*}",
+      "preview": "\\begin{align*}a&=b+c\\\\d+e&=f\\end{align*}"
+    },
+    {
+      "name": "\\begin{aligned}",
+      "code": "\\begin{aligned}a&=b+c\\\\d+e&=f\\end{aligned}",
+      "preview": "\\begin{aligned}a&=b+c\\\\d+e&=f\\end{aligned}"
+    },
+    {
+      "name": "\\begin{alignat}",
+      "code": "\\begin{alignat}{2}10&x+&3&y=2\\\\3&x+&13&y=4\\end{alignat}",
+      "preview": "\\begin{alignat}{2}10&x+&3&y=2\\\\3&x+&13&y=4\\end{alignat}"
+    },
+    {
+      "name": "\\begin{alignat*}",
+      "code": "\\begin{alignat*}{2}10&x+&3&y=2\\\\3&x+&13&y=4\\end{alignat*}",
+      "preview": "\\begin{alignat*}{2}10&x+&3&y=2\\\\3&x+&13&y=4\\end{alignat*}"
+    },
+    {
+      "name": "\\begin{alignedat}",
+      "code": "\\begin{alignedat}{2}10&x+&3&y=2\\\\3&x+&13&y=4\\end{alignedat}",
+      "preview": "\\begin{alignedat}{2}10&x+&3&y=2\\\\3&x+&13&y=4\\end{alignedat}"
+    },
+    {
+      "name": "\\allowbreak",
+      "code": "\\allowbreak",
+      "preview": "\\allowbreak"
+    },
+    {
+      "name": "\\Alpha",
+      "code": "\\Alpha",
+      "preview": "\\Alpha"
+    },
+    {
+      "name": "\\alpha",
+      "code": "\\alpha",
+      "preview": "\\alpha"
+    },
+    {
+      "name": "\\amalg",
+      "code": "\\amalg",
+      "preview": "\\amalg"
+    },
+    {
+      "name": "\\And",
+      "code": "\\And",
+      "preview": "\\And"
+    },
+    {
+      "name": "\\angl",
+      "code": "a_{\\angl n}",
+      "preview": "a_{\\angl n}"
+    },
+    {
+      "name": "\\angln",
+      "code": "a_\\angln",
+      "preview": "a_\\angln"
+    },
+    {
+      "name": "\\angle",
+      "code": "\\angle",
+      "preview": "\\angle"
+    },
+    {
+      "name": "\\approx",
+      "code": "\\approx",
+      "preview": "\\approx"
+    },
+    {
+      "name": "\\approxeq",
+      "code": "\\approxeq",
+      "preview": "\\approxeq"
+    },
+    {
+      "name": "\\approxcolon",
+      "code": "\\approxcolon",
+      "preview": "\\approxcolon"
+    },
+    {
+      "name": "\\approxcoloncolon",
+      "code": "\\approxcoloncolon",
+      "preview": "\\approxcoloncolon"
+    },
+    {
+      "name": "\\arccos",
+      "code": "\\arccos",
+      "preview": "\\arccos"
+    },
+    {
+      "name": "\\arcctg",
+      "code": "\\arcctg",
+      "preview": "\\arcctg"
+    },
+    {
+      "name": "\\arcsin",
+      "code": "\\arcsin",
+      "preview": "\\arcsin"
+    },
+    {
+      "name": "\\arctan",
+      "code": "\\arctan",
+      "preview": "\\arctan"
+    },
+    {
+      "name": "\\arctg",
+      "code": "\\arctg",
+      "preview": "\\arctg"
+    },
+    {
+      "name": "\\arg",
+      "code": "\\arg",
+      "preview": "\\arg"
+    },
+    {
+      "name": "\\argmax",
+      "code": "\\argmax",
+      "preview": "\\argmax"
+    },
+    {
+      "name": "\\argmin",
+      "code": "\\argmin",
+      "preview": "\\argmin"
+    },
+    {
+      "name": "\\begin{array}",
+      "code": "\\begin{array}{cc}a&b\\\\c&d\\end{array}",
+      "preview": "\\begin{array}{cc}a&b\\\\c&d\\end{array}"
+    },
+    {
+      "name": "\\arraystretch",
+      "code": "\\def\\arraystretch{1.5}\\begin{array}{cc}a&b\\\\c&d\\end{array}",
+      "preview": "\\def\\arraystretch{1.5}\\begin{array}{cc}a&b\\\\c&d\\end{array}"
+    },
+    {
+      "name": "\\ast",
+      "code": "\\ast",
+      "preview": "\\ast"
+    },
+    {
+      "name": "\\asymp",
+      "code": "\\asymp",
+      "preview": "\\asymp"
+    },
+    {
+      "name": "\\atop",
+      "code": "{a \\atop b}",
+      "preview": "{a \\atop b}"
+    },
+    {
+      "name": "\\backepsilon",
+      "code": "\\backepsilon",
+      "preview": "\\backepsilon"
+    },
+    {
+      "name": "\\backprime",
+      "code": "\\backprime",
+      "preview": "\\backprime"
+    },
+    {
+      "name": "\\backsim",
+      "code": "\\backsim",
+      "preview": "\\backsim"
+    },
+    {
+      "name": "\\backsimeq",
+      "code": "\\backsimeq",
+      "preview": "\\backsimeq"
+    },
+    {
+      "name": "\\backslash",
+      "code": "\\backslash",
+      "preview": "\\backslash"
+    },
+    {
+      "name": "\\bar",
+      "code": "\\bar{y}",
+      "preview": "\\bar{y}"
+    },
+    {
+      "name": "\\barwedge",
+      "code": "\\barwedge",
+      "preview": "\\barwedge"
+    },
+    {
+      "name": "\\Bbb",
+      "code": "\\Bbb{ABC}",
+      "preview": "\\Bbb{ABC}"
+    },
+    {
+      "name": "\\Bbbk",
+      "code": "\\Bbbk",
+      "preview": "\\Bbbk"
+    },
+    {
+      "name": "\\bcancel",
+      "code": "\\bcancel{5}",
+      "preview": "\\bcancel{5}"
+    },
+    {
+      "name": "\\because",
+      "code": "\\because",
+      "preview": "\\because"
+    },
+    {
+      "name": "\\begin",
+      "code": "\\begin{matrix} a & b\\\\ c & d\\end{matrix}",
+      "preview": "\\begin{matrix} a & b\\\\ c & d\\end{matrix}"
+    },
+    {
+      "name": "\\begingroup",
+      "code": "\\begingroup a\\endgroup",
+      "preview": "\\begingroup a\\endgroup"
+    },
+    {
+      "name": "\\Beta",
+      "code": "\\Beta",
+      "preview": "\\Beta"
+    },
+    {
+      "name": "\\beta",
+      "code": "\\beta",
+      "preview": "\\beta"
+    },
+    {
+      "name": "\\beth",
+      "code": "\\beth",
+      "preview": "\\beth"
+    },
+    {
+      "name": "\\between",
+      "code": "\\between",
+      "preview": "\\between"
+    },
+    {
+      "name": "\\bf",
+      "code": "\\bf AaBb12",
+      "preview": "\\bf AaBb12"
+    },
+    {
+      "name": "\\big",
+      "code": "\\big(\\big)",
+      "preview": "\\big(\\big)"
+    },
+    {
+      "name": "\\Big",
+      "code": "\\Big(\\Big)",
+      "preview": "\\Big(\\Big)"
+    },
+    {
+      "name": "\\bigcap",
+      "code": "\\bigcap",
+      "preview": "\\bigcap"
+    },
+    {
+      "name": "\\bigcirc",
+      "code": "\\bigcirc",
+      "preview": "\\bigcirc"
+    },
+    {
+      "name": "\\bigcup",
+      "code": "\\bigcup",
+      "preview": "\\bigcup"
+    },
+    {
+      "name": "\\bigg",
+      "code": "\\bigg(\\bigg)",
+      "preview": "\\bigg(\\bigg)"
+    },
+    {
+      "name": "\\Bigg",
+      "code": "\\Bigg(\\Bigg)",
+      "preview": "\\Bigg(\\Bigg)"
+    },
+    {
+      "name": "\\biggl",
+      "code": "\\biggl(",
+      "preview": "\\biggl("
+    },
+    {
+      "name": "\\Biggl",
+      "code": "\\Biggl(",
+      "preview": "\\Biggl("
+    },
+    {
+      "name": "\\biggm",
+      "code": "\\biggm\\vert",
+      "preview": "\\biggm\\vert"
+    },
+    {
+      "name": "\\Biggm",
+      "code": "\\Biggm\\vert",
+      "preview": "\\Biggm\\vert"
+    },
+    {
+      "name": "\\biggr",
+      "code": "\\biggr)",
+      "preview": "\\biggr)"
+    },
+    {
+      "name": "\\Biggr",
+      "code": "\\Biggr)",
+      "preview": "\\Biggr)"
+    },
+    {
+      "name": "\\bigl",
+      "code": "\\bigl(",
+      "preview": "\\bigl("
+    },
+    {
+      "name": "\\Bigl",
+      "code": "\\Bigl(",
+      "preview": "\\Bigl("
+    },
+    {
+      "name": "\\bigm",
+      "code": "\\bigm\\vert",
+      "preview": "\\bigm\\vert"
+    },
+    {
+      "name": "\\Bigm",
+      "code": "\\Bigm\\vert",
+      "preview": "\\Bigm\\vert"
+    },
+    {
+      "name": "\\bigodot",
+      "code": "\\bigodot",
+      "preview": "\\bigodot"
+    },
+    {
+      "name": "\\bigoplus",
+      "code": "\\bigoplus",
+      "preview": "\\bigoplus"
+    },
+    {
+      "name": "\\bigotimes",
+      "code": "\\bigotimes",
+      "preview": "\\bigotimes"
+    },
+    {
+      "name": "\\bigr",
+      "code": "\\bigr)",
+      "preview": "\\bigr)"
+    },
+    {
+      "name": "\\Bigr",
+      "code": "\\Bigr)",
+      "preview": "\\Bigr)"
+    },
+    {
+      "name": "\\bigsqcup",
+      "code": "\\bigsqcup",
+      "preview": "\\bigsqcup"
+    },
+    {
+      "name": "\\bigstar",
+      "code": "\\bigstar",
+      "preview": "\\bigstar"
+    },
+    {
+      "name": "\\bigtriangledown",
+      "code": "\\bigtriangledown",
+      "preview": "\\bigtriangledown"
+    },
+    {
+      "name": "\\bigtriangleup",
+      "code": "\\bigtriangleup",
+      "preview": "\\bigtriangleup"
+    },
+    {
+      "name": "\\biguplus",
+      "code": "\\biguplus",
+      "preview": "\\biguplus"
+    },
+    {
+      "name": "\\bigvee",
+      "code": "\\bigvee",
+      "preview": "\\bigvee"
+    },
+    {
+      "name": "\\bigwedge",
+      "code": "\\bigwedge",
+      "preview": "\\bigwedge"
+    },
+    {
+      "name": "\\binom",
+      "code": "\\binom n k",
+      "preview": "\\binom n k"
+    },
+    {
+      "name": "\\blacklozenge",
+      "code": "\\blacklozenge",
+      "preview": "\\blacklozenge"
+    },
+    {
+      "name": "\\blacksquare",
+      "code": "\\blacksquare",
+      "preview": "\\blacksquare"
+    },
+    {
+      "name": "\\blacktriangle",
+      "code": "\\blacktriangle",
+      "preview": "\\blacktriangle"
+    },
+    {
+      "name": "\\blacktriangledown",
+      "code": "\\blacktriangledown",
+      "preview": "\\blacktriangledown"
+    },
+    {
+      "name": "\\blacktriangleleft",
+      "code": "\\blacktriangleleft",
+      "preview": "\\blacktriangleleft"
+    },
+    {
+      "name": "\\blacktriangleright",
+      "code": "\\blacktriangleright",
+      "preview": "\\blacktriangleright"
+    },
+    {
+      "name": "\\bm",
+      "code": "\\bm{AaBb}",
+      "preview": "\\bm{AaBb}"
+    },
+    {
+      "name": "\\begin{Bmatrix}",
+      "code": "\\begin{Bmatrix}a&b\\\\c&d\\end{Bmatrix}",
+      "preview": "\\begin{Bmatrix}a&b\\\\c&d\\end{Bmatrix}"
+    },
+    {
+      "name": "\\begin{Bmatrix*}",
+      "code": "\\begin{Bmatrix*}[r]0&-1\\\\-1&0\\end{Bmatrix*}",
+      "preview": "\\begin{Bmatrix*}[r]0&-1\\\\-1&0\\end{Bmatrix*}"
+    },
+    {
+      "name": "\\begin{bmatrix}",
+      "code": "\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix}",
+      "preview": "\\begin{bmatrix}a&b\\\\c&d\\end{bmatrix}"
+    },
+    {
+      "name": "\\begin{bmatrix*}",
+      "code": "\\begin{bmatrix*}[r]0&-1\\\\-1&0\\end{bmatrix*}",
+      "preview": "\\begin{bmatrix*}[r]0&-1\\\\-1&0\\end{bmatrix*}"
+    },
+    {
+      "name": "\\bmod",
+      "code": "a \\bmod b",
+      "preview": "a \\bmod b"
+    },
+    {
+      "name": "\\bold",
+      "code": "\\bold{AaBb123}",
+      "preview": "\\bold{AaBb123}"
+    },
+    {
+      "name": "\\boldsymbol",
+      "code": "\\boldsymbol{AaBb}",
+      "preview": "\\boldsymbol{AaBb}"
+    },
+    {
+      "name": "\\bot",
+      "code": "\\bot",
+      "preview": "\\bot"
+    },
+    {
+      "name": "\\bowtie",
+      "code": "\\bowtie",
+      "preview": "\\bowtie"
+    },
+    {
+      "name": "\\Box",
+      "code": "\\Box",
+      "preview": "\\Box"
+    },
+    {
+      "name": "\\boxdot",
+      "code": "\\boxdot",
+      "preview": "\\boxdot"
+    },
+    {
+      "name": "\\boxed",
+      "code": "\\boxed{ab}",
+      "preview": "\\boxed{ab}"
+    },
+    {
+      "name": "\\boxminus",
+      "code": "\\boxminus",
+      "preview": "\\boxminus"
+    },
+    {
+      "name": "\\boxplus",
+      "code": "\\boxplus",
+      "preview": "\\boxplus"
+    },
+    {
+      "name": "\\boxtimes",
+      "code": "\\boxtimes",
+      "preview": "\\boxtimes"
+    },
+    {
+      "name": "\\Bra",
+      "code": "\\Bra{\\psi}",
+      "preview": "\\Bra{\\psi}"
+    },
+    {
+      "name": "\\bra",
+      "code": "\\bra{\\psi}",
+      "preview": "\\bra{\\psi}"
+    },
+    {
+      "name": "\\braket",
+      "code": "\\braket{\\phi\\vert\\psi}",
+      "preview": "\\braket{\\phi\\vert\\psi}"
+    },
+    {
+      "name": "\\Braket",
+      "code": "\\Braket{ ϕ \\vert \\frac{∂^2}{∂ t^2} \\vert ψ }",
+      "preview": "\\Braket{ ϕ \\vert \\frac{∂^2}{∂ t^2} \\vert ψ }"
+    },
+    {
+      "name": "\\brace",
+      "code": "{n\\brace k}",
+      "preview": "{n\\brace k}"
+    },
+    {
+      "name": "\\brack",
+      "code": "{n\\brack k}",
+      "preview": "{n\\brack k}"
+    },
+    {
+      "name": "\\breve",
+      "code": "\\breve{eu}",
+      "preview": "\\breve{eu}"
+    },
+    {
+      "name": "\\bull",
+      "code": "\\bull",
+      "preview": "\\bull"
+    },
+    {
+      "name": "\\bullet",
+      "code": "\\bullet",
+      "preview": "\\bullet"
+    },
+    {
+      "name": "\\Bumpeq",
+      "code": "\\Bumpeq",
+      "preview": "\\Bumpeq"
+    },
+    {
+      "name": "\\bumpeq",
+      "code": "\\bumpeq",
+      "preview": "\\bumpeq"
+    },
+    {
+      "name": "\\cal",
+      "code": "\\cal AaBb123",
+      "preview": "\\cal AaBb123"
+    },
+    {
+      "name": "\\cancel",
+      "code": "\\cancel{5}",
+      "preview": "\\cancel{5}"
+    },
+    {
+      "name": "\\Cap",
+      "code": "\\Cap",
+      "preview": "\\Cap"
+    },
+    {
+      "name": "\\cap",
+      "code": "\\cap",
+      "preview": "\\cap"
+    },
+    {
+      "name": "\\begin{cases}",
+      "code": "\\begin{cases}a&\\text{if }b\\\\c&\\text{if }d\\end{cases}",
+      "preview": "\\begin{cases}a&\\text{if }b\\\\c&\\text{if }d\\end{cases}"
+    },
+    {
+      "name": "\\begin{CD}",
+      "code": "\\begin{CD}A @>a>> B \\\\@VbVV @AAcA\\\\C @= D\\end{CD}",
+      "preview": "\\begin{CD}A @>a>> B \\\\@VbVV @AAcA\\\\C @= D\\end{CD}"
+    },
+    {
+      "name": "\\cdot",
+      "code": "\\cdot",
+      "preview": "\\cdot"
+    },
+    {
+      "name": "\\cdotp",
+      "code": "\\cdotp",
+      "preview": "\\cdotp"
+    },
+    {
+      "name": "\\cdots",
+      "code": "\\cdots",
+      "preview": "\\cdots"
+    },
+    {
+      "name": "\\ce",
+      "code": "{\\mathrm{C}{\\vphantom{X}}_{\\smash[t]{6}}\\mathrm{H}{\\vphantom{X}}_{\\smash[t]{5}}{-}\\mathrm{CHO}}",
+      "preview": "{\\mathrm{C}{\\vphantom{X}}_{\\smash[t]{6}}\\mathrm{H}{\\vphantom{X}}_{\\smash[t]{5}}{-}\\mathrm{CHO}}"
+    },
+    {
+      "name": "\\centerdot",
+      "code": "a\\centerdot b",
+      "preview": "a\\centerdot b"
+    },
+    {
+      "name": "\\cfrac",
+      "code": "\\cfrac{2}{1+\\cfrac{2}{1+\\cfrac{2}{1}}}",
+      "preview": "\\cfrac{2}{1+\\cfrac{2}{1+\\cfrac{2}{1}}}"
+    },
+    {
+      "name": "\\char",
+      "code": "\\char\"263a",
+      "preview": "\\char\"263a"
+    },
+    {
+      "name": "\\check",
+      "code": "\\check{oe}",
+      "preview": "\\check{oe}"
+    },
+    {
+      "name": "\\ch",
+      "code": "\\ch",
+      "preview": "\\ch"
+    },
+    {
+      "name": "\\checkmark",
+      "code": "\\checkmark",
+      "preview": "\\checkmark"
+    },
+    {
+      "name": "\\Chi",
+      "code": "\\Chi",
+      "preview": "\\Chi"
+    },
+    {
+      "name": "\\chi",
+      "code": "\\chi",
+      "preview": "\\chi"
+    },
+    {
+      "name": "\\choose",
+      "code": "{n+1 \\choose k+2}",
+      "preview": "{n+1 \\choose k+2}"
+    },
+    {
+      "name": "\\circ",
+      "code": "\\circ",
+      "preview": "\\circ"
+    },
+    {
+      "name": "\\circeq",
+      "code": "\\circeq",
+      "preview": "\\circeq"
+    },
+    {
+      "name": "\\circlearrowleft",
+      "code": "\\circlearrowleft",
+      "preview": "\\circlearrowleft"
+    },
+    {
+      "name": "\\circlearrowright",
+      "code": "\\circlearrowright",
+      "preview": "\\circlearrowright"
+    },
+    {
+      "name": "\\circledast",
+      "code": "\\circledast",
+      "preview": "\\circledast"
+    },
+    {
+      "name": "\\circledcirc",
+      "code": "\\circledcirc",
+      "preview": "\\circledcirc"
+    },
+    {
+      "name": "\\circleddash",
+      "code": "\\circleddash",
+      "preview": "\\circleddash"
+    },
+    {
+      "name": "\\circledR",
+      "code": "\\circledR",
+      "preview": "\\circledR"
+    },
+    {
+      "name": "\\circledS",
+      "code": "\\circledS",
+      "preview": "\\circledS"
+    },
+    {
+      "name": "\\clubs",
+      "code": "\\clubs",
+      "preview": "\\clubs"
+    },
+    {
+      "name": "\\clubsuit",
+      "code": "\\clubsuit",
+      "preview": "\\clubsuit"
+    },
+    {
+      "name": "\\cnums",
+      "code": "\\cnums",
+      "preview": "\\cnums"
+    },
+    {
+      "name": "\\colon",
+      "code": "\\colon",
+      "preview": "\\colon"
+    },
+    {
+      "name": "\\Colonapprox",
+      "code": "\\Colonapprox",
+      "preview": "\\Colonapprox"
+    },
+    {
+      "name": "\\colonapprox",
+      "code": "\\colonapprox",
+      "preview": "\\colonapprox"
+    },
+    {
+      "name": "\\coloncolon",
+      "code": "\\coloncolon",
+      "preview": "\\coloncolon"
+    },
+    {
+      "name": "\\coloncolonapprox",
+      "code": "\\coloncolonapprox",
+      "preview": "\\coloncolonapprox"
+    },
+    {
+      "name": "\\coloncolonequals",
+      "code": "\\coloncolonequals",
+      "preview": "\\coloncolonequals"
+    },
+    {
+      "name": "\\coloncolonminus",
+      "code": "\\coloncolonminus",
+      "preview": "\\coloncolonminus"
+    },
+    {
+      "name": "\\coloncolonsim",
+      "code": "\\coloncolonsim",
+      "preview": "\\coloncolonsim"
+    },
+    {
+      "name": "\\Coloneq",
+      "code": "\\Coloneq",
+      "preview": "\\Coloneq"
+    },
+    {
+      "name": "\\coloneq",
+      "code": "\\coloneq",
+      "preview": "\\coloneq"
+    },
+    {
+      "name": "\\colonequals",
+      "code": "\\colonequals",
+      "preview": "\\colonequals"
+    },
+    {
+      "name": "\\Coloneqq",
+      "code": "\\Coloneqq",
+      "preview": "\\Coloneqq"
+    },
+    {
+      "name": "\\coloneqq",
+      "code": "\\coloneqq",
+      "preview": "\\coloneqq"
+    },
+    {
+      "name": "\\colonminus",
+      "code": "\\colonminus",
+      "preview": "\\colonminus"
+    },
+    {
+      "name": "\\Colonsim",
+      "code": "\\Colonsim",
+      "preview": "\\Colonsim"
+    },
+    {
+      "name": "\\colonsim",
+      "code": "\\colonsim",
+      "preview": "\\colonsim"
+    },
+    {
+      "name": "\\color",
+      "code": "\\color{#0000FF} AaBb123",
+      "preview": "\\color{#0000FF} AaBb123"
+    },
+    {
+      "name": "\\colorbox",
+      "code": "\\colorbox{red}{Black on red}",
+      "preview": "\\colorbox{red}{Black on red}"
+    },
+    {
+      "name": "\\complement",
+      "code": "\\complement",
+      "preview": "\\complement"
+    },
+    {
+      "name": "\\Complex",
+      "code": "\\Complex",
+      "preview": "\\Complex"
+    },
+    {
+      "name": "\\cong",
+      "code": "\\cong",
+      "preview": "\\cong"
+    },
+    {
+      "name": "\\coprod",
+      "code": "\\coprod",
+      "preview": "\\coprod"
+    },
+    {
+      "name": "\\copyright",
+      "code": "\\copyright",
+      "preview": "\\copyright"
+    },
+    {
+      "name": "\\cos",
+      "code": "\\cos",
+      "preview": "\\cos"
+    },
+    {
+      "name": "\\cosec",
+      "code": "\\cosec",
+      "preview": "\\cosec"
+    },
+    {
+      "name": "\\cosh",
+      "code": "\\cosh",
+      "preview": "\\cosh"
+    },
+    {
+      "name": "\\cot",
+      "code": "\\cot",
+      "preview": "\\cot"
+    },
+    {
+      "name": "\\cotg",
+      "code": "\\cotg",
+      "preview": "\\cotg"
+    },
+    {
+      "name": "\\coth",
+      "code": "\\coth",
+      "preview": "\\coth"
+    },
+    {
+      "name": "\\cr",
+      "code": "\\begin{matrix} a & b\\cr c & d \\end{matrix}",
+      "preview": "\\begin{matrix} a & b\\cr c & d \\end{matrix}"
+    },
+    {
+      "name": "\\csc",
+      "code": "\\csc",
+      "preview": "\\csc"
+    },
+    {
+      "name": "\\ctg",
+      "code": "\\ctg",
+      "preview": "\\ctg"
+    },
+    {
+      "name": "\\cth",
+      "code": "\\cth",
+      "preview": "\\cth"
+    },
+    {
+      "name": "\\Cup",
+      "code": "\\Cup",
+      "preview": "\\Cup"
+    },
+    {
+      "name": "\\cup",
+      "code": "\\cup",
+      "preview": "\\cup"
+    },
+    {
+      "name": "\\curlyeqprec",
+      "code": "\\curlyeqprec",
+      "preview": "\\curlyeqprec"
+    },
+    {
+      "name": "\\curlyeqsucc",
+      "code": "\\curlyeqsucc",
+      "preview": "\\curlyeqsucc"
+    },
+    {
+      "name": "\\curlyvee",
+      "code": "\\curlyvee",
+      "preview": "\\curlyvee"
+    },
+    {
+      "name": "\\curlywedge",
+      "code": "\\curlywedge",
+      "preview": "\\curlywedge"
+    },
+    {
+      "name": "\\curvearrowleft",
+      "code": "\\curvearrowleft",
+      "preview": "\\curvearrowleft"
+    },
+    {
+      "name": "\\curvearrowright",
+      "code": "\\curvearrowright",
+      "preview": "\\curvearrowright"
+    },
+    {
+      "name": "\\dag",
+      "code": "\\dag",
+      "preview": "\\dag"
+    },
+    {
+      "name": "\\Dagger",
+      "code": "\\Dagger",
+      "preview": "\\Dagger"
+    },
+    {
+      "name": "\\dagger",
+      "code": "\\dagger",
+      "preview": "\\dagger"
+    },
+    {
+      "name": "\\daleth",
+      "code": "\\daleth",
+      "preview": "\\daleth"
+    },
+    {
+      "name": "\\Darr",
+      "code": "\\Darr",
+      "preview": "\\Darr"
+    },
+    {
+      "name": "\\dArr",
+      "code": "\\dArr",
+      "preview": "\\dArr"
+    },
+    {
+      "name": "\\darr",
+      "code": "\\darr",
+      "preview": "\\darr"
+    },
+    {
+      "name": "\\dashleftarrow",
+      "code": "\\dashleftarrow",
+      "preview": "\\dashleftarrow"
+    },
+    {
+      "name": "\\dashrightarrow",
+      "code": "\\dashrightarrow",
+      "preview": "\\dashrightarrow"
+    },
+    {
+      "name": "\\dashv",
+      "code": "\\dashv",
+      "preview": "\\dashv"
+    },
+    {
+      "name": "\\dbinom",
+      "code": "\\dbinom n k",
+      "preview": "\\dbinom n k"
+    },
+    {
+      "name": "\\dblcolon",
+      "code": "\\dblcolon",
+      "preview": "\\dblcolon"
+    },
+    {
+      "name": "\\begin{dcases}",
+      "code": "\\begin{dcases}a&\\text{if }b\\\\c&\\text{if }d\\end{dcases}",
+      "preview": "\\begin{dcases}a&\\text{if }b\\\\c&\\text{if }d\\end{dcases}"
+    },
+    {
+      "name": "\\ddag",
+      "code": "\\ddag",
+      "preview": "\\ddag"
+    },
+    {
+      "name": "\\ddagger",
+      "code": "\\ddagger",
+      "preview": "\\ddagger"
+    },
+    {
+      "name": "\\ddddot",
+      "code": "\\ddddot x",
+      "preview": "\\ddddot x"
+    },
+    {
+      "name": "\\dddot",
+      "code": "\\dddot x",
+      "preview": "\\dddot x"
+    },
+    {
+      "name": "\\ddot",
+      "code": "\\ddot x",
+      "preview": "\\ddot x"
+    },
+    {
+      "name": "\\ddots",
+      "code": "\\ddots",
+      "preview": "\\ddots"
+    },
+    {
+      "name": "\\def",
+      "code": "\\def\\foo{x^2} \\foo + \\foo",
+      "preview": "\\def\\foo{x^2} \\foo + \\foo"
+    },
+    {
+      "name": "\\deg",
+      "code": "\\deg",
+      "preview": "\\deg"
+    },
+    {
+      "name": "\\degree",
+      "code": "\\degree",
+      "preview": "\\degree"
+    },
+    {
+      "name": "\\delta",
+      "code": "\\delta",
+      "preview": "\\delta"
+    },
+    {
+      "name": "\\Delta",
+      "code": "\\Delta",
+      "preview": "\\Delta"
+    },
+    {
+      "name": "\\det",
+      "code": "\\det",
+      "preview": "\\det"
+    },
+    {
+      "name": "\\digamma",
+      "code": "\\digamma",
+      "preview": "\\digamma"
+    },
+    {
+      "name": "\\dfrac",
+      "code": "\\dfrac{a-1}{b-1}",
+      "preview": "\\dfrac{a-1}{b-1}"
+    },
+    {
+      "name": "\\diagdown",
+      "code": "\\diagdown",
+      "preview": "\\diagdown"
+    },
+    {
+      "name": "\\diagup",
+      "code": "\\diagup",
+      "preview": "\\diagup"
+    },
+    {
+      "name": "\\Diamond",
+      "code": "\\Diamond",
+      "preview": "\\Diamond"
+    },
+    {
+      "name": "\\diamond",
+      "code": "\\diamond",
+      "preview": "\\diamond"
+    },
+    {
+      "name": "\\diamonds",
+      "code": "\\diamonds",
+      "preview": "\\diamonds"
+    },
+    {
+      "name": "\\diamondsuit",
+      "code": "\\diamondsuit",
+      "preview": "\\diamondsuit"
+    },
+    {
+      "name": "\\dim",
+      "code": "\\dim",
+      "preview": "\\dim"
+    },
+    {
+      "name": "\\displaystyle",
+      "code": "\\displaystyle\\sum_0^n",
+      "preview": "\\displaystyle\\sum_0^n"
+    },
+    {
+      "name": "\\div",
+      "code": "\\div",
+      "preview": "\\div"
+    },
+    {
+      "name": "\\divideontimes",
+      "code": "\\divideontimes",
+      "preview": "\\divideontimes"
+    },
+    {
+      "name": "\\dot",
+      "code": "\\dot x",
+      "preview": "\\dot x"
+    },
+    {
+      "name": "\\Doteq",
+      "code": "\\Doteq",
+      "preview": "\\Doteq"
+    },
+    {
+      "name": "\\doteq",
+      "code": "\\doteq",
+      "preview": "\\doteq"
+    },
+    {
+      "name": "\\doteqdot",
+      "code": "\\doteqdot",
+      "preview": "\\doteqdot"
+    },
+    {
+      "name": "\\dotplus",
+      "code": "\\dotplus",
+      "preview": "\\dotplus"
+    },
+    {
+      "name": "\\dots",
+      "code": "x_1 + \\dots + x_n",
+      "preview": "x_1 + \\dots + x_n"
+    },
+    {
+      "name": "\\dotsb",
+      "code": "x_1 +\\dotsb + x_n",
+      "preview": "x_1 +\\dotsb + x_n"
+    },
+    {
+      "name": "\\dotsc",
+      "code": "x,\\dotsc,y",
+      "preview": "x,\\dotsc,y"
+    },
+    {
+      "name": "\\dotsi",
+      "code": "\\int_{A_1}\\int_{A_2}\\dotsi",
+      "preview": "\\int_{A_1}\\int_{A_2}\\dotsi"
+    },
+    {
+      "name": "\\dotsm",
+      "code": "x_1 x_2 \\dotsm x_n",
+      "preview": "x_1 x_2 \\dotsm x_n"
+    },
+    {
+      "name": "\\dotso",
+      "code": "\\dotso",
+      "preview": "\\dotso"
+    },
+    {
+      "name": "\\doublebarwedge",
+      "code": "\\doublebarwedge",
+      "preview": "\\doublebarwedge"
+    },
+    {
+      "name": "\\doublecap",
+      "code": "\\doublecap",
+      "preview": "\\doublecap"
+    },
+    {
+      "name": "\\doublecup",
+      "code": "\\doublecup",
+      "preview": "\\doublecup"
+    },
+    {
+      "name": "\\Downarrow",
+      "code": "\\Downarrow",
+      "preview": "\\Downarrow"
+    },
+    {
+      "name": "\\downarrow",
+      "code": "\\downarrow",
+      "preview": "\\downarrow"
+    },
+    {
+      "name": "\\downdownarrows",
+      "code": "\\downdownarrows",
+      "preview": "\\downdownarrows"
+    },
+    {
+      "name": "\\downharpoonleft",
+      "code": "\\downharpoonleft",
+      "preview": "\\downharpoonleft"
+    },
+    {
+      "name": "\\downharpoonright",
+      "code": "\\downharpoonright",
+      "preview": "\\downharpoonright"
+    },
+    {
+      "name": "\\begin{drcases}",
+      "code": "\\begin{drcases}a&\\text{if }b\\\\c&\\text{if }d\\end{drcases}",
+      "preview": "\\begin{drcases}a&\\text{if }b\\\\c&\\text{if }d\\end{drcases}"
+    },
+    {
+      "name": "\\edef",
+      "code": "\\def\\foo{a}\\edef\\fcopy{\\foo}\\def\\foo{}\\fcopy",
+      "preview": "\\def\\foo{a}\\edef\\fcopy{\\foo}\\def\\foo{}\\fcopy"
+    },
+    {
+      "name": "\\ell",
+      "code": "\\ell",
+      "preview": "\\ell"
+    },
+    {
+      "name": "\\emph",
+      "code": "\\emph{nested \\emph{emphasis}}",
+      "preview": "\\emph{nested \\emph{emphasis}}"
+    },
+    {
+      "name": "\\empty",
+      "code": "\\empty",
+      "preview": "\\empty"
+    },
+    {
+      "name": "\\emptyset",
+      "code": "\\emptyset",
+      "preview": "\\emptyset"
+    },
+    {
+      "name": "\\end",
+      "code": "\\begin{matrix} a & b\\\\ c & d\\end{matrix}",
+      "preview": "\\begin{matrix} a & b\\\\ c & d\\end{matrix}"
+    },
+    {
+      "name": "\\endgroup",
+      "code": "\\begingroup a\\endgroup",
+      "preview": "\\begingroup a\\endgroup"
+    },
+    {
+      "name": "\\enspace",
+      "code": "a\\enspace b",
+      "preview": "a\\enspace b"
+    },
+    {
+      "name": "\\Epsilon",
+      "code": "\\Epsilon",
+      "preview": "\\Epsilon"
+    },
+    {
+      "name": "\\epsilon",
+      "code": "\\epsilon",
+      "preview": "\\epsilon"
+    },
+    {
+      "name": "\\eqcirc",
+      "code": "\\eqcirc",
+      "preview": "\\eqcirc"
+    },
+    {
+      "name": "\\Eqcolon",
+      "code": "\\Eqcolon",
+      "preview": "\\Eqcolon"
+    },
+    {
+      "name": "\\eqcolon",
+      "code": "\\eqcolon",
+      "preview": "\\eqcolon"
+    },
+    {
+      "name": "\\begin{equation}",
+      "code": "\\begin{equation}a = b + c\\end{equation}",
+      "preview": "\\begin{equation}a = b + c\\end{equation}"
+    },
+    {
+      "name": "\\begin{equation*}",
+      "code": "\\begin{equation*}a = b + c\\end{equation*}",
+      "preview": "\\begin{equation*}a = b + c\\end{equation*}"
+    },
+    {
+      "name": "\\Eqqcolon",
+      "code": "\\Eqqcolon",
+      "preview": "\\Eqqcolon"
+    },
+    {
+      "name": "\\eqqcolon",
+      "code": "\\eqqcolon",
+      "preview": "\\eqqcolon"
+    },
+    {
+      "name": "\\eqsim",
+      "code": "\\eqsim",
+      "preview": "\\eqsim"
+    },
+    {
+      "name": "\\eqslantgtr",
+      "code": "\\eqslantgtr",
+      "preview": "\\eqslantgtr"
+    },
+    {
+      "name": "\\eqslantless",
+      "code": "\\eqslantless",
+      "preview": "\\eqslantless"
+    },
+    {
+      "name": "\\equalscolon",
+      "code": "\\equalscolon",
+      "preview": "\\equalscolon"
+    },
+    {
+      "name": "\\equalscoloncolon",
+      "code": "\\equalscoloncolon",
+      "preview": "\\equalscoloncolon"
+    },
+    {
+      "name": "\\equiv",
+      "code": "\\equiv",
+      "preview": "\\equiv"
+    },
+    {
+      "name": "\\Eta",
+      "code": "\\Eta",
+      "preview": "\\Eta"
+    },
+    {
+      "name": "\\eta",
+      "code": "\\eta",
+      "preview": "\\eta"
+    },
+    {
+      "name": "\\eth",
+      "code": "\\eth",
+      "preview": "\\eth"
+    },
+    {
+      "name": "\\exist",
+      "code": "\\exist",
+      "preview": "\\exist"
+    },
+    {
+      "name": "\\exists",
+      "code": "\\exists",
+      "preview": "\\exists"
+    },
+    {
+      "name": "\\exp",
+      "code": "\\exp",
+      "preview": "\\exp"
+    },
+    {
+      "name": "\\expandafter",
+      "code": "\\expandafter",
+      "preview": "\\expandafter"
+    },
+    {
+      "name": "\\fallingdotseq",
+      "code": "\\fallingdotseq",
+      "preview": "\\fallingdotseq"
+    },
+    {
+      "name": "\\fbox",
+      "code": "\\fbox{Hi there!}",
+      "preview": "\\fbox{Hi there!}"
+    },
+    {
+      "name": "\\fcolorbox",
+      "code": "\\fcolorbox{red}{aqua}{A}",
+      "preview": "\\fcolorbox{red}{aqua}{A}"
+    },
+    {
+      "name": "\\Finv",
+      "code": "\\Finv",
+      "preview": "\\Finv"
+    },
+    {
+      "name": "\\flat",
+      "code": "\\flat",
+      "preview": "\\flat"
+    },
+    {
+      "name": "\\footnotesize",
+      "code": "\\footnotesize footnotesize",
+      "preview": "\\footnotesize footnotesize"
+    },
+    {
+      "name": "\\forall",
+      "code": "\\forall",
+      "preview": "\\forall"
+    },
+    {
+      "name": "\\frac",
+      "code": "\\frac a b",
+      "preview": "\\frac a b"
+    },
+    {
+      "name": "\\frak",
+      "code": "\\frak{AaBb}",
+      "preview": "\\frak{AaBb}"
+    },
+    {
+      "name": "\\frown",
+      "code": "\\frown",
+      "preview": "\\frown"
+    },
+    {
+      "name": "\\futurelet",
+      "code": "\\futurelet\\foo ab",
+      "preview": "\\futurelet\\foo ab"
+    },
+    {
+      "name": "\\Game",
+      "code": "\\Game",
+      "preview": "\\Game"
+    },
+    {
+      "name": "\\Gamma",
+      "code": "\\Gamma",
+      "preview": "\\Gamma"
+    },
+    {
+      "name": "\\gamma",
+      "code": "\\gamma",
+      "preview": "\\gamma"
+    },
+    {
+      "name": "\\begin{gather}",
+      "code": "\\begin{gather}a=b\\\\e=b+c\\end{gather}",
+      "preview": "\\begin{gather}a=b\\\\e=b+c\\end{gather}"
+    },
+    {
+      "name": "\\begin{gathered}",
+      "code": "\\begin{gathered}a=b\\\\e=b+c\\end{gathered}",
+      "preview": "\\begin{gathered}a=b\\\\e=b+c\\end{gathered}"
+    },
+    {
+      "name": "\\gcd",
+      "code": "\\gcd",
+      "preview": "\\gcd"
+    },
+    {
+      "name": "\\gdef",
+      "code": "\\gdef\\sqr#1{#1^2} \\sqr{y} + \\sqr{y}",
+      "preview": "\\gdef\\sqr#1{#1^2} \\sqr{y} + \\sqr{y}"
+    },
+    {
+      "name": "\\ge",
+      "code": "\\ge",
+      "preview": "\\ge"
+    },
+    {
+      "name": "\\genfrac",
+      "code": "\\genfrac ( ] {2pt}{0}a{a+1}",
+      "preview": "\\genfrac ( ] {2pt}{0}a{a+1}"
+    },
+    {
+      "name": "\\geq",
+      "code": "\\geq",
+      "preview": "\\geq"
+    },
+    {
+      "name": "\\geqq",
+      "code": "\\geqq",
+      "preview": "\\geqq"
+    },
+    {
+      "name": "\\geqslant",
+      "code": "\\geqslant",
+      "preview": "\\geqslant"
+    },
+    {
+      "name": "\\gets",
+      "code": "\\gets",
+      "preview": "\\gets"
+    },
+    {
+      "name": "\\gg",
+      "code": "\\gg",
+      "preview": "\\gg"
+    },
+    {
+      "name": "\\ggg",
+      "code": "\\ggg",
+      "preview": "\\ggg"
+    },
+    {
+      "name": "\\gggtr",
+      "code": "\\gggtr",
+      "preview": "\\gggtr"
+    },
+    {
+      "name": "\\gimel",
+      "code": "\\gimel",
+      "preview": "\\gimel"
+    },
+    {
+      "name": "\\global",
+      "code": "\\global\\def\\add#1#2{#1+#2} \\add 2 3",
+      "preview": "\\global\\def\\add#1#2{#1+#2} \\add 2 3"
+    },
+    {
+      "name": "\\gnapprox",
+      "code": "\\gnapprox",
+      "preview": "\\gnapprox"
+    },
+    {
+      "name": "\\gneq",
+      "code": "\\gneq",
+      "preview": "\\gneq"
+    },
+    {
+      "name": "\\gneqq",
+      "code": "\\gneqq",
+      "preview": "\\gneqq"
+    },
+    {
+      "name": "\\gnsim",
+      "code": "\\gnsim",
+      "preview": "\\gnsim"
+    },
+    {
+      "name": "\\grave",
+      "code": "\\grave{eu}",
+      "preview": "\\grave{eu}"
+    },
+    {
+      "name": "\\gt",
+      "code": "a \\gt b",
+      "preview": "a \\gt b"
+    },
+    {
+      "name": "\\gtrdot",
+      "code": "\\gtrdot",
+      "preview": "\\gtrdot"
+    },
+    {
+      "name": "\\gtrapprox",
+      "code": "\\gtrapprox",
+      "preview": "\\gtrapprox"
+    },
+    {
+      "name": "\\gtreqless",
+      "code": "\\gtreqless",
+      "preview": "\\gtreqless"
+    },
+    {
+      "name": "\\gtreqqless",
+      "code": "\\gtreqqless",
+      "preview": "\\gtreqqless"
+    },
+    {
+      "name": "\\gtrless",
+      "code": "\\gtrless",
+      "preview": "\\gtrless"
+    },
+    {
+      "name": "\\gtrsim",
+      "code": "\\gtrsim",
+      "preview": "\\gtrsim"
+    },
+    {
+      "name": "\\gvertneqq",
+      "code": "\\gvertneqq",
+      "preview": "\\gvertneqq"
+    },
+    {
+      "name": "\\H",
+      "code": "\\text{\\H{a}}",
+      "preview": "\\text{\\H{a}}"
+    },
+    {
+      "name": "\\Harr",
+      "code": "\\Harr",
+      "preview": "\\Harr"
+    },
+    {
+      "name": "\\hArr",
+      "code": "\\hArr",
+      "preview": "\\hArr"
+    },
+    {
+      "name": "\\harr",
+      "code": "\\harr",
+      "preview": "\\harr"
+    },
+    {
+      "name": "\\hat",
+      "code": "\\hat{\\theta}",
+      "preview": "\\hat{\\theta}"
+    },
+    {
+      "name": "\\hbar",
+      "code": "\\hbar",
+      "preview": "\\hbar"
+    },
+    {
+      "name": "\\hbox",
+      "code": "\\hbox{$x^2$}",
+      "preview": "\\hbox{$x^2$}"
+    },
+    {
+      "name": "\\hdashline",
+      "code": "\\begin{matrix}a&b\\\\ \\hdashline c &d\\end{matrix}",
+      "preview": "\\begin{matrix}a&b\\\\ \\hdashline c &d\\end{matrix}"
+    },
+    {
+      "name": "\\hearts",
+      "code": "\\hearts",
+      "preview": "\\hearts"
+    },
+    {
+      "name": "\\heartsuit",
+      "code": "\\heartsuit",
+      "preview": "\\heartsuit"
+    },
+    {
+      "name": "\\hline",
+      "code": "\\begin{matrix}a&b\\\\ \\hline c &d\\end{matrix}",
+      "preview": "\\begin{matrix}a&b\\\\ \\hline c &d\\end{matrix}"
+    },
+    {
+      "name": "\\hom",
+      "code": "\\hom",
+      "preview": "\\hom"
+    },
+    {
+      "name": "\\hookleftarrow",
+      "code": "\\hookleftarrow",
+      "preview": "\\hookleftarrow"
+    },
+    {
+      "name": "\\hookrightarrow",
+      "code": "\\hookrightarrow",
+      "preview": "\\hookrightarrow"
+    },
+    {
+      "name": "\\hphantom",
+      "code": "a\\hphantom{bc}d",
+      "preview": "a\\hphantom{bc}d"
+    },
+    {
+      "name": "\\href",
+      "code": "\\href{https://katex.org/}{\\KaTeX}",
+      "preview": "\\href{https://katex.org/}{\\KaTeX}",
+      "disabled": true
+    },
+    {
+      "name": "\\hskip",
+      "code": "w\\hskip1em i\\hskip2em d",
+      "preview": "w\\hskip1em i\\hskip2em d"
+    },
+    {
+      "name": "\\hslash",
+      "code": "\\hslash",
+      "preview": "\\hslash"
+    },
+    {
+      "name": "\\hspace",
+      "code": "a\\hspace{7ex}b",
+      "preview": "a\\hspace{7ex}b"
+    },
+    {
+      "name": "\\htmlClass",
+      "code": "\\htmlClass{foo}{x}",
+      "preview": "\\htmlClass{foo}{x}",
+      "disabled": true
+    },
+    {
+      "name": "\\htmlData",
+      "code": "\\htmlData{foo=a, bar=b}{x}",
+      "preview": "\\htmlData{foo=a, bar=b}{x}",
+      "disabled": true
+    },
+    {
+      "name": "\\htmlId",
+      "code": "\\htmlId{bar}{x}",
+      "preview": "\\htmlId{bar}{x}",
+      "disabled": true
+    },
+    {
+      "name": "\\htmlStyle",
+      "code": "\\htmlStyle{color: red;}{x}",
+      "preview": "\\htmlStyle{color: red;}{x}",
+      "disabled": true
+    },
+    {
+      "name": "\\huge",
+      "code": "\\huge huge",
+      "preview": "\\huge huge"
+    },
+    {
+      "name": "\\Huge",
+      "code": "\\Huge Huge",
+      "preview": "\\Huge Huge"
+    },
+    {
+      "name": "\\i",
+      "code": "\\text{\\i}",
+      "preview": "\\text{\\i}"
+    },
+    {
+      "name": "\\iff",
+      "code": "A\\iff B",
+      "preview": "A\\iff B"
+    },
+    {
+      "name": "\\iiint",
+      "code": "\\iiint",
+      "preview": "\\iiint"
+    },
+    {
+      "name": "\\iint",
+      "code": "\\iint",
+      "preview": "\\iint"
+    },
+    {
+      "name": "\\Im",
+      "code": "\\Im",
+      "preview": "\\Im"
+    },
+    {
+      "name": "\\image",
+      "code": "\\image",
+      "preview": "\\image"
+    },
+    {
+      "name": "\\imageof",
+      "code": "\\imageof",
+      "preview": "\\imageof"
+    },
+    {
+      "name": "\\imath",
+      "code": "\\imath",
+      "preview": "\\imath"
+    },
+    {
+      "name": "\\impliedby",
+      "code": "P\\impliedby Q",
+      "preview": "P\\impliedby Q"
+    },
+    {
+      "name": "\\implies",
+      "code": "P\\implies Q",
+      "preview": "P\\implies Q"
+    },
+    {
+      "name": "\\in",
+      "code": "\\in",
+      "preview": "\\in"
+    },
+    {
+      "name": "\\includegraphics",
+      "code": "\\includegraphics[height=0.8em, totalheight=0.9em, width=0.9em, alt=KA logo]{https://cdn.kastatic.org/images/apple-touch-icon-57x57-precomposed.new.png}",
+      "preview": "\\includegraphics[height=0.8em, totalheight=0.9em, width=0.9em, alt=KA logo]{https://cdn.kastatic.org/images/apple-touch-icon-57x57-precomposed.new.png}",
+      "disabled": true
+    },
+    {
+      "name": "\\inf",
+      "code": "\\inf",
+      "preview": "\\inf"
+    },
+    {
+      "name": "\\infin",
+      "code": "\\infin",
+      "preview": "\\infin"
+    },
+    {
+      "name": "\\infty",
+      "code": "\\infty",
+      "preview": "\\infty"
+    },
+    {
+      "name": "\\injlim",
+      "code": "\\injlim",
+      "preview": "\\injlim"
+    },
+    {
+      "name": "\\int",
+      "code": "\\int",
+      "preview": "\\int"
+    },
+    {
+      "name": "\\intercal",
+      "code": "\\intercal",
+      "preview": "\\intercal"
+    },
+    {
+      "name": "\\intop",
+      "code": "\\intop",
+      "preview": "\\intop"
+    },
+    {
+      "name": "\\Iota",
+      "code": "\\Iota",
+      "preview": "\\Iota"
+    },
+    {
+      "name": "\\iota",
+      "code": "\\iota",
+      "preview": "\\iota"
+    },
+    {
+      "name": "\\isin",
+      "code": "\\isin",
+      "preview": "\\isin"
+    },
+    {
+      "name": "\\it",
+      "code": "{\\it AaBb}",
+      "preview": "{\\it AaBb}"
+    },
+    {
+      "name": "\\j",
+      "code": "\\text{\\j}",
+      "preview": "\\text{\\j}"
+    },
+    {
+      "name": "\\jmath",
+      "code": "\\jmath",
+      "preview": "\\jmath"
+    },
+    {
+      "name": "\\Join",
+      "code": "\\Join",
+      "preview": "\\Join"
+    },
+    {
+      "name": "\\Kappa",
+      "code": "\\Kappa",
+      "preview": "\\Kappa"
+    },
+    {
+      "name": "\\kappa",
+      "code": "\\kappa",
+      "preview": "\\kappa"
+    },
+    {
+      "name": "\\KaTeX",
+      "code": "\\KaTeX",
+      "preview": "\\KaTeX"
+    },
+    {
+      "name": "\\ker",
+      "code": "\\ker",
+      "preview": "\\ker"
+    },
+    {
+      "name": "\\kern",
+      "code": "I\\kern-2.5pt R",
+      "preview": "I\\kern-2.5pt R"
+    },
+    {
+      "name": "\\Ket",
+      "code": "\\Ket{\\psi}",
+      "preview": "\\Ket{\\psi}"
+    },
+    {
+      "name": "\\ket",
+      "code": "\\ket{\\psi}",
+      "preview": "\\ket{\\psi}"
+    },
+    {
+      "name": "\\Lambda",
+      "code": "\\Lambda",
+      "preview": "\\Lambda"
+    },
+    {
+      "name": "\\lambda",
+      "code": "\\lambda",
+      "preview": "\\lambda"
+    },
+    {
+      "name": "\\land",
+      "code": "\\land",
+      "preview": "\\land"
+    },
+    {
+      "name": "\\lang",
+      "code": "\\lang A\\rangle",
+      "preview": "\\lang A\\rangle"
+    },
+    {
+      "name": "\\langle",
+      "code": "\\langle A\\rangle",
+      "preview": "\\langle A\\rangle"
+    },
+    {
+      "name": "\\Larr",
+      "code": "\\Larr",
+      "preview": "\\Larr"
+    },
+    {
+      "name": "\\lArr",
+      "code": "\\lArr",
+      "preview": "\\lArr"
+    },
+    {
+      "name": "\\larr",
+      "code": "\\larr",
+      "preview": "\\larr"
+    },
+    {
+      "name": "\\large",
+      "code": "\\large large",
+      "preview": "\\large large"
+    },
+    {
+      "name": "\\Large",
+      "code": "\\Large Large",
+      "preview": "\\Large Large"
+    },
+    {
+      "name": "\\LARGE",
+      "code": "\\LARGE LARGE",
+      "preview": "\\LARGE LARGE"
+    },
+    {
+      "name": "\\LaTeX",
+      "code": "\\LaTeX",
+      "preview": "\\LaTeX"
+    },
+    {
+      "name": "\\lBrace",
+      "code": "\\lBrace",
+      "preview": "\\lBrace"
+    },
+    {
+      "name": "\\lbrace",
+      "code": "\\lbrace",
+      "preview": "\\lbrace"
+    },
+    {
+      "name": "\\lbrack",
+      "code": "\\lbrack",
+      "preview": "\\lbrack"
+    },
+    {
+      "name": "\\lceil",
+      "code": "\\lceil",
+      "preview": "\\lceil"
+    },
+    {
+      "name": "\\ldotp",
+      "code": "\\ldotp",
+      "preview": "\\ldotp"
+    },
+    {
+      "name": "\\ldots",
+      "code": "\\ldots",
+      "preview": "\\ldots"
+    },
+    {
+      "name": "\\le",
+      "code": "\\le",
+      "preview": "\\le"
+    },
+    {
+      "name": "\\leadsto",
+      "code": "\\leadsto",
+      "preview": "\\leadsto"
+    },
+    {
+      "name": "\\left",
+      "code": "\\left\\lbrace \\dfrac ab \\right.",
+      "preview": "\\left\\lbrace \\dfrac ab \\right."
+    },
+    {
+      "name": "\\leftarrow",
+      "code": "\\leftarrow",
+      "preview": "\\leftarrow"
+    },
+    {
+      "name": "\\Leftarrow",
+      "code": "\\Leftarrow",
+      "preview": "\\Leftarrow"
+    },
+    {
+      "name": "\\leftarrowtail",
+      "code": "\\leftarrowtail",
+      "preview": "\\leftarrowtail"
+    },
+    {
+      "name": "\\leftharpoondown",
+      "code": "\\leftharpoondown",
+      "preview": "\\leftharpoondown"
+    },
+    {
+      "name": "\\leftharpoonup",
+      "code": "\\leftharpoonup",
+      "preview": "\\leftharpoonup"
+    },
+    {
+      "name": "\\leftleftarrows",
+      "code": "\\leftleftarrows",
+      "preview": "\\leftleftarrows"
+    },
+    {
+      "name": "\\Leftrightarrow",
+      "code": "\\Leftrightarrow",
+      "preview": "\\Leftrightarrow"
+    },
+    {
+      "name": "\\leftrightarrow",
+      "code": "\\leftrightarrow",
+      "preview": "\\leftrightarrow"
+    },
+    {
+      "name": "\\leftrightarrows",
+      "code": "\\leftrightarrows",
+      "preview": "\\leftrightarrows"
+    },
+    {
+      "name": "\\leftrightharpoons",
+      "code": "\\leftrightharpoons",
+      "preview": "\\leftrightharpoons"
+    },
+    {
+      "name": "\\leftrightsquigarrow",
+      "code": "\\leftrightsquigarrow",
+      "preview": "\\leftrightsquigarrow"
+    },
+    {
+      "name": "\\leftthreetimes",
+      "code": "\\leftthreetimes",
+      "preview": "\\leftthreetimes"
+    },
+    {
+      "name": "\\leq",
+      "code": "\\leq",
+      "preview": "\\leq"
+    },
+    {
+      "name": "\\leqq",
+      "code": "\\leqq",
+      "preview": "\\leqq"
+    },
+    {
+      "name": "\\leqslant",
+      "code": "\\leqslant",
+      "preview": "\\leqslant"
+    },
+    {
+      "name": "\\lessapprox",
+      "code": "\\lessapprox",
+      "preview": "\\lessapprox"
+    },
+    {
+      "name": "\\lessdot",
+      "code": "\\lessdot",
+      "preview": "\\lessdot"
+    },
+    {
+      "name": "\\lesseqgtr",
+      "code": "\\lesseqgtr",
+      "preview": "\\lesseqgtr"
+    },
+    {
+      "name": "\\lesseqqgtr",
+      "code": "\\lesseqqgtr",
+      "preview": "\\lesseqqgtr"
+    },
+    {
+      "name": "\\lessgtr",
+      "code": "\\lessgtr",
+      "preview": "\\lessgtr"
+    },
+    {
+      "name": "\\lesssim",
+      "code": "\\lesssim",
+      "preview": "\\lesssim"
+    },
+    {
+      "name": "\\let",
+      "code": "\\let\\foo=x \\foo",
+      "preview": "\\let\\foo=x \\foo"
+    },
+    {
+      "name": "\\lfloor",
+      "code": "\\lfloor",
+      "preview": "\\lfloor"
+    },
+    {
+      "name": "\\lg",
+      "code": "\\lg",
+      "preview": "\\lg"
+    },
+    {
+      "name": "\\lgroup",
+      "code": "\\lgroup",
+      "preview": "\\lgroup"
+    },
+    {
+      "name": "\\lhd",
+      "code": "\\lhd",
+      "preview": "\\lhd"
+    },
+    {
+      "name": "\\lim",
+      "code": "\\lim",
+      "preview": "\\lim"
+    },
+    {
+      "name": "\\liminf",
+      "code": "\\liminf",
+      "preview": "\\liminf"
+    },
+    {
+      "name": "\\limits",
+      "code": "\\lim\\limits_x",
+      "preview": "\\lim\\limits_x"
+    },
+    {
+      "name": "\\limsup",
+      "code": "\\limsup",
+      "preview": "\\limsup"
+    },
+    {
+      "name": "\\ll",
+      "code": "\\ll",
+      "preview": "\\ll"
+    },
+    {
+      "name": "\\llap",
+      "code": "{=}\\llap{/\\,}",
+      "preview": "{=}\\llap{/\\,}"
+    },
+    {
+      "name": "\\llbracket",
+      "code": "\\llbracket",
+      "preview": "\\llbracket"
+    },
+    {
+      "name": "\\llcorner",
+      "code": "\\llcorner",
+      "preview": "\\llcorner"
+    },
+    {
+      "name": "\\Lleftarrow",
+      "code": "\\Lleftarrow",
+      "preview": "\\Lleftarrow"
+    },
+    {
+      "name": "\\lll",
+      "code": "\\lll",
+      "preview": "\\lll"
+    },
+    {
+      "name": "\\llless",
+      "code": "\\llless",
+      "preview": "\\llless"
+    },
+    {
+      "name": "\\lmoustache",
+      "code": "\\lmoustache",
+      "preview": "\\lmoustache"
+    },
+    {
+      "name": "\\ln",
+      "code": "\\ln",
+      "preview": "\\ln"
+    },
+    {
+      "name": "\\lnapprox",
+      "code": "\\lnapprox",
+      "preview": "\\lnapprox"
+    },
+    {
+      "name": "\\lneq",
+      "code": "\\lneq",
+      "preview": "\\lneq"
+    },
+    {
+      "name": "\\lneqq",
+      "code": "\\lneqq",
+      "preview": "\\lneqq"
+    },
+    {
+      "name": "\\lnot",
+      "code": "\\lnot",
+      "preview": "\\lnot"
+    },
+    {
+      "name": "\\lnsim",
+      "code": "\\lnsim",
+      "preview": "\\lnsim"
+    },
+    {
+      "name": "\\log",
+      "code": "\\log",
+      "preview": "\\log"
+    },
+    {
+      "name": "\\long",
+      "code": "\\long\\def\\foo#1{#1}\\foo{x}",
+      "preview": "\\long\\def\\foo#1{#1}\\foo{x}"
+    },
+    {
+      "name": "\\Longleftarrow",
+      "code": "\\Longleftarrow",
+      "preview": "\\Longleftarrow"
+    },
+    {
+      "name": "\\longleftarrow",
+      "code": "\\longleftarrow",
+      "preview": "\\longleftarrow"
+    },
+    {
+      "name": "\\Longleftrightarrow",
+      "code": "\\Longleftrightarrow",
+      "preview": "\\Longleftrightarrow"
+    },
+    {
+      "name": "\\longleftrightarrow",
+      "code": "\\longleftrightarrow",
+      "preview": "\\longleftrightarrow"
+    },
+    {
+      "name": "\\longmapsto",
+      "code": "\\longmapsto",
+      "preview": "\\longmapsto"
+    },
+    {
+      "name": "\\Longrightarrow",
+      "code": "\\Longrightarrow",
+      "preview": "\\Longrightarrow"
+    },
+    {
+      "name": "\\longrightarrow",
+      "code": "\\longrightarrow",
+      "preview": "\\longrightarrow"
+    },
+    {
+      "name": "\\looparrowleft",
+      "code": "\\looparrowleft",
+      "preview": "\\looparrowleft"
+    },
+    {
+      "name": "\\looparrowright",
+      "code": "\\looparrowright",
+      "preview": "\\looparrowright"
+    },
+    {
+      "name": "\\lor",
+      "code": "\\lor",
+      "preview": "\\lor"
+    },
+    {
+      "name": "\\lozenge",
+      "code": "\\lozenge",
+      "preview": "\\lozenge"
+    },
+    {
+      "name": "\\lparen",
+      "code": "\\lparen",
+      "preview": "\\lparen"
+    },
+    {
+      "name": "\\Lrarr",
+      "code": "\\Lrarr",
+      "preview": "\\Lrarr"
+    },
+    {
+      "name": "\\lrArr",
+      "code": "\\lrArr",
+      "preview": "\\lrArr"
+    },
+    {
+      "name": "\\lrarr",
+      "code": "\\lrarr",
+      "preview": "\\lrarr"
+    },
+    {
+      "name": "\\lrcorner",
+      "code": "\\lrcorner",
+      "preview": "\\lrcorner"
+    },
+    {
+      "name": "\\lq",
+      "code": "\\lq",
+      "preview": "\\lq"
+    },
+    {
+      "name": "\\Lsh",
+      "code": "\\Lsh",
+      "preview": "\\Lsh"
+    },
+    {
+      "name": "\\lt",
+      "code": "\\lt",
+      "preview": "\\lt"
+    },
+    {
+      "name": "\\ltimes",
+      "code": "\\ltimes",
+      "preview": "\\ltimes"
+    },
+    {
+      "name": "\\lVert",
+      "code": "\\lVert",
+      "preview": "\\lVert"
+    },
+    {
+      "name": "\\lvert",
+      "code": "\\lvert",
+      "preview": "\\lvert"
+    },
+    {
+      "name": "\\lvertneqq",
+      "code": "\\lvertneqq",
+      "preview": "\\lvertneqq"
+    },
+    {
+      "name": "\\maltese",
+      "code": "\\maltese",
+      "preview": "\\maltese"
+    },
+    {
+      "name": "\\mapsfrom",
+      "code": "\\mapsfrom",
+      "preview": "\\mapsfrom"
+    },
+    {
+      "name": "\\mapsto",
+      "code": "\\mapsto",
+      "preview": "\\mapsto"
+    },
+    {
+      "name": "\\mathbb",
+      "code": "\\mathbb{AB}",
+      "preview": "\\mathbb{AB}"
+    },
+    {
+      "name": "\\mathbf",
+      "code": "\\mathbf{AaBb123}",
+      "preview": "\\mathbf{AaBb123}"
+    },
+    {
+      "name": "\\mathbin",
+      "code": "a\\mathbin{!}b",
+      "preview": "a\\mathbin{!}b"
+    },
+    {
+      "name": "\\mathcal",
+      "code": "\\mathcal{AaBb123}",
+      "preview": "\\mathcal{AaBb123}"
+    },
+    {
+      "name": "\\mathchoice",
+      "code": "a\\mathchoice{\\,}{\\,\\,}{\\,\\,\\,}{\\,\\,\\,\\,}b",
+      "preview": "a\\mathchoice{\\,}{\\,\\,}{\\,\\,\\,}{\\,\\,\\,\\,}b"
+    },
+    {
+      "name": "\\mathclap",
+      "code": "\\displaystyle\\sum_{\\mathclap{1\\le i\\le n}} x_{i}",
+      "preview": "\\displaystyle\\sum_{\\mathclap{1\\le i\\le n}} x_{i}"
+    },
+    {
+      "name": "\\mathclose",
+      "code": "a + (b\\mathclose\\gt + c",
+      "preview": "a + (b\\mathclose\\gt + c"
+    },
+    {
+      "name": "\\mathellipsis",
+      "code": "\\mathellipsis",
+      "preview": "\\mathellipsis"
+    },
+    {
+      "name": "\\mathfrak",
+      "code": "\\mathfrak{AaBb}",
+      "preview": "\\mathfrak{AaBb}"
+    },
+    {
+      "name": "\\mathinner",
+      "code": "ab\\mathinner{\\text{inside}}cd",
+      "preview": "ab\\mathinner{\\text{inside}}cd"
+    },
+    {
+      "name": "\\mathit",
+      "code": "\\mathit{AaBb}",
+      "preview": "\\mathit{AaBb}"
+    },
+    {
+      "name": "\\mathllap",
+      "code": "{=}\\mathllap{/\\,}",
+      "preview": "{=}\\mathllap{/\\,}"
+    },
+    {
+      "name": "\\mathnormal",
+      "code": "\\mathnormal{AaBb}",
+      "preview": "\\mathnormal{AaBb}"
+    },
+    {
+      "name": "\\mathop",
+      "code": "\\mathop{\\star}_a^b",
+      "preview": "\\mathop{\\star}_a^b"
+    },
+    {
+      "name": "\\mathopen",
+      "code": "a + \\mathopen\\lt b) + c",
+      "preview": "a + \\mathopen\\lt b) + c"
+    },
+    {
+      "name": "\\mathord",
+      "code": "1\\mathord{,}234{,}567",
+      "preview": "1\\mathord{,}234{,}567"
+    },
+    {
+      "name": "\\mathpunct",
+      "code": "A\\mathpunct{-}B",
+      "preview": "A\\mathpunct{-}B"
+    },
+    {
+      "name": "\\mathreflectbox",
+      "code": "\\mathreflectbox{x^2}",
+      "preview": "\\mathreflectbox{x^2}"
+    },
+    {
+      "name": "\\mathrel",
+      "code": "a \\mathrel{\\#} b",
+      "preview": "a \\mathrel{\\#} b"
+    },
+    {
+      "name": "\\mathrlap",
+      "code": "\\mathrlap{\\,/}{=}",
+      "preview": "\\mathrlap{\\,/}{=}"
+    },
+    {
+      "name": "\\mathring",
+      "code": "\\mathring{a}",
+      "preview": "\\mathring{a}"
+    },
+    {
+      "name": "\\mathrm",
+      "code": "\\mathrm{AaBb123}",
+      "preview": "\\mathrm{AaBb123}"
+    },
+    {
+      "name": "\\mathscr",
+      "code": "\\mathscr{AB}",
+      "preview": "\\mathscr{AB}"
+    },
+    {
+      "name": "\\mathsf",
+      "code": "\\mathsf{AaBb123}",
+      "preview": "\\mathsf{AaBb123}"
+    },
+    {
+      "name": "\\mathsterling",
+      "code": "\\mathsterling",
+      "preview": "\\mathsterling"
+    },
+    {
+      "name": "\\mathstrut",
+      "code": "\\sqrt{\\mathstrut a}",
+      "preview": "\\sqrt{\\mathstrut a}"
+    },
+    {
+      "name": "\\mathtt",
+      "code": "\\mathtt{AaBb123}",
+      "preview": "\\mathtt{AaBb123}"
+    },
+    {
+      "name": "\\begin{matrix}",
+      "code": "\\begin{matrix}a&b\\\\c&d\\end{matrix}",
+      "preview": "\\begin{matrix}a&b\\\\c&d\\end{matrix}"
+    },
+    {
+      "name": "\\begin{matrix*}",
+      "code": "\\begin{matrix*}[r]0&-1\\\\-1&0\\end{matrix*}",
+      "preview": "\\begin{matrix*}[r]0&-1\\\\-1&0\\end{matrix*}"
+    },
+    {
+      "name": "\\max",
+      "code": "\\max",
+      "preview": "\\max"
+    },
+    {
+      "name": "\\measuredangle",
+      "code": "\\measuredangle",
+      "preview": "\\measuredangle"
+    },
+    {
+      "name": "\\medspace",
+      "code": "a\\medspace b",
+      "preview": "a\\medspace b"
+    },
+    {
+      "name": "\\mho",
+      "code": "\\mho",
+      "preview": "\\mho"
+    },
+    {
+      "name": "\\mid",
+      "code": "\\{x∈ℝ\\mid x>0\\}",
+      "preview": "\\{x∈ℝ\\mid x>0\\}"
+    },
+    {
+      "name": "\\middle",
+      "code": "P\\left(A\\middle\\vert B\\right)",
+      "preview": "P\\left(A\\middle\\vert B\\right)"
+    },
+    {
+      "name": "\\min",
+      "code": "\\min",
+      "preview": "\\min"
+    },
+    {
+      "name": "\\minuscolon",
+      "code": "\\minuscolon",
+      "preview": "\\minuscolon"
+    },
+    {
+      "name": "\\minuscoloncolon",
+      "code": "\\minuscoloncolon",
+      "preview": "\\minuscoloncolon"
+    },
+    {
+      "name": "\\minuso",
+      "code": "\\minuso",
+      "preview": "\\minuso"
+    },
+    {
+      "name": "\\mkern",
+      "code": "a\\mkern18mu b",
+      "preview": "a\\mkern18mu b"
+    },
+    {
+      "name": "\\mod",
+      "code": "3\\equiv 5 \\mod 2",
+      "preview": "3\\equiv 5 \\mod 2"
+    },
+    {
+      "name": "\\models",
+      "code": "\\models",
+      "preview": "\\models"
+    },
+    {
+      "name": "\\mp",
+      "code": "\\mp",
+      "preview": "\\mp"
+    },
+    {
+      "name": "\\mskip",
+      "code": "a\\mskip{10mu}b",
+      "preview": "a\\mskip{10mu}b"
+    },
+    {
+      "name": "\\Mu",
+      "code": "\\Mu",
+      "preview": "\\Mu"
+    },
+    {
+      "name": "\\mu",
+      "code": "\\mu",
+      "preview": "\\mu"
+    },
+    {
+      "name": "\\multimap",
+      "code": "\\multimap",
+      "preview": "\\multimap"
+    },
+    {
+      "name": "\\N",
+      "code": "\\N",
+      "preview": "\\N"
+    },
+    {
+      "name": "\\nabla",
+      "code": "\\nabla",
+      "preview": "\\nabla"
+    },
+    {
+      "name": "\\natnums",
+      "code": "\\natnums",
+      "preview": "\\natnums"
+    },
+    {
+      "name": "\\natural",
+      "code": "\\natural",
+      "preview": "\\natural"
+    },
+    {
+      "name": "\\negmedspace",
+      "code": "a\\negmedspace b",
+      "preview": "a\\negmedspace b"
+    },
+    {
+      "name": "\\ncong",
+      "code": "\\ncong",
+      "preview": "\\ncong"
+    },
+    {
+      "name": "\\ne",
+      "code": "\\ne",
+      "preview": "\\ne"
+    },
+    {
+      "name": "\\nearrow",
+      "code": "\\nearrow",
+      "preview": "\\nearrow"
+    },
+    {
+      "name": "\\neg",
+      "code": "\\neg",
+      "preview": "\\neg"
+    },
+    {
+      "name": "\\negthickspace",
+      "code": "a\\negthickspace b",
+      "preview": "a\\negthickspace b"
+    },
+    {
+      "name": "\\negthinspace",
+      "code": "a\\negthinspace b",
+      "preview": "a\\negthinspace b"
+    },
+    {
+      "name": "\\neq",
+      "code": "\\neq",
+      "preview": "\\neq"
+    },
+    {
+      "name": "\\newcommand",
+      "code": "\\newcommand\\chk{\\checkmark} \\chk",
+      "preview": "\\newcommand\\chk{\\checkmark} \\chk"
+    },
+    {
+      "name": "\\newline",
+      "code": "a\\newline b",
+      "preview": "a\\newline b"
+    },
+    {
+      "name": "\\nexists",
+      "code": "\\nexists",
+      "preview": "\\nexists"
+    },
+    {
+      "name": "\\ngeq",
+      "code": "\\ngeq",
+      "preview": "\\ngeq"
+    },
+    {
+      "name": "\\ngeqq",
+      "code": "\\ngeqq",
+      "preview": "\\ngeqq"
+    },
+    {
+      "name": "\\ngeqslant",
+      "code": "\\ngeqslant",
+      "preview": "\\ngeqslant"
+    },
+    {
+      "name": "\\ngtr",
+      "code": "\\ngtr",
+      "preview": "\\ngtr"
+    },
+    {
+      "name": "\\ni",
+      "code": "\\ni",
+      "preview": "\\ni"
+    },
+    {
+      "name": "\\nleftarrow",
+      "code": "\\nleftarrow",
+      "preview": "\\nleftarrow"
+    },
+    {
+      "name": "\\nLeftarrow",
+      "code": "\\nLeftarrow",
+      "preview": "\\nLeftarrow"
+    },
+    {
+      "name": "\\nLeftrightarrow",
+      "code": "\\nLeftrightarrow",
+      "preview": "\\nLeftrightarrow"
+    },
+    {
+      "name": "\\nleftrightarrow",
+      "code": "\\nleftrightarrow",
+      "preview": "\\nleftrightarrow"
+    },
+    {
+      "name": "\\nleq",
+      "code": "\\nleq",
+      "preview": "\\nleq"
+    },
+    {
+      "name": "\\nleqq",
+      "code": "\\nleqq",
+      "preview": "\\nleqq"
+    },
+    {
+      "name": "\\nleqslant",
+      "code": "\\nleqslant",
+      "preview": "\\nleqslant"
+    },
+    {
+      "name": "\\nless",
+      "code": "\\nless",
+      "preview": "\\nless"
+    },
+    {
+      "name": "\\nmid",
+      "code": "\\nmid",
+      "preview": "\\nmid"
+    },
+    {
+      "name": "\\nobreak",
+      "code": "\\nobreak",
+      "preview": "\\nobreak"
+    },
+    {
+      "name": "\\nobreakspace",
+      "code": "a\\nobreakspace b",
+      "preview": "a\\nobreakspace b"
+    },
+    {
+      "name": "\\noexpand",
+      "code": "\\noexpand",
+      "preview": "\\noexpand"
+    },
+    {
+      "name": "\\nolimits",
+      "code": "\\lim\\nolimits_x",
+      "preview": "\\lim\\nolimits_x"
+    },
+    {
+      "name": "\\nonumber",
+      "code": "\\begin{align}a&=b+c\\nonumber\\\\d+e&=f\\end{align}",
+      "preview": "\\begin{align}a&=b+c\\nonumber\\\\d+e&=f\\end{align}"
+    },
+    {
+      "name": "\\normalsize",
+      "code": "\\normalsize normalsize",
+      "preview": "\\normalsize normalsize"
+    },
+    {
+      "name": "\\not",
+      "code": "\\not =",
+      "preview": "\\not ="
+    },
+    {
+      "name": "\\notag",
+      "code": "\\begin{align}a&=b+c\\notag\\\\d+e&=f\\end{align}",
+      "preview": "\\begin{align}a&=b+c\\notag\\\\d+e&=f\\end{align}"
+    },
+    {
+      "name": "\\notin",
+      "code": "\\notin",
+      "preview": "\\notin"
+    },
+    {
+      "name": "\\notni",
+      "code": "\\notni",
+      "preview": "\\notni"
+    },
+    {
+      "name": "\\nparallel",
+      "code": "\\nparallel",
+      "preview": "\\nparallel"
+    },
+    {
+      "name": "\\nprec",
+      "code": "\\nprec",
+      "preview": "\\nprec"
+    },
+    {
+      "name": "\\npreceq",
+      "code": "\\npreceq",
+      "preview": "\\npreceq"
+    },
+    {
+      "name": "\\nRightarrow",
+      "code": "\\nRightarrow",
+      "preview": "\\nRightarrow"
+    },
+    {
+      "name": "\\nrightarrow",
+      "code": "\\nrightarrow",
+      "preview": "\\nrightarrow"
+    },
+    {
+      "name": "\\nshortmid",
+      "code": "\\nshortmid",
+      "preview": "\\nshortmid"
+    },
+    {
+      "name": "\\nshortparallel",
+      "code": "\\nshortparallel",
+      "preview": "\\nshortparallel"
+    },
+    {
+      "name": "\\nsim",
+      "code": "\\nsim",
+      "preview": "\\nsim"
+    },
+    {
+      "name": "\\nsubseteq",
+      "code": "\\nsubseteq",
+      "preview": "\\nsubseteq"
+    },
+    {
+      "name": "\\nsubseteqq",
+      "code": "\\nsubseteqq",
+      "preview": "\\nsubseteqq"
+    },
+    {
+      "name": "\\nsucc",
+      "code": "\\nsucc",
+      "preview": "\\nsucc"
+    },
+    {
+      "name": "\\nsucceq",
+      "code": "\\nsucceq",
+      "preview": "\\nsucceq"
+    },
+    {
+      "name": "\\nsupseteq",
+      "code": "\\nsupseteq",
+      "preview": "\\nsupseteq"
+    },
+    {
+      "name": "\\nsupseteqq",
+      "code": "\\nsupseteqq",
+      "preview": "\\nsupseteqq"
+    },
+    {
+      "name": "\\ntriangleleft",
+      "code": "\\ntriangleleft",
+      "preview": "\\ntriangleleft"
+    },
+    {
+      "name": "\\ntrianglelefteq",
+      "code": "\\ntrianglelefteq",
+      "preview": "\\ntrianglelefteq"
+    },
+    {
+      "name": "\\ntriangleright",
+      "code": "\\ntriangleright",
+      "preview": "\\ntriangleright"
+    },
+    {
+      "name": "\\ntrianglerighteq",
+      "code": "\\ntrianglerighteq",
+      "preview": "\\ntrianglerighteq"
+    },
+    {
+      "name": "\\Nu",
+      "code": "\\Nu",
+      "preview": "\\Nu"
+    },
+    {
+      "name": "\\nu",
+      "code": "\\nu",
+      "preview": "\\nu"
+    },
+    {
+      "name": "\\nVDash",
+      "code": "\\nVDash",
+      "preview": "\\nVDash"
+    },
+    {
+      "name": "\\nVdash",
+      "code": "\\nVdash",
+      "preview": "\\nVdash"
+    },
+    {
+      "name": "\\nvDash",
+      "code": "\\nvDash",
+      "preview": "\\nvDash"
+    },
+    {
+      "name": "\\nvdash",
+      "code": "\\nvdash",
+      "preview": "\\nvdash"
+    },
+    {
+      "name": "\\nwarrow",
+      "code": "\\nwarrow",
+      "preview": "\\nwarrow"
+    },
+    {
+      "name": "\\O",
+      "code": "\\text{\\O}",
+      "preview": "\\text{\\O}"
+    },
+    {
+      "name": "\\o",
+      "code": "\\text{\\o}",
+      "preview": "\\text{\\o}"
+    },
+    {
+      "name": "\\odot",
+      "code": "\\odot",
+      "preview": "\\odot"
+    },
+    {
+      "name": "\\OE",
+      "code": "\\text{\\OE}",
+      "preview": "\\text{\\OE}"
+    },
+    {
+      "name": "\\oe",
+      "code": "\\text{\\oe}",
+      "preview": "\\text{\\oe}"
+    },
+    {
+      "name": "\\oiiint",
+      "code": "\\oiiint",
+      "preview": "\\oiiint"
+    },
+    {
+      "name": "\\oiint",
+      "code": "\\oiint",
+      "preview": "\\oiint"
+    },
+    {
+      "name": "\\oint",
+      "code": "\\oint",
+      "preview": "\\oint"
+    },
+    {
+      "name": "\\omega",
+      "code": "\\omega",
+      "preview": "\\omega"
+    },
+    {
+      "name": "\\Omega",
+      "code": "\\Omega",
+      "preview": "\\Omega"
+    },
+    {
+      "name": "\\Omicron",
+      "code": "\\Omicron",
+      "preview": "\\Omicron"
+    },
+    {
+      "name": "\\omicron",
+      "code": "\\omicron",
+      "preview": "\\omicron"
+    },
+    {
+      "name": "\\ominus",
+      "code": "\\ominus",
+      "preview": "\\ominus"
+    },
+    {
+      "name": "\\operatorname",
+      "code": "\\operatorname{asin} x",
+      "preview": "\\operatorname{asin} x"
+    },
+    {
+      "name": "\\operatorname*",
+      "code": "\\operatorname*{asin}\\limits_y x",
+      "preview": "\\operatorname*{asin}\\limits_y x"
+    },
+    {
+      "name": "\\operatornamewithlimits",
+      "code": "\\operatornamewithlimits{asin}\\limits_y x",
+      "preview": "\\operatornamewithlimits{asin}\\limits_y x"
+    },
+    {
+      "name": "\\oplus",
+      "code": "\\oplus",
+      "preview": "\\oplus"
+    },
+    {
+      "name": "\\origof",
+      "code": "\\origof",
+      "preview": "\\origof"
+    },
+    {
+      "name": "\\oslash",
+      "code": "\\oslash",
+      "preview": "\\oslash"
+    },
+    {
+      "name": "\\otimes",
+      "code": "\\otimes",
+      "preview": "\\otimes"
+    },
+    {
+      "name": "\\over",
+      "code": "{a+1 \\over b+2}+c",
+      "preview": "{a+1 \\over b+2}+c"
+    },
+    {
+      "name": "\\overbrace",
+      "code": "\\overbrace{x+⋯+x}^{n\\text{ times}}",
+      "preview": "\\overbrace{x+⋯+x}^{n\\text{ times}}"
+    },
+    {
+      "name": "\\overbracket",
+      "code": "\\overbracket{x+⋯+x}^{n\\text{ times}}",
+      "preview": "\\overbracket{x+⋯+x}^{n\\text{ times}}"
+    },
+    {
+      "name": "\\overgroup",
+      "code": "\\overgroup{AB}",
+      "preview": "\\overgroup{AB}"
+    },
+    {
+      "name": "\\overleftarrow",
+      "code": "\\overleftarrow{AB}",
+      "preview": "\\overleftarrow{AB}"
+    },
+    {
+      "name": "\\overleftharpoon",
+      "code": "\\overleftharpoon{AB}",
+      "preview": "\\overleftharpoon{AB}"
+    },
+    {
+      "name": "\\overleftrightarrow",
+      "code": "\\overleftrightarrow{AB}",
+      "preview": "\\overleftrightarrow{AB}"
+    },
+    {
+      "name": "\\overline",
+      "code": "\\overline{\\text{a long argument}}",
+      "preview": "\\overline{\\text{a long argument}}"
+    },
+    {
+      "name": "\\overlinesegment",
+      "code": "\\overlinesegment{AB}",
+      "preview": "\\overlinesegment{AB}"
+    },
+    {
+      "name": "\\Overrightarrow",
+      "code": "\\Overrightarrow{AB}",
+      "preview": "\\Overrightarrow{AB}"
+    },
+    {
+      "name": "\\overrightarrow",
+      "code": "\\overrightarrow{AB}",
+      "preview": "\\overrightarrow{AB}"
+    },
+    {
+      "name": "\\overrightharpoon",
+      "code": "\\overrightharpoon{ac}",
+      "preview": "\\overrightharpoon{ac}"
+    },
+    {
+      "name": "\\overset",
+      "code": "\\overset{!}{=}",
+      "preview": "\\overset{!}{=}"
+    },
+    {
+      "name": "\\owns",
+      "code": "\\owns",
+      "preview": "\\owns"
+    },
+    {
+      "name": "\\P",
+      "code": "\\text{\\P}",
+      "preview": "\\text{\\P}"
+    },
+    {
+      "name": "\\parallel",
+      "code": "\\parallel",
+      "preview": "\\parallel"
+    },
+    {
+      "name": "\\partial",
+      "code": "\\partial",
+      "preview": "\\partial"
+    },
+    {
+      "name": "\\perp",
+      "code": "\\perp",
+      "preview": "\\perp"
+    },
+    {
+      "name": "\\phantom",
+      "code": "\\Gamma^{\\phantom{i}j}_{i\\phantom{j}k}",
+      "preview": "\\Gamma^{\\phantom{i}j}_{i\\phantom{j}k}"
+    },
+    {
+      "name": "\\phase",
+      "code": "\\phase{-78^\\circ}",
+      "preview": "\\phase{-78^\\circ}"
+    },
+    {
+      "name": "\\Phi",
+      "code": "\\Phi",
+      "preview": "\\Phi"
+    },
+    {
+      "name": "\\phi",
+      "code": "\\phi",
+      "preview": "\\phi"
+    },
+    {
+      "name": "\\Pi",
+      "code": "\\Pi",
+      "preview": "\\Pi"
+    },
+    {
+      "name": "\\pi",
+      "code": "\\pi",
+      "preview": "\\pi"
+    },
+    {
+      "name": "\\pitchfork",
+      "code": "\\pitchfork",
+      "preview": "\\pitchfork"
+    },
+    {
+      "name": "\\plim",
+      "code": "\\plim",
+      "preview": "\\plim"
+    },
+    {
+      "name": "\\plusmn",
+      "code": "\\plusmn",
+      "preview": "\\plusmn"
+    },
+    {
+      "name": "\\pm",
+      "code": "\\pm",
+      "preview": "\\pm"
+    },
+    {
+      "name": "\\begin{pmatrix}",
+      "code": "\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}",
+      "preview": "\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}"
+    },
+    {
+      "name": "\\begin{pmatrix*}",
+      "code": "\\begin{pmatrix*}[r]0&-1\\\\-1&0\\end{pmatrix*}",
+      "preview": "\\begin{pmatrix*}[r]0&-1\\\\-1&0\\end{pmatrix*}"
+    },
+    {
+      "name": "\\pmb",
+      "code": "\\pmb{\\mu}",
+      "preview": "\\pmb{\\mu}"
+    },
+    {
+      "name": "\\pmod",
+      "code": "x\\pmod a",
+      "preview": "x\\pmod a"
+    },
+    {
+      "name": "\\pod",
+      "code": "x \\pod a",
+      "preview": "x \\pod a"
+    },
+    {
+      "name": "\\pounds",
+      "code": "\\pounds",
+      "preview": "\\pounds"
+    },
+    {
+      "name": "\\Pr",
+      "code": "\\Pr",
+      "preview": "\\Pr"
+    },
+    {
+      "name": "\\prec",
+      "code": "\\prec",
+      "preview": "\\prec"
+    },
+    {
+      "name": "\\precapprox",
+      "code": "\\precapprox",
+      "preview": "\\precapprox"
+    },
+    {
+      "name": "\\preccurlyeq",
+      "code": "\\preccurlyeq",
+      "preview": "\\preccurlyeq"
+    },
+    {
+      "name": "\\preceq",
+      "code": "\\preceq",
+      "preview": "\\preceq"
+    },
+    {
+      "name": "\\precnapprox",
+      "code": "\\precnapprox",
+      "preview": "\\precnapprox"
+    },
+    {
+      "name": "\\precneqq",
+      "code": "\\precneqq",
+      "preview": "\\precneqq"
+    },
+    {
+      "name": "\\precnsim",
+      "code": "\\precnsim",
+      "preview": "\\precnsim"
+    },
+    {
+      "name": "\\precsim",
+      "code": "\\precsim",
+      "preview": "\\precsim"
+    },
+    {
+      "name": "\\prime",
+      "code": "\\prime",
+      "preview": "\\prime"
+    },
+    {
+      "name": "\\prod",
+      "code": "\\prod",
+      "preview": "\\prod"
+    },
+    {
+      "name": "\\projlim",
+      "code": "\\projlim",
+      "preview": "\\projlim"
+    },
+    {
+      "name": "\\propto",
+      "code": "\\propto",
+      "preview": "\\propto"
+    },
+    {
+      "name": "\\providecommand",
+      "code": "\\providecommand\\greet{\\text{Hello}} \\greet",
+      "preview": "\\providecommand\\greet{\\text{Hello}} \\greet"
+    },
+    {
+      "name": "\\psi",
+      "code": "\\psi",
+      "preview": "\\psi"
+    },
+    {
+      "name": "\\Psi",
+      "code": "\\Psi",
+      "preview": "\\Psi"
+    },
+    {
+      "name": "\\pu",
+      "code": "{123~\\mathchoice{\\textstyle\\frac{\\mathrm{kJ}}{\\mathrm{mol}}}{\\frac{\\mathrm{kJ}}{\\mathrm{mol}}}{\\frac{\\mathrm{kJ}}{\\mathrm{mol}}}{\\frac{\\mathrm{kJ}}{\\mathrm{mol}}}}",
+      "preview": "{123~\\mathchoice{\\textstyle\\frac{\\mathrm{kJ}}{\\mathrm{mol}}}{\\frac{\\mathrm{kJ}}{\\mathrm{mol}}}{\\frac{\\mathrm{kJ}}{\\mathrm{mol}}}{\\frac{\\mathrm{kJ}}{\\mathrm{mol}}}}"
+    },
+    {
+      "name": "\\qquad",
+      "code": "a\\qquad\\qquad{b}",
+      "preview": "a\\qquad\\qquad{b}"
+    },
+    {
+      "name": "\\quad",
+      "code": "a\\quad\\quad{b}",
+      "preview": "a\\quad\\quad{b}"
+    },
+    {
+      "name": "\\R",
+      "code": "\\R",
+      "preview": "\\R"
+    },
+    {
+      "name": "\\r",
+      "code": "\\text{\\r{a}}",
+      "preview": "\\text{\\r{a}}"
+    },
+    {
+      "name": "\\raisebox",
+      "code": "h\\raisebox{2pt}{ighe}r",
+      "preview": "h\\raisebox{2pt}{ighe}r"
+    },
+    {
+      "name": "\\rang",
+      "code": "\\langle A\\rang",
+      "preview": "\\langle A\\rang"
+    },
+    {
+      "name": "\\rangle",
+      "code": "\\langle A\\rangle",
+      "preview": "\\langle A\\rangle"
+    },
+    {
+      "name": "\\Rarr",
+      "code": "\\Rarr",
+      "preview": "\\Rarr"
+    },
+    {
+      "name": "\\rArr",
+      "code": "\\rArr",
+      "preview": "\\rArr"
+    },
+    {
+      "name": "\\rarr",
+      "code": "\\rarr",
+      "preview": "\\rarr"
+    },
+    {
+      "name": "\\ratio",
+      "code": "\\ratio",
+      "preview": "\\ratio"
+    },
+    {
+      "name": "\\rBrace",
+      "code": "\\rBrace",
+      "preview": "\\rBrace"
+    },
+    {
+      "name": "\\rbrace",
+      "code": "\\rbrace",
+      "preview": "\\rbrace"
+    },
+    {
+      "name": "\\rbrack",
+      "code": "\\rbrack",
+      "preview": "\\rbrack"
+    },
+    {
+      "name": "\\begin{rcases}",
+      "code": "\\begin{rcases}a&\\text{if }b\\\\c&\\text{if }d\\end{rcases}",
+      "preview": "\\begin{rcases}a&\\text{if }b\\\\c&\\text{if }d\\end{rcases}"
+    },
+    {
+      "name": "\\rceil",
+      "code": "\\rceil",
+      "preview": "\\rceil"
+    },
+    {
+      "name": "\\Re",
+      "code": "\\Re",
+      "preview": "\\Re"
+    },
+    {
+      "name": "\\real",
+      "code": "\\real",
+      "preview": "\\real"
+    },
+    {
+      "name": "\\Reals",
+      "code": "\\Reals",
+      "preview": "\\Reals"
+    },
+    {
+      "name": "\\reals",
+      "code": "\\reals",
+      "preview": "\\reals"
+    },
+    {
+      "name": "\\reflectbox",
+      "code": "\\reflectbox{$x^2$}",
+      "preview": "\\reflectbox{$x^2$}"
+    },
+    {
+      "name": "\\relax",
+      "code": "\\relax",
+      "preview": "\\relax"
+    },
+    {
+      "name": "\\renewcommand",
+      "code": "\\def\\hail{Hi!}\\renewcommand\\hail{\\text{Ahoy!}} \\hail",
+      "preview": "\\def\\hail{Hi!}\\renewcommand\\hail{\\text{Ahoy!}} \\hail"
+    },
+    {
+      "name": "\\restriction",
+      "code": "\\restriction",
+      "preview": "\\restriction"
+    },
+    {
+      "name": "\\rfloor",
+      "code": "\\rfloor",
+      "preview": "\\rfloor"
+    },
+    {
+      "name": "\\rgroup",
+      "code": "\\rgroup",
+      "preview": "\\rgroup"
+    },
+    {
+      "name": "\\rhd",
+      "code": "\\rhd",
+      "preview": "\\rhd"
+    },
+    {
+      "name": "\\Rho",
+      "code": "\\Rho",
+      "preview": "\\Rho"
+    },
+    {
+      "name": "\\rho",
+      "code": "\\rho",
+      "preview": "\\rho"
+    },
+    {
+      "name": "\\right",
+      "code": "\\left.\\dfrac a b\\right)",
+      "preview": "\\left.\\dfrac a b\\right)"
+    },
+    {
+      "name": "\\Rightarrow",
+      "code": "\\Rightarrow",
+      "preview": "\\Rightarrow"
+    },
+    {
+      "name": "\\rightarrow",
+      "code": "\\rightarrow",
+      "preview": "\\rightarrow"
+    },
+    {
+      "name": "\\rightarrowtail",
+      "code": "\\rightarrowtail",
+      "preview": "\\rightarrowtail"
+    },
+    {
+      "name": "\\rightharpoondown",
+      "code": "\\rightharpoondown",
+      "preview": "\\rightharpoondown"
+    },
+    {
+      "name": "\\rightharpoonup",
+      "code": "\\rightharpoonup",
+      "preview": "\\rightharpoonup"
+    },
+    {
+      "name": "\\rightleftarrows",
+      "code": "\\rightleftarrows",
+      "preview": "\\rightleftarrows"
+    },
+    {
+      "name": "\\rightleftharpoons",
+      "code": "\\rightleftharpoons",
+      "preview": "\\rightleftharpoons"
+    },
+    {
+      "name": "\\rightrightarrows",
+      "code": "\\rightrightarrows",
+      "preview": "\\rightrightarrows"
+    },
+    {
+      "name": "\\rightsquigarrow",
+      "code": "\\rightsquigarrow",
+      "preview": "\\rightsquigarrow"
+    },
+    {
+      "name": "\\rightthreetimes",
+      "code": "\\rightthreetimes",
+      "preview": "\\rightthreetimes"
+    },
+    {
+      "name": "\\risingdotseq",
+      "code": "\\risingdotseq",
+      "preview": "\\risingdotseq"
+    },
+    {
+      "name": "\\rlap",
+      "code": "\\rlap{\\,/}{=}",
+      "preview": "\\rlap{\\,/}{=}"
+    },
+    {
+      "name": "\\rm",
+      "code": "\\rm AaBb12",
+      "preview": "\\rm AaBb12"
+    },
+    {
+      "name": "\\rmoustache",
+      "code": "\\rmoustache",
+      "preview": "\\rmoustache"
+    },
+    {
+      "name": "\\rparen",
+      "code": "\\rparen",
+      "preview": "\\rparen"
+    },
+    {
+      "name": "\\rq",
+      "code": "\\rq",
+      "preview": "\\rq"
+    },
+    {
+      "name": "\\rrbracket",
+      "code": "\\rrbracket",
+      "preview": "\\rrbracket"
+    },
+    {
+      "name": "\\Rrightarrow",
+      "code": "\\Rrightarrow",
+      "preview": "\\Rrightarrow"
+    },
+    {
+      "name": "\\Rsh",
+      "code": "\\Rsh",
+      "preview": "\\Rsh"
+    },
+    {
+      "name": "\\rtimes",
+      "code": "\\rtimes",
+      "preview": "\\rtimes"
+    },
+    {
+      "name": "\\rule",
+      "code": "x\\rule[6pt]{2ex}{1ex}x",
+      "preview": "x\\rule[6pt]{2ex}{1ex}x"
+    },
+    {
+      "name": "\\rVert",
+      "code": "\\rVert",
+      "preview": "\\rVert"
+    },
+    {
+      "name": "\\rvert",
+      "code": "\\rvert",
+      "preview": "\\rvert"
+    },
+    {
+      "name": "\\S",
+      "code": "\\text{\\S}",
+      "preview": "\\text{\\S}"
+    },
+    {
+      "name": "\\scriptscriptstyle",
+      "code": "\\scriptscriptstyle \\frac cd",
+      "preview": "\\scriptscriptstyle \\frac cd"
+    },
+    {
+      "name": "\\scriptsize",
+      "code": "\\scriptsize scriptsize",
+      "preview": "\\scriptsize scriptsize"
+    },
+    {
+      "name": "\\scriptstyle",
+      "code": "\\frac ab + {\\scriptstyle \\frac cd}",
+      "preview": "\\frac ab + {\\scriptstyle \\frac cd}"
+    },
+    {
+      "name": "\\sdot",
+      "code": "\\sdot",
+      "preview": "\\sdot"
+    },
+    {
+      "name": "\\searrow",
+      "code": "\\searrow",
+      "preview": "\\searrow"
+    },
+    {
+      "name": "\\sec",
+      "code": "\\sec",
+      "preview": "\\sec"
+    },
+    {
+      "name": "\\sect",
+      "code": "\\text{\\sect}",
+      "preview": "\\text{\\sect}"
+    },
+    {
+      "name": "\\set",
+      "code": "\\set{x\\vert x<5}",
+      "preview": "\\set{x\\vert x<5}"
+    },
+    {
+      "name": "\\Set",
+      "code": "\\Set{ x \\vert x<\\frac 1 2 }",
+      "preview": "\\Set{ x \\vert x<\\frac 1 2 }"
+    },
+    {
+      "name": "\\setminus",
+      "code": "\\setminus",
+      "preview": "\\setminus"
+    },
+    {
+      "name": "\\sf",
+      "code": "\\sf AaBb123",
+      "preview": "\\sf AaBb123"
+    },
+    {
+      "name": "\\sharp",
+      "code": "\\sharp",
+      "preview": "\\sharp"
+    },
+    {
+      "name": "\\shortmid",
+      "code": "\\shortmid",
+      "preview": "\\shortmid"
+    },
+    {
+      "name": "\\shortparallel",
+      "code": "\\shortparallel",
+      "preview": "\\shortparallel"
+    },
+    {
+      "name": "\\Sigma",
+      "code": "\\Sigma",
+      "preview": "\\Sigma"
+    },
+    {
+      "name": "\\sigma",
+      "code": "\\sigma",
+      "preview": "\\sigma"
+    },
+    {
+      "name": "\\sim",
+      "code": "\\sim",
+      "preview": "\\sim"
+    },
+    {
+      "name": "\\simcolon",
+      "code": "\\simcolon",
+      "preview": "\\simcolon"
+    },
+    {
+      "name": "\\simcoloncolon",
+      "code": "\\simcoloncolon",
+      "preview": "\\simcoloncolon"
+    },
+    {
+      "name": "\\simeq",
+      "code": "\\simeq",
+      "preview": "\\simeq"
+    },
+    {
+      "name": "\\sin",
+      "code": "\\sin",
+      "preview": "\\sin"
+    },
+    {
+      "name": "\\sinh",
+      "code": "\\sinh",
+      "preview": "\\sinh"
+    },
+    {
+      "name": "\\sixptsize",
+      "code": "\\sixptsize sixptsize",
+      "preview": "\\sixptsize sixptsize"
+    },
+    {
+      "name": "\\sh",
+      "code": "\\sh",
+      "preview": "\\sh"
+    },
+    {
+      "name": "\\small",
+      "code": "\\small small",
+      "preview": "\\small small"
+    },
+    {
+      "name": "\\smallfrown",
+      "code": "\\smallfrown",
+      "preview": "\\smallfrown"
+    },
+    {
+      "name": "\\smallint",
+      "code": "\\smallint",
+      "preview": "\\smallint"
+    },
+    {
+      "name": "\\begin{smallmatrix}",
+      "code": "\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}",
+      "preview": "\\begin{smallmatrix} a & b \\\\ c & d \\end{smallmatrix}"
+    },
+    {
+      "name": "\\smallsetminus",
+      "code": "\\smallsetminus",
+      "preview": "\\smallsetminus"
+    },
+    {
+      "name": "\\smallsmile",
+      "code": "\\smallsmile",
+      "preview": "\\smallsmile"
+    },
+    {
+      "name": "\\smash",
+      "code": "\\left(x^{\\smash{2}}\\right)",
+      "preview": "\\left(x^{\\smash{2}}\\right)"
+    },
+    {
+      "name": "\\smile",
+      "code": "\\smile",
+      "preview": "\\smile"
+    },
+    {
+      "name": "\\sout",
+      "code": "\\text{\\sout{abc}}",
+      "preview": "\\text{\\sout{abc}}"
+    },
+    {
+      "name": "\\space",
+      "code": "a\\space b",
+      "preview": "a\\space b"
+    },
+    {
+      "name": "\\spades",
+      "code": "\\spades",
+      "preview": "\\spades"
+    },
+    {
+      "name": "\\spadesuit",
+      "code": "\\spadesuit",
+      "preview": "\\spadesuit"
+    },
+    {
+      "name": "\\sphericalangle",
+      "code": "\\sphericalangle",
+      "preview": "\\sphericalangle"
+    },
+    {
+      "name": "\\begin{split}",
+      "code": "\\begin{equation}\\begin{split}a &=b+c\\\\&=e+f\\end{split}\\end{equation}",
+      "preview": "\\begin{equation}\\begin{split}a &=b+c\\\\&=e+f\\end{split}\\end{equation}"
+    },
+    {
+      "name": "\\sqcap",
+      "code": "\\sqcap",
+      "preview": "\\sqcap"
+    },
+    {
+      "name": "\\sqcup",
+      "code": "\\sqcup",
+      "preview": "\\sqcup"
+    },
+    {
+      "name": "\\square",
+      "code": "\\square",
+      "preview": "\\square"
+    },
+    {
+      "name": "\\sqrt",
+      "code": "\\sqrt[3]{x}",
+      "preview": "\\sqrt[3]{x}"
+    },
+    {
+      "name": "\\sqsubset",
+      "code": "\\sqsubset",
+      "preview": "\\sqsubset"
+    },
+    {
+      "name": "\\sqsubseteq",
+      "code": "\\sqsubseteq",
+      "preview": "\\sqsubseteq"
+    },
+    {
+      "name": "\\sqsupset",
+      "code": "\\sqsupset",
+      "preview": "\\sqsupset"
+    },
+    {
+      "name": "\\sqsupseteq",
+      "code": "\\sqsupseteq",
+      "preview": "\\sqsupseteq"
+    },
+    {
+      "name": "\\ss",
+      "code": "\\text{\\ss}",
+      "preview": "\\text{\\ss}"
+    },
+    {
+      "name": "\\stackrel",
+      "code": "\\stackrel{!}{=}",
+      "preview": "\\stackrel{!}{=}"
+    },
+    {
+      "name": "\\star",
+      "code": "\\star",
+      "preview": "\\star"
+    },
+    {
+      "name": "\\sub",
+      "code": "\\sub",
+      "preview": "\\sub"
+    },
+    {
+      "name": "\\sube",
+      "code": "\\sube",
+      "preview": "\\sube"
+    },
+    {
+      "name": "\\Subset",
+      "code": "\\Subset",
+      "preview": "\\Subset"
+    },
+    {
+      "name": "\\subset",
+      "code": "\\subset",
+      "preview": "\\subset"
+    },
+    {
+      "name": "\\subseteq",
+      "code": "\\subseteq",
+      "preview": "\\subseteq"
+    },
+    {
+      "name": "\\subseteqq",
+      "code": "\\subseteqq",
+      "preview": "\\subseteqq"
+    },
+    {
+      "name": "\\subsetneq",
+      "code": "\\subsetneq",
+      "preview": "\\subsetneq"
+    },
+    {
+      "name": "\\subsetneqq",
+      "code": "\\subsetneqq",
+      "preview": "\\subsetneqq"
+    },
+    {
+      "name": "\\substack",
+      "code": "\\sum_{\\substack{0<i<m\\\\0<j<n}}",
+      "preview": "\\sum_{\\substack{0<i<m\\\\0<j<n}}"
+    },
+    {
+      "name": "\\succ",
+      "code": "\\succ",
+      "preview": "\\succ"
+    },
+    {
+      "name": "\\succapprox",
+      "code": "\\succapprox",
+      "preview": "\\succapprox"
+    },
+    {
+      "name": "\\succcurlyeq",
+      "code": "\\succcurlyeq",
+      "preview": "\\succcurlyeq"
+    },
+    {
+      "name": "\\succeq",
+      "code": "\\succeq",
+      "preview": "\\succeq"
+    },
+    {
+      "name": "\\succnapprox",
+      "code": "\\succnapprox",
+      "preview": "\\succnapprox"
+    },
+    {
+      "name": "\\succneqq",
+      "code": "\\succneqq",
+      "preview": "\\succneqq"
+    },
+    {
+      "name": "\\succnsim",
+      "code": "\\succnsim",
+      "preview": "\\succnsim"
+    },
+    {
+      "name": "\\succsim",
+      "code": "\\succsim",
+      "preview": "\\succsim"
+    },
+    {
+      "name": "\\sum",
+      "code": "\\sum",
+      "preview": "\\sum"
+    },
+    {
+      "name": "\\sup",
+      "code": "\\sup",
+      "preview": "\\sup"
+    },
+    {
+      "name": "\\supe",
+      "code": "\\supe",
+      "preview": "\\supe"
+    },
+    {
+      "name": "\\Supset",
+      "code": "\\Supset",
+      "preview": "\\Supset"
+    },
+    {
+      "name": "\\supset",
+      "code": "\\supset",
+      "preview": "\\supset"
+    },
+    {
+      "name": "\\supseteq",
+      "code": "\\supseteq",
+      "preview": "\\supseteq"
+    },
+    {
+      "name": "\\supseteqq",
+      "code": "\\supseteqq",
+      "preview": "\\supseteqq"
+    },
+    {
+      "name": "\\supsetneq",
+      "code": "\\supsetneq",
+      "preview": "\\supsetneq"
+    },
+    {
+      "name": "\\supsetneqq",
+      "code": "\\supsetneqq",
+      "preview": "\\supsetneqq"
+    },
+    {
+      "name": "\\surd",
+      "code": "\\surd",
+      "preview": "\\surd"
+    },
+    {
+      "name": "\\swarrow",
+      "code": "\\swarrow",
+      "preview": "\\swarrow"
+    },
+    {
+      "name": "\\tag",
+      "code": "\\tag{3.1c} a^2+b^2=c^2",
+      "preview": "\\tag{3.1c} a^2+b^2=c^2"
+    },
+    {
+      "name": "\\tag*",
+      "code": "\\tag*{3.1c} a^2+b^2=c^2",
+      "preview": "\\tag*{3.1c} a^2+b^2=c^2"
+    },
+    {
+      "name": "\\tan",
+      "code": "\\tan",
+      "preview": "\\tan"
+    },
+    {
+      "name": "\\tanh",
+      "code": "\\tanh",
+      "preview": "\\tanh"
+    },
+    {
+      "name": "\\Tau",
+      "code": "\\Tau",
+      "preview": "\\Tau"
+    },
+    {
+      "name": "\\tau",
+      "code": "\\tau",
+      "preview": "\\tau"
+    },
+    {
+      "name": "\\tbinom",
+      "code": "\\tbinom n k",
+      "preview": "\\tbinom n k"
+    },
+    {
+      "name": "\\TeX",
+      "code": "\\TeX",
+      "preview": "\\TeX"
+    },
+    {
+      "name": "\\text",
+      "code": "\\text{ yes }\\&\\text{ no }",
+      "preview": "\\text{ yes }\\&\\text{ no }"
+    },
+    {
+      "name": "\\textasciitilde",
+      "code": "\\text{\\textasciitilde}",
+      "preview": "\\text{\\textasciitilde}"
+    },
+    {
+      "name": "\\textasciicircum",
+      "code": "\\text{\\textasciicircum}",
+      "preview": "\\text{\\textasciicircum}"
+    },
+    {
+      "name": "\\textbackslash",
+      "code": "\\text{\\textbackslash}",
+      "preview": "\\text{\\textbackslash}"
+    },
+    {
+      "name": "\\textbar",
+      "code": "\\text{\\textbar}",
+      "preview": "\\text{\\textbar}"
+    },
+    {
+      "name": "\\textbardbl",
+      "code": "\\text{\\textbardbl}",
+      "preview": "\\text{\\textbardbl}"
+    },
+    {
+      "name": "\\textbf",
+      "code": "\\textbf{AaBb123}",
+      "preview": "\\textbf{AaBb123}"
+    },
+    {
+      "name": "\\textbraceleft",
+      "code": "\\text{\\textbraceleft}",
+      "preview": "\\text{\\textbraceleft}"
+    },
+    {
+      "name": "\\textbraceright",
+      "code": "\\text{\\textbraceright}",
+      "preview": "\\text{\\textbraceright}"
+    },
+    {
+      "name": "\\textcircled",
+      "code": "\\text{\\textcircled a}",
+      "preview": "\\text{\\textcircled a}"
+    },
+    {
+      "name": "\\textcolor",
+      "code": "\\textcolor{blue}{F=ma}",
+      "preview": "\\textcolor{blue}{F=ma}"
+    },
+    {
+      "name": "\\textdagger",
+      "code": "\\text{\\textdagger}",
+      "preview": "\\text{\\textdagger}"
+    },
+    {
+      "name": "\\textdaggerdbl",
+      "code": "\\text{\\textdaggerdbl}",
+      "preview": "\\text{\\textdaggerdbl}"
+    },
+    {
+      "name": "\\textdegree",
+      "code": "\\text{\\textdegree}",
+      "preview": "\\text{\\textdegree}"
+    },
+    {
+      "name": "\\textdollar",
+      "code": "\\text{\\textdollar}",
+      "preview": "\\text{\\textdollar}"
+    },
+    {
+      "name": "\\textellipsis",
+      "code": "\\text{\\textellipsis}",
+      "preview": "\\text{\\textellipsis}"
+    },
+    {
+      "name": "\\textemdash",
+      "code": "\\text{\\textemdash}",
+      "preview": "\\text{\\textemdash}"
+    },
+    {
+      "name": "\\textendash",
+      "code": "\\text{\\textendash}",
+      "preview": "\\text{\\textendash}"
+    },
+    {
+      "name": "\\textgreater",
+      "code": "\\text{\\textgreater}",
+      "preview": "\\text{\\textgreater}"
+    },
+    {
+      "name": "\\textit",
+      "code": "\\textit{AaBb}",
+      "preview": "\\textit{AaBb}"
+    },
+    {
+      "name": "\\textless",
+      "code": "\\text{\\textless}",
+      "preview": "\\text{\\textless}"
+    },
+    {
+      "name": "\\textmd",
+      "code": "\\textmd{AaBb123}",
+      "preview": "\\textmd{AaBb123}"
+    },
+    {
+      "name": "\\textnormal",
+      "code": "\\textnormal{AB}",
+      "preview": "\\textnormal{AB}"
+    },
+    {
+      "name": "\\textquotedblleft",
+      "code": "\\text{\\textquotedblleft}",
+      "preview": "\\text{\\textquotedblleft}"
+    },
+    {
+      "name": "\\textquotedblright",
+      "code": "\\text{\\textquotedblright}",
+      "preview": "\\text{\\textquotedblright}"
+    },
+    {
+      "name": "\\textquoteleft",
+      "code": "\\text{\\textquoteleft}",
+      "preview": "\\text{\\textquoteleft}"
+    },
+    {
+      "name": "\\textquoteright",
+      "code": "\\text{\\textquoteright}",
+      "preview": "\\text{\\textquoteright}"
+    },
+    {
+      "name": "\\textregistered",
+      "code": "\\text{\\textregistered}",
+      "preview": "\\text{\\textregistered}"
+    },
+    {
+      "name": "\\textrm",
+      "code": "\\textrm{AaBb123}",
+      "preview": "\\textrm{AaBb123}"
+    },
+    {
+      "name": "\\textsf",
+      "code": "\\textsf{AaBb123}",
+      "preview": "\\textsf{AaBb123}"
+    },
+    {
+      "name": "\\textsterling",
+      "code": "\\text{\\textsterling}",
+      "preview": "\\text{\\textsterling}"
+    },
+    {
+      "name": "\\textstyle",
+      "code": "\\textstyle\\sum_0^n",
+      "preview": "\\textstyle\\sum_0^n"
+    },
+    {
+      "name": "\\texttt",
+      "code": "\\texttt{AaBb123}",
+      "preview": "\\texttt{AaBb123}"
+    },
+    {
+      "name": "\\textunderscore",
+      "code": "\\text{\\textunderscore}",
+      "preview": "\\text{\\textunderscore}"
+    },
+    {
+      "name": "\\textup",
+      "code": "\\textup{AaBb123}",
+      "preview": "\\textup{AaBb123}"
+    },
+    {
+      "name": "\\tfrac",
+      "code": "\\tfrac ab",
+      "preview": "\\tfrac ab"
+    },
+    {
+      "name": "\\tg",
+      "code": "\\tg",
+      "preview": "\\tg"
+    },
+    {
+      "name": "\\th",
+      "code": "\\th",
+      "preview": "\\th"
+    },
+    {
+      "name": "\\therefore",
+      "code": "\\therefore",
+      "preview": "\\therefore"
+    },
+    {
+      "name": "\\Theta",
+      "code": "\\Theta",
+      "preview": "\\Theta"
+    },
+    {
+      "name": "\\theta",
+      "code": "\\theta",
+      "preview": "\\theta"
+    },
+    {
+      "name": "\\thetasym",
+      "code": "\\thetasym",
+      "preview": "\\thetasym"
+    },
+    {
+      "name": "\\thickapprox",
+      "code": "\\thickapprox",
+      "preview": "\\thickapprox"
+    },
+    {
+      "name": "\\thicksim",
+      "code": "\\thicksim",
+      "preview": "\\thicksim"
+    },
+    {
+      "name": "\\thickspace",
+      "code": "a\\thickspace b",
+      "preview": "a\\thickspace b"
+    },
+    {
+      "name": "\\thinspace",
+      "code": "a\\thinspace b",
+      "preview": "a\\thinspace b"
+    },
+    {
+      "name": "\\tilde",
+      "code": "\\tilde M",
+      "preview": "\\tilde M"
+    },
+    {
+      "name": "\\times",
+      "code": "\\times",
+      "preview": "\\times"
+    },
+    {
+      "name": "\\tiny",
+      "code": "\\tiny tiny",
+      "preview": "\\tiny tiny"
+    },
+    {
+      "name": "\\to",
+      "code": "\\to",
+      "preview": "\\to"
+    },
+    {
+      "name": "\\top",
+      "code": "\\top",
+      "preview": "\\top"
+    },
+    {
+      "name": "\\triangle",
+      "code": "\\triangle",
+      "preview": "\\triangle"
+    },
+    {
+      "name": "\\triangledown",
+      "code": "\\triangledown",
+      "preview": "\\triangledown"
+    },
+    {
+      "name": "\\triangleleft",
+      "code": "\\triangleleft",
+      "preview": "\\triangleleft"
+    },
+    {
+      "name": "\\trianglelefteq",
+      "code": "\\trianglelefteq",
+      "preview": "\\trianglelefteq"
+    },
+    {
+      "name": "\\triangleq",
+      "code": "\\triangleq",
+      "preview": "\\triangleq"
+    },
+    {
+      "name": "\\triangleright",
+      "code": "\\triangleright",
+      "preview": "\\triangleright"
+    },
+    {
+      "name": "\\trianglerighteq",
+      "code": "\\trianglerighteq",
+      "preview": "\\trianglerighteq"
+    },
+    {
+      "name": "\\tt",
+      "code": "{\\tt AaBb123}",
+      "preview": "{\\tt AaBb123}"
+    },
+    {
+      "name": "\\twoheadleftarrow",
+      "code": "\\twoheadleftarrow",
+      "preview": "\\twoheadleftarrow"
+    },
+    {
+      "name": "\\twoheadrightarrow",
+      "code": "\\twoheadrightarrow",
+      "preview": "\\twoheadrightarrow"
+    },
+    {
+      "name": "\\u",
+      "code": "\\text{\\u{a}}",
+      "preview": "\\text{\\u{a}}"
+    },
+    {
+      "name": "\\Uarr",
+      "code": "\\Uarr",
+      "preview": "\\Uarr"
+    },
+    {
+      "name": "\\uArr",
+      "code": "\\uArr",
+      "preview": "\\uArr"
+    },
+    {
+      "name": "\\uarr",
+      "code": "\\uarr",
+      "preview": "\\uarr"
+    },
+    {
+      "name": "\\ulcorner",
+      "code": "\\ulcorner",
+      "preview": "\\ulcorner"
+    },
+    {
+      "name": "\\underbar",
+      "code": "\\underbar{X}",
+      "preview": "\\underbar{X}"
+    },
+    {
+      "name": "\\underbrace",
+      "code": "\\underbrace{x+⋯+x}_{n\\text{ times}}",
+      "preview": "\\underbrace{x+⋯+x}_{n\\text{ times}}"
+    },
+    {
+      "name": "\\underbracket",
+      "code": "\\underbracket{x+⋯+x}_{n\\text{ times}}",
+      "preview": "\\underbracket{x+⋯+x}_{n\\text{ times}}"
+    },
+    {
+      "name": "\\undergroup",
+      "code": "\\undergroup{AB}",
+      "preview": "\\undergroup{AB}"
+    },
+    {
+      "name": "\\underleftarrow",
+      "code": "\\underleftarrow{AB}",
+      "preview": "\\underleftarrow{AB}"
+    },
+    {
+      "name": "\\underleftrightarrow",
+      "code": "\\underleftrightarrow{AB}",
+      "preview": "\\underleftrightarrow{AB}"
+    },
+    {
+      "name": "\\underrightarrow",
+      "code": "\\underrightarrow{AB}",
+      "preview": "\\underrightarrow{AB}"
+    },
+    {
+      "name": "\\underline",
+      "code": "\\underline{\\text{a long argument}}",
+      "preview": "\\underline{\\text{a long argument}}"
+    },
+    {
+      "name": "\\underlinesegment",
+      "code": "\\underlinesegment{AB}",
+      "preview": "\\underlinesegment{AB}"
+    },
+    {
+      "name": "\\underset",
+      "code": "\\underset{!}{=}",
+      "preview": "\\underset{!}{=}"
+    },
+    {
+      "name": "\\unlhd",
+      "code": "\\unlhd",
+      "preview": "\\unlhd"
+    },
+    {
+      "name": "\\unrhd",
+      "code": "\\unrhd",
+      "preview": "\\unrhd"
+    },
+    {
+      "name": "\\Uparrow",
+      "code": "\\Uparrow",
+      "preview": "\\Uparrow"
+    },
+    {
+      "name": "\\uparrow",
+      "code": "\\uparrow",
+      "preview": "\\uparrow"
+    },
+    {
+      "name": "\\Updownarrow",
+      "code": "\\Updownarrow",
+      "preview": "\\Updownarrow"
+    },
+    {
+      "name": "\\updownarrow",
+      "code": "\\updownarrow",
+      "preview": "\\updownarrow"
+    },
+    {
+      "name": "\\upharpoonleft",
+      "code": "\\upharpoonleft",
+      "preview": "\\upharpoonleft"
+    },
+    {
+      "name": "\\upharpoonright",
+      "code": "\\upharpoonright",
+      "preview": "\\upharpoonright"
+    },
+    {
+      "name": "\\uplus",
+      "code": "\\uplus",
+      "preview": "\\uplus"
+    },
+    {
+      "name": "\\Upsilon",
+      "code": "\\Upsilon",
+      "preview": "\\Upsilon"
+    },
+    {
+      "name": "\\upsilon",
+      "code": "\\upsilon",
+      "preview": "\\upsilon"
+    },
+    {
+      "name": "\\upuparrows",
+      "code": "\\upuparrows",
+      "preview": "\\upuparrows"
+    },
+    {
+      "name": "\\urcorner",
+      "code": "\\urcorner",
+      "preview": "\\urcorner"
+    },
+    {
+      "name": "\\url",
+      "code": "\\footnotesize\\url{https://katex.org/}",
+      "preview": "\\footnotesize\\url{https://katex.org/}",
+      "disabled": true
+    },
+    {
+      "name": "\\utilde",
+      "code": "\\utilde{AB}",
+      "preview": "\\utilde{AB}"
+    },
+    {
+      "name": "\\v",
+      "code": "\\text{\\v{a}}",
+      "preview": "\\text{\\v{a}}"
+    },
+    {
+      "name": "\\varDelta",
+      "code": "\\varDelta",
+      "preview": "\\varDelta"
+    },
+    {
+      "name": "\\varepsilon",
+      "code": "\\varepsilon",
+      "preview": "\\varepsilon"
+    },
+    {
+      "name": "\\varGamma",
+      "code": "\\varGamma",
+      "preview": "\\varGamma"
+    },
+    {
+      "name": "\\varinjlim",
+      "code": "\\varinjlim",
+      "preview": "\\varinjlim"
+    },
+    {
+      "name": "\\varkappa",
+      "code": "\\varkappa",
+      "preview": "\\varkappa"
+    },
+    {
+      "name": "\\varLambda",
+      "code": "\\varLambda",
+      "preview": "\\varLambda"
+    },
+    {
+      "name": "\\varliminf",
+      "code": "\\varliminf",
+      "preview": "\\varliminf"
+    },
+    {
+      "name": "\\varlimsup",
+      "code": "\\varlimsup",
+      "preview": "\\varlimsup"
+    },
+    {
+      "name": "\\varnothing",
+      "code": "\\varnothing",
+      "preview": "\\varnothing"
+    },
+    {
+      "name": "\\varOmega",
+      "code": "\\varOmega",
+      "preview": "\\varOmega"
+    },
+    {
+      "name": "\\varPhi",
+      "code": "\\varPhi",
+      "preview": "\\varPhi"
+    },
+    {
+      "name": "\\varphi",
+      "code": "\\varphi",
+      "preview": "\\varphi"
+    },
+    {
+      "name": "\\varPi",
+      "code": "\\varPi",
+      "preview": "\\varPi"
+    },
+    {
+      "name": "\\varpi",
+      "code": "\\varpi",
+      "preview": "\\varpi"
+    },
+    {
+      "name": "\\varprojlim",
+      "code": "\\varprojlim",
+      "preview": "\\varprojlim"
+    },
+    {
+      "name": "\\varpropto",
+      "code": "\\varpropto",
+      "preview": "\\varpropto"
+    },
+    {
+      "name": "\\varPsi",
+      "code": "\\varPsi",
+      "preview": "\\varPsi"
+    },
+    {
+      "name": "\\varrho",
+      "code": "\\varrho",
+      "preview": "\\varrho"
+    },
+    {
+      "name": "\\varSigma",
+      "code": "\\varSigma",
+      "preview": "\\varSigma"
+    },
+    {
+      "name": "\\varsigma",
+      "code": "\\varsigma",
+      "preview": "\\varsigma"
+    },
+    {
+      "name": "\\varsubsetneq",
+      "code": "\\varsubsetneq",
+      "preview": "\\varsubsetneq"
+    },
+    {
+      "name": "\\varsubsetneqq",
+      "code": "\\varsubsetneqq",
+      "preview": "\\varsubsetneqq"
+    },
+    {
+      "name": "\\varsupsetneq",
+      "code": "\\varsupsetneq",
+      "preview": "\\varsupsetneq"
+    },
+    {
+      "name": "\\varsupsetneqq",
+      "code": "\\varsupsetneqq",
+      "preview": "\\varsupsetneqq"
+    },
+    {
+      "name": "\\varTheta",
+      "code": "\\varTheta",
+      "preview": "\\varTheta"
+    },
+    {
+      "name": "\\vartheta",
+      "code": "\\vartheta",
+      "preview": "\\vartheta"
+    },
+    {
+      "name": "\\vartriangle",
+      "code": "\\vartriangle",
+      "preview": "\\vartriangle"
+    },
+    {
+      "name": "\\vartriangleleft",
+      "code": "\\vartriangleleft",
+      "preview": "\\vartriangleleft"
+    },
+    {
+      "name": "\\vartriangleright",
+      "code": "\\vartriangleright",
+      "preview": "\\vartriangleright"
+    },
+    {
+      "name": "\\varUpsilon",
+      "code": "\\varUpsilon",
+      "preview": "\\varUpsilon"
+    },
+    {
+      "name": "\\varXi",
+      "code": "\\varXi",
+      "preview": "\\varXi"
+    },
+    {
+      "name": "\\vcentcolon",
+      "code": "\\mathrel{\\vcentcolon =}",
+      "preview": "\\mathrel{\\vcentcolon =}"
+    },
+    {
+      "name": "\\vcenter",
+      "code": "a+\\left(\\vcenter{\\frac{\\frac a b}c}\\right)",
+      "preview": "a+\\left(\\vcenter{\\frac{\\frac a b}c}\\right)"
+    },
+    {
+      "name": "\\Vdash",
+      "code": "\\Vdash",
+      "preview": "\\Vdash"
+    },
+    {
+      "name": "\\vDash",
+      "code": "\\vDash",
+      "preview": "\\vDash"
+    },
+    {
+      "name": "\\vdash",
+      "code": "\\vdash",
+      "preview": "\\vdash"
+    },
+    {
+      "name": "\\vdots",
+      "code": "\\vdots",
+      "preview": "\\vdots"
+    },
+    {
+      "name": "\\vec",
+      "code": "\\vec{F}",
+      "preview": "\\vec{F}"
+    },
+    {
+      "name": "\\vee",
+      "code": "\\vee",
+      "preview": "\\vee"
+    },
+    {
+      "name": "\\veebar",
+      "code": "\\veebar",
+      "preview": "\\veebar"
+    },
+    {
+      "name": "\\verb",
+      "code": "\\verb!\\frac a b!",
+      "preview": "\\verb!\\frac a b!"
+    },
+    {
+      "name": "\\Vert",
+      "code": "\\Vert",
+      "preview": "\\Vert"
+    },
+    {
+      "name": "\\vert",
+      "code": "\\vert",
+      "preview": "\\vert"
+    },
+    {
+      "name": "\\begin{Vmatrix}",
+      "code": "\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}",
+      "preview": "\\begin{Vmatrix}a&b\\\\c&d\\end{Vmatrix}"
+    },
+    {
+      "name": "\\begin{Vmatrix*}",
+      "code": "\\begin{Vmatrix*}[r]0&-1\\\\-1&0\\end{Vmatrix*}",
+      "preview": "\\begin{Vmatrix*}[r]0&-1\\\\-1&0\\end{Vmatrix*}"
+    },
+    {
+      "name": "\\begin{vmatrix}",
+      "code": "\\begin{vmatrix}a&b\\\\c&d\\end{vmatrix}",
+      "preview": "\\begin{vmatrix}a&b\\\\c&d\\end{vmatrix}"
+    },
+    {
+      "name": "\\begin{vmatrix*}",
+      "code": "\\begin{vmatrix*}[r]0&-1\\\\-1&0\\end{vmatrix*}",
+      "preview": "\\begin{vmatrix*}[r]0&-1\\\\-1&0\\end{vmatrix*}"
+    },
+    {
+      "name": "\\vphantom",
+      "code": "\\overline{\\vphantom{M}a}",
+      "preview": "\\overline{\\vphantom{M}a}"
+    },
+    {
+      "name": "\\Vvdash",
+      "code": "\\Vvdash",
+      "preview": "\\Vvdash"
+    },
+    {
+      "name": "\\wedge",
+      "code": "\\wedge",
+      "preview": "\\wedge"
+    },
+    {
+      "name": "\\weierp",
+      "code": "\\weierp",
+      "preview": "\\weierp"
+    },
+    {
+      "name": "\\widecheck",
+      "code": "\\widecheck{AB}",
+      "preview": "\\widecheck{AB}"
+    },
+    {
+      "name": "\\widehat",
+      "code": "\\widehat{AB}",
+      "preview": "\\widehat{AB}"
+    },
+    {
+      "name": "\\widetilde",
+      "code": "\\widetilde{AB}",
+      "preview": "\\widetilde{AB}"
+    },
+    {
+      "name": "\\wp",
+      "code": "\\wp",
+      "preview": "\\wp"
+    },
+    {
+      "name": "\\wr",
+      "code": "\\wr",
+      "preview": "\\wr"
+    },
+    {
+      "name": "\\xcancel",
+      "code": "\\xcancel{ABC}",
+      "preview": "\\xcancel{ABC}"
+    },
+    {
+      "name": "\\xdef",
+      "code": "\\def\\foo{a}\\xdef\\fcopy{\\foo}\\def\\foo{}\\fcopy",
+      "preview": "\\def\\foo{a}\\xdef\\fcopy{\\foo}\\def\\foo{}\\fcopy"
+    },
+    {
+      "name": "\\Xi",
+      "code": "\\Xi",
+      "preview": "\\Xi"
+    },
+    {
+      "name": "\\xi",
+      "code": "\\xi",
+      "preview": "\\xi"
+    },
+    {
+      "name": "\\xhookleftarrow",
+      "code": "\\xhookleftarrow{abc}",
+      "preview": "\\xhookleftarrow{abc}"
+    },
+    {
+      "name": "\\xhookrightarrow",
+      "code": "\\xhookrightarrow{abc}",
+      "preview": "\\xhookrightarrow{abc}"
+    },
+    {
+      "name": "\\xLeftarrow",
+      "code": "\\xLeftarrow{abc}",
+      "preview": "\\xLeftarrow{abc}"
+    },
+    {
+      "name": "\\xleftarrow",
+      "code": "\\xleftarrow{abc}",
+      "preview": "\\xleftarrow{abc}"
+    },
+    {
+      "name": "\\xleftharpoondown",
+      "code": "\\xleftharpoondown{abc}",
+      "preview": "\\xleftharpoondown{abc}"
+    },
+    {
+      "name": "\\xleftharpoonup",
+      "code": "\\xleftharpoonup{abc}",
+      "preview": "\\xleftharpoonup{abc}"
+    },
+    {
+      "name": "\\xLeftrightarrow",
+      "code": "\\xLeftrightarrow{abc}",
+      "preview": "\\xLeftrightarrow{abc}"
+    },
+    {
+      "name": "\\xleftrightarrow",
+      "code": "\\xleftrightarrow{abc}",
+      "preview": "\\xleftrightarrow{abc}"
+    },
+    {
+      "name": "\\xleftrightharpoons",
+      "code": "\\xleftrightharpoons{abc}",
+      "preview": "\\xleftrightharpoons{abc}"
+    },
+    {
+      "name": "\\xlongequal",
+      "code": "\\xlongequal{abc}",
+      "preview": "\\xlongequal{abc}"
+    },
+    {
+      "name": "\\xmapsto",
+      "code": "\\xmapsto{abc}",
+      "preview": "\\xmapsto{abc}"
+    },
+    {
+      "name": "\\xRightarrow",
+      "code": "\\xRightarrow{abc}",
+      "preview": "\\xRightarrow{abc}"
+    },
+    {
+      "name": "\\xrightarrow",
+      "code": "\\xrightarrow{abc}",
+      "preview": "\\xrightarrow{abc}"
+    },
+    {
+      "name": "\\xrightharpoondown",
+      "code": "\\xrightharpoondown{abc}",
+      "preview": "\\xrightharpoondown{abc}"
+    },
+    {
+      "name": "\\xrightharpoonup",
+      "code": "\\xrightharpoonup{abc}",
+      "preview": "\\xrightharpoonup{abc}"
+    },
+    {
+      "name": "\\xrightleftharpoons",
+      "code": "\\xrightleftharpoons{abc}",
+      "preview": "\\xrightleftharpoons{abc}"
+    },
+    {
+      "name": "\\xtofrom",
+      "code": "\\xtofrom{abc}",
+      "preview": "\\xtofrom{abc}"
+    },
+    {
+      "name": "\\xtwoheadleftarrow",
+      "code": "\\xtwoheadleftarrow{abc}",
+      "preview": "\\xtwoheadleftarrow{abc}"
+    },
+    {
+      "name": "\\xtwoheadrightarrow",
+      "code": "\\xtwoheadrightarrow{abc}",
+      "preview": "\\xtwoheadrightarrow{abc}"
+    },
+    {
+      "name": "\\yen",
+      "code": "\\yen",
+      "preview": "\\yen"
+    },
+    {
+      "name": "\\Z",
+      "code": "\\Z",
+      "preview": "\\Z"
+    },
+    {
+      "name": "\\Zeta",
+      "code": "\\Zeta",
+      "preview": "\\Zeta"
+    },
+    {
+      "name": "\\zeta",
+      "code": "\\zeta",
+      "preview": "\\zeta"
+    },
+    {
+      "name": "\\(",
+      "code": "\\text{\\(\\frac a b\\)}",
+      "preview": "\\text{\\(\\frac a b\\)}"
+    }
+  ],
+  "supportedRows": 994
+}

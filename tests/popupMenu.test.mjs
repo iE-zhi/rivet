@@ -31,3 +31,14 @@ test("context menu clamps stale and non-finite anchor coordinates", () => {
     assert.ok(layout.top >= bounds.top && layout.top + Math.min(80, layout.maxHeight) <= bounds.bottom);
   }
 });
+
+/** 输入光标行具有高度；上下展开都避开该行，普通零高度右键锚点保持原行为。 */
+test("completion menus leave the input line visible above and below the caret", () => {
+  const bounds = { left: 8, top: 8, right: 600, bottom: 400 };
+  const below = popupMenuPointLayout({ x: 100, y: 50, height: 24 }, bounds, 200, 120, 280, 4);
+  assert.equal(below.placement, "down");
+  assert.equal(below.top, 78);
+  const above = popupMenuPointLayout({ x: 100, y: 350, height: 24 }, bounds, 200, 120, 280, 4);
+  assert.equal(above.placement, "up");
+  assert.equal(above.top + 120, 346);
+});

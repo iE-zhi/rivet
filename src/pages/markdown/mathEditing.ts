@@ -38,6 +38,7 @@ export const mathEditing = $prose(/** 每个编辑器独立注册交互和监听
     /** 外部点击可能先改变正文选区，因此在捕获阶段保存公式输入。 */
     const pointerDown = (event: PointerEvent) => {
       if (!(event.target instanceof Element)) return;
+      if (event.target.closest(".math-completion-menu")) return;
       if (event.target.closest(".milkdown-latex-inline-edit")) {
         if (event.target.closest("button")) {
           event.preventDefault();
@@ -52,6 +53,8 @@ export const mathEditing = $prose(/** 每个编辑器独立注册交互和监听
     /** Enter 提交；保存快捷键先提交当前输入，再交给应用保存，空输入同样可安全删除。 */
     const keyDown = (event: KeyboardEvent) => {
       if (event.isComposing || !(event.target instanceof Element) || !event.target.closest(".milkdown-latex-inline-edit")) return;
+      // 候选菜单的回车先插入模板，不提前结束公式编辑。
+      if (event.key === "Enter" && event.target.closest('[aria-expanded="true"]')) return;
       const confirm = event.key === "Enter";
       if (!confirm && !((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s")) return;
       if (confirm) { event.preventDefault(); event.stopPropagation(); }

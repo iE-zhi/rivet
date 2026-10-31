@@ -45,8 +45,32 @@ index 69a885d5cae11059c5597d927c061e4bf04052ae..4003de4eba91dabe6558a5e55012080b
      };
      const runByIndex = (index) => {
        const item = groupInfo.value.groups.flatMap((group) => group.items).at(index);
+diff --git a/lib/cjs/feature/latex/index.js b/lib/cjs/feature/latex/index.js
+index 419744c2e0b3b36b5ce59e04ed098fe70d1be5e0..a8f017550faed33905f7ecbc867844214cbb9228 100644
+--- a/lib/cjs/feature/latex/index.js
++++ b/lib/cjs/feature/latex/index.js
+@@ -232,8 +232,10 @@ var __privateAdd = (obj, member, value) => member.has(obj) ? __typeError("Cannot
+ var __privateSet = (obj, member, value, setter) => (__accessCheck(obj, member, "write to private field"), member.set(obj, value), value);
+ var _content, _provider, _dom, _innerView, _updateValue, _app, _onHide, _shouldShow;
+ class LatexInlineTooltip {
++  /** 配置属于当前浮层，附加插件随内层源码视图释放。 */
+   constructor(ctx, view$1, config) {
+     this.ctx = ctx;
++    this.config = config;
+     __privateAdd(this, _content);
+     __privateAdd(this, _provider);
+     __privateAdd(this, _dom);
+@@ -282,6 +284,8 @@ class LatexInlineTooltip {
+               }
+             }),
+             plugins: [
++              // 附加交互在原有按键处理前执行，并随输入框释放。
++              ...(config.inlineEditorPlugins ?? []),
+               keymap.keymap({
+                 "Mod-z": history.undo,
+                 "Mod-Z": history.redo,
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 86cd15af6497fd602333548584315b619951b15b..964fbd67e350145b1bf32fa090c1df30f82a1dfb 100644
+index 86cd15af6497fd602333548584315b619951b15b..cfe0304b7b5e089f87abce6ef145f28d0f032a6a 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
 @@ -2224,6 +2224,7 @@ class GroupBuilder {
@@ -92,6 +116,26 @@ index 86cd15af6497fd602333548584315b619951b15b..964fbd67e350145b1bf32fa090c1df30
      };
      const runByIndex = (index) => {
        const item = groupInfo.value.groups.flatMap((group) => group.items).at(index);
+@@ -3216,8 +3226,10 @@ var __privateAdd$3 = (obj, member, value) => member.has(obj) ? __typeError$3("Ca
+ var __privateSet$3 = (obj, member, value, setter) => (__accessCheck$3(obj, member, "write to private field"), member.set(obj, value), value);
+ var _content$1, _provider, _dom, _innerView, _updateValue, _app$2, _onHide, _shouldShow;
+ class LatexInlineTooltip {
++  /** 配置属于当前浮层，附加插件随内层源码视图释放。 */
+   constructor(ctx, view$1, config) {
+     this.ctx = ctx;
++    this.config = config;
+     __privateAdd$3(this, _content$1);
+     __privateAdd$3(this, _provider);
+     __privateAdd$3(this, _dom);
+@@ -3266,6 +3278,8 @@ class LatexInlineTooltip {
+               }
+             }),
+             plugins: [
++              // 附加交互在原有按键处理前执行，并随输入框释放。
++              ...(config.inlineEditorPlugins ?? []),
+               keymap.keymap({
+                 "Mod-z": history.undo,
+                 "Mod-Z": history.redo,
 diff --git a/lib/esm/feature/block-edit/index.js b/lib/esm/feature/block-edit/index.js
 index e10bae88c03d017f3dfd533c71ed388018e39669..1272a6ffaa32bbe213d27f6eca3b94ef90a75bea 100644
 --- a/lib/esm/feature/block-edit/index.js
@@ -139,8 +183,32 @@ index e10bae88c03d017f3dfd533c71ed388018e39669..1272a6ffaa32bbe213d27f6eca3b94ef
      };
      const runByIndex = (index) => {
        const item = groupInfo.value.groups.flatMap((group) => group.items).at(index);
+diff --git a/lib/esm/feature/latex/index.js b/lib/esm/feature/latex/index.js
+index ff544250d33581260edad7a9c8cd49c2022a7c37..4b9cb78fd59063e35a64e73ba29dd8194cfb12b9 100644
+--- a/lib/esm/feature/latex/index.js
++++ b/lib/esm/feature/latex/index.js
+@@ -230,8 +230,10 @@ var __privateAdd = (obj, member, value) => member.has(obj) ? __typeError("Cannot
+ var __privateSet = (obj, member, value, setter) => (__accessCheck(obj, member, "write to private field"), member.set(obj, value), value);
+ var _content, _provider, _dom, _innerView, _updateValue, _app, _onHide, _shouldShow;
+ class LatexInlineTooltip {
++  /** 配置属于当前浮层，附加插件随内层源码视图释放。 */
+   constructor(ctx, view, config) {
+     this.ctx = ctx;
++    this.config = config;
+     __privateAdd(this, _content);
+     __privateAdd(this, _provider);
+     __privateAdd(this, _dom);
+@@ -280,6 +282,8 @@ class LatexInlineTooltip {
+               }
+             }),
+             plugins: [
++              // 附加交互在原有按键处理前执行，并随输入框释放。
++              ...(config.inlineEditorPlugins ?? []),
+               keymap({
+                 "Mod-z": undo,
+                 "Mod-Z": redo,
 diff --git a/lib/esm/index.js b/lib/esm/index.js
-index dcce7ee48e646d1de951a10399f1e6f77e53426e..e87c57b782e434ffc576ac6c80aa425efc27f559 100644
+index dcce7ee48e646d1de951a10399f1e6f77e53426e..e46d52e5009e67dc7081afaf24e0ec8b64fafefd 100644
 --- a/lib/esm/index.js
 +++ b/lib/esm/index.js
 @@ -2222,6 +2222,7 @@ class GroupBuilder {
@@ -186,6 +254,55 @@ index dcce7ee48e646d1de951a10399f1e6f77e53426e..e87c57b782e434ffc576ac6c80aa425e
      };
      const runByIndex = (index) => {
        const item = groupInfo.value.groups.flatMap((group) => group.items).at(index);
+@@ -3214,8 +3224,10 @@ var __privateAdd$3 = (obj, member, value) => member.has(obj) ? __typeError$3("Ca
+ var __privateSet$3 = (obj, member, value, setter) => (__accessCheck$3(obj, member, "write to private field"), member.set(obj, value), value);
+ var _content$1, _provider, _dom, _innerView, _updateValue, _app$2, _onHide, _shouldShow;
+ class LatexInlineTooltip {
++  /** 配置属于当前浮层，附加插件随内层源码视图释放。 */
+   constructor(ctx, view, config) {
+     this.ctx = ctx;
++    this.config = config;
+     __privateAdd$3(this, _content$1);
+     __privateAdd$3(this, _provider);
+     __privateAdd$3(this, _dom);
+@@ -3264,6 +3276,8 @@ class LatexInlineTooltip {
+               }
+             }),
+             plugins: [
++              // 附加交互在原有按键处理前执行，并随输入框释放。
++              ...(config.inlineEditorPlugins ?? []),
+               keymap$1({
+                 "Mod-z": undo,
+                 "Mod-Z": redo,
+diff --git a/lib/types/feature/latex/index.d.ts b/lib/types/feature/latex/index.d.ts
+index f6eafe187d1aaf1d363ade1888b700f888574ee1..5c3411f4cae21a5afd78c26502be64deaafc0c2f 100644
+--- a/lib/types/feature/latex/index.d.ts
++++ b/lib/types/feature/latex/index.d.ts
+@@ -1,8 +1,11 @@
+ import type { KatexOptions } from 'katex';
++import type { Plugin } from '@milkdown/kit/prose/state';
+ import type { DefineFeature } from '../shared';
+ export interface LatexConfig {
+     katexOptions: KatexOptions;
+     inlineEditConfirm: string;
++    /** 行内公式输入框的附加插件；随输入框创建和销毁。 */
++    inlineEditorPlugins?: readonly Plugin[];
+ }
+ export type LatexFeatureConfig = Partial<LatexConfig>;
+ export declare const latex: DefineFeature<LatexFeatureConfig>;
+diff --git a/lib/types/feature/latex/inline-tooltip/view.d.ts b/lib/types/feature/latex/inline-tooltip/view.d.ts
+index a641fb2fedb5f3f0a496ce4ea0ec6512b0560d2c..fe81854c7566225c4b9d4bd285ebb452b2765988 100644
+--- a/lib/types/feature/latex/inline-tooltip/view.d.ts
++++ b/lib/types/feature/latex/inline-tooltip/view.d.ts
+@@ -6,6 +6,8 @@ import type { LatexConfig } from '..';
+ export declare class LatexInlineTooltip implements PluginView {
+     #private;
+     readonly ctx: Ctx;
++    /** 配置只用于当前浮层及其内层源码视图。 */
++    readonly config: Partial<LatexConfig>;
+     constructor(ctx: Ctx, view: EditorView, config: Partial<LatexConfig>);
+     update: (view: EditorView, prevState?: EditorState) => void;
+     destroy: () => void;
 diff --git a/src/feature/block-edit/menu/component.tsx b/src/feature/block-edit/menu/component.tsx
 index 87fdadc46c7f00ba66a22f97d8b0def7d9b6e5c2..57a21932f3377816488f32a704760810125bf4d2 100644
 --- a/src/feature/block-edit/menu/component.tsx
@@ -239,3 +356,48 @@ index 150aab494d8f0b6103f5404c56fcd62ba7f3e6c6..bb61bdf11fd2320c254becaf17202fd7
          )
  
          return {
+diff --git a/src/feature/latex/index.ts b/src/feature/latex/index.ts
+index 9c3b2958adedbb8fd40a5c38b6ca9281b53a01c7..06ad6f70480b4c6f82afa26eaa6b512d996bd696 100644
+--- a/src/feature/latex/index.ts
++++ b/src/feature/latex/index.ts
+@@ -1,4 +1,5 @@
+ import type { KatexOptions } from 'katex'
++import type { Plugin } from '@milkdown/kit/prose/state'
+ 
+ import { codeBlockConfig } from '@milkdown/kit/component/code-block'
+ import katex from 'katex'
+@@ -23,6 +24,8 @@ import {
+ export interface LatexConfig {
+   katexOptions: KatexOptions
+   inlineEditConfirm: string
++  /** 行内公式输入框的附加插件；随输入框创建和销毁。 */
++  inlineEditorPlugins?: readonly Plugin[]
+ }
+ 
+ export type LatexFeatureConfig = Partial<LatexConfig>
+diff --git a/src/feature/latex/inline-tooltip/view.ts b/src/feature/latex/inline-tooltip/view.ts
+index 52215d5a9d5bf2f0ff5eef88b55cc63f5fbd1d60..59ca8c11cdfc6c6663a8acc7b246e2769d4b4802 100644
+--- a/src/feature/latex/inline-tooltip/view.ts
++++ b/src/feature/latex/inline-tooltip/view.ts
+@@ -22,10 +22,11 @@ export class LatexInlineTooltip implements PluginView {
+   #updateValue: ShallowRef<() => void> = shallowRef(() => {})
+   #app: App
+ 
++  /** 配置属于当前浮层，附加插件随每次内层源码视图创建和释放。 */
+   constructor(
+     readonly ctx: Ctx,
+     view: EditorView,
+-    config: Partial<LatexConfig>
++    readonly config: Partial<LatexConfig>
+   ) {
+     const content = document.createElement('div')
+     content.className = 'milkdown-latex-inline-edit'
+@@ -95,6 +96,8 @@ export class LatexInlineTooltip implements PluginView {
+             },
+           }),
+           plugins: [
++            // 附加交互在原有按键处理前执行，不改变公式提交和历史。
++            ...(this.config.inlineEditorPlugins ?? []),
+             keymap({
+               'Mod-z': undo,
+               'Mod-Z': redo,

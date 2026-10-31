@@ -56,6 +56,8 @@ export interface PopupMenuProps {
   point?: PopupMenuPoint;
   /** 右键菜单在点击外部、Escape 或 Tab 时请求关闭。 */
   onClose?: () => void;
+  /** 补全菜单保留输入框焦点，键盘操作由输入框处理。 */
+  preserveFocus?: boolean;
 }
 
 /**
@@ -73,6 +75,7 @@ export function PopupMenu({
   preferredPlacement,
   point,
   onClose,
+  preserveFocus = false,
 }: PopupMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   /** 当前展开方向及可用高度；由界面线程测量，不持久化。 */
@@ -168,11 +171,12 @@ export function PopupMenu({
     const restoreFocus = () => { if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus({ preventScroll: true }); };
     /** 只枚举可操作菜单项，禁用项不进入方向键循环。 */
     const items = () => Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'));
-    items()[0]?.focus({ preventScroll: true });
+    if (!preserveFocus) items()[0]?.focus({ preventScroll: true });
     /** 点击当前菜单以外时关闭，不阻止随后目标获得焦点。 */
     const outside = (event: PointerEvent) => { if (!menu.contains(event.target as Node)) onClose?.(); };
     /** 方向键循环、首尾跳转与关闭行为集中在共享菜单中。 */
     const keydown = (event: KeyboardEvent) => {
+      if (preserveFocus) return;
       if (event.key === "Escape" || event.key === "Tab") {
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); }
         restoreFocus();
@@ -193,18 +197,20 @@ export function PopupMenu({
     return /** 释放菜单监听；焦点仍留在已关闭菜单内时返回原控件。 */ () => {
       document.removeEventListener("pointerdown", outside, true);
       document.removeEventListener("keydown", keydown, true);
-      if (menu.contains(document.activeElement)) restoreFocus();
+      if (!preserveFocus && menu.contains(document.activeElement)) restoreFocus();
     };
-  }, [open, point, onClose]);
+  }, [open, point, onClose, preserveFocus]);
 
   if (!open) return null;
 
   const style: CSSProperties = {
+    // 内部共用滚动视口可读取真实可用高度，避免再出现第二层滚动。
+    "--rivet-menu-available-height": `${availableHeight}px`,
     maxHeight: availableHeight,
     ...(width === undefined ? {} : { width }),
     ...(minWidth === undefined ? {} : { minWidth }),
     ...(point ? pointStyle : {}),
-  };
+  } as CSSProperties;
 
   return (
     <div

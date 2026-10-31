@@ -6,6 +6,8 @@ export interface PopupMenuPoint {
   x: number;
   /** 相对视口上边缘的位置。 */
   y: number;
+  /** 输入补全锚点的高度；普通右键点默认为 0，向上展开时不遮挡输入行。 */
+  height?: number;
 }
 
 /** 视口与所有裁剪祖先的交集，已经扣除边缘留白。 */
@@ -20,7 +22,8 @@ export interface PopupMenuBounds {
 export function popupMenuPointLayout(point: PopupMenuPoint, bounds: PopupMenuBounds, width: number, height: number, maxHeight: number, gap: number) {
   const x = Math.max(bounds.left, Math.min(bounds.right, Number.isFinite(point.x) ? point.x : bounds.left));
   const y = Math.max(bounds.top, Math.min(bounds.bottom, Number.isFinite(point.y) ? point.y : bounds.top));
-  const below = Math.max(0, bounds.bottom - y - gap);
+  const heightOfAnchor = Number.isFinite(point.height) ? Math.max(0, point.height ?? 0) : 0;
+  const below = Math.max(0, bounds.bottom - y - heightOfAnchor - gap);
   const above = Math.max(0, y - bounds.top - gap);
   const desiredHeight = Math.min(maxHeight, height);
   const placement = below >= desiredHeight || below >= above ? "down" : "up";
@@ -30,7 +33,7 @@ export function popupMenuPointLayout(point: PopupMenuPoint, bounds: PopupMenuBou
   return {
     placement: placement as "down" | "up",
     left: Math.max(bounds.left, Math.min(x, bounds.right - actualWidth)),
-    top: placement === "down" ? y + gap : y - gap - Math.min(height, availableHeight),
+    top: placement === "down" ? y + heightOfAnchor + gap : y - gap - Math.min(height, availableHeight),
     maxHeight: availableHeight,
     maxWidth: availableWidth,
   };
