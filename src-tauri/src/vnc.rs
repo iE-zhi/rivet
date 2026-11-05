@@ -12,7 +12,7 @@ use tauri::{ipc::Response, State};
 use tokio::{
     net::TcpStream,
     sync::{mpsc, watch, Notify},
-    time::{interval, timeout, MissedTickBehavior},
+    time::{sleep_until, timeout, Instant as TokioInstant},
 };
 use vnc::{PixelFormat, VncClient, VncConnector, VncEncoding, VncEvent, X11Event};
 use zeroize::{Zeroize, Zeroizing};
@@ -23,9 +23,7 @@ pub(crate) const MAX_VNC_SESSIONS: usize = 4;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// 每次输入写入或协议关闭最多等待两秒，避免队列拥塞阻塞清理。
 const INPUT_TIMEOUT: Duration = Duration::from_secs(2);
-/// 协议事件每两毫秒检查一次，不占用线程忙等。
-const EVENT_INTERVAL: Duration = Duration::from_millis(2);
-/// 活跃桌面最多每四毫秒请求一次变化图像，允许高刷新率显示并限制请求积压。
+/// 相邻刷新请求至少间隔四毫秒，限制立即返回空更新的服务端造成的请求速率。
 const REFRESH_INTERVAL: Duration = Duration::from_millis(4);
 /// 静止画面的取帧请求最多等待二百五十毫秒，期间由图像或状态变化唤醒。
 const FRAME_WAIT_TIMEOUT: Duration = Duration::from_millis(250);
@@ -35,10 +33,6 @@ const VIEW_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
 const INPUT_QUEUE_CAPACITY: usize = 128;
 /// 每个批次最多六十四个键鼠事件，限制单次 IPC 的处理开销。
 const MAX_INPUT_BATCH: usize = 64;
-/// 每轮最多处理一千零二十四个区域事件，避免 4K 的分块图像被低批量上限阻塞。
-const MAX_EVENTS_PER_TICK: usize = 1024;
-/// 单轮图像处理最多占用两毫秒，随后交还调度以处理输入、取消及其他会话。
-const EVENT_BATCH_BUDGET: Duration = Duration::from_millis(2);
 /// 单条可见协议错误最多一千零二十四个字符，不保留无限远端文本。
 const MAX_ERROR_CHARS: usize = 1024;
 
@@ -98,12 +92,101 @@ pub(crate) enum VncInput {
 
 /// 同一会话共享的桌面与消费者活动时间；只通过短时互斥锁访问，不跨 await 持锁。
 struct SharedFrame {
-    /// 最近像素、状态与错误，独立于前端标签生命周期。
+    /// 解码中的像素、未送达的脏区及会话状态；读帧只在完整更新之间复制像素。
     frame: VncFrame,
+    /// 已收到更新头且还未收到结束事件；此时不允许 IPC 读取工作缓冲。
+    updating: bool,
+    /// 首次图像或服务端尺寸更新到达后才允许发布画面。
+    frame_ready: bool,
+    /// 本批更新改变了尺寸，结束时安排一次新尺寸的整屏请求。
+    resized_in_update: bool,
+    /// 下次成功取帧需要整屏；等待超时只返回状态，保留此标志。
+    full_requested: bool,
+    /// 每个会话最多一个读帧请求；结束或取消时由其守卫移除。
+    poll: Option<FramePoll>,
     /// 前端最近取帧的单调时间，用来停止隐藏页面的刷新请求。
     last_poll: Instant,
-    /// 图像或状态变化通知；只保留一个唤醒许可，不累积图像消息或跨 await 持锁。
+    /// 快照已就绪或会话进入终态时唤醒在途请求，只保留一个唤醒许可。
     changed: Arc<Notify>,
+    /// 视图恢复取帧时唤醒协议任务；隐藏时不需要定时检查。
+    view_resumed: Arc<Notify>,
+}
+
+/// 已注册的 IPC 读取；更新结束时可以预先准备一份快照，防止下一批覆盖可读窗口。
+enum FramePoll {
+    /// 已登记，等待完整更新或超时。
+    Waiting,
+    /// 在途请求独占的响应，至多一份桌面像素。
+    Ready(Vec<u8>),
+    /// 响应已取走，守卫移除槽位前禁止再次准备快照。
+    Delivered,
+}
+
+/// 持有当前会话唯一读帧槽位；跨异步等待借用会话，未持有互斥锁。
+struct FramePollGuard<'a> {
+    /// 槽位所属的会话锁，析构时只短暂持锁回收槽位。
+    shared: &'a Mutex<SharedFrame>,
+}
+
+impl Drop for FramePollGuard<'_> {
+    /// 释放在途槽位；若取消时已有未取走的像素，下一次读帧会重建整屏。
+    fn drop(&mut self) {
+        match self.shared.lock() {
+            Ok(mut current) => {
+                if matches!(current.poll.take(), Some(FramePoll::Ready(_))) {
+                    current.full_requested = true;
+                }
+            }
+            Err(_) => eprintln!("VNC 图像状态锁已损坏"),
+        }
+    }
+}
+
+impl SharedFrame {
+    /// 在会话锁内记录取帧时间；从闲置恢复时唤醒协议任务以补发待处理的刷新。
+    fn mark_polled(&mut self) {
+        let now = Instant::now();
+        if now.duration_since(self.last_poll) >= VIEW_IDLE_TIMEOUT {
+            self.view_resumed.notify_one();
+        }
+        self.last_poll = now;
+    }
+
+    /// 只有完整画面且有脏区或整屏需求时，才允许复制工作缓冲。
+    fn can_snapshot(&self) -> bool {
+        !self.updating && self.frame_ready && (self.full_requested || self.frame.has_changes())
+    }
+
+    /// 调用方已确认 `can_snapshot`；复制并消费脏区及本次整屏需求。
+    fn take_snapshot(&mut self) -> Vec<u8> {
+        self.frame
+            .snapshot(std::mem::take(&mut self.full_requested))
+    }
+
+    /// 提交完整更新。有等待者时在释放会话锁前保存一份快照，下一批可以立即解码。
+    fn finish_update(&mut self) {
+        self.updating = false;
+        if self.can_snapshot() && matches!(self.poll, Some(FramePoll::Waiting)) {
+            self.poll = Some(FramePoll::Ready(self.take_snapshot()));
+            self.changed.notify_one();
+        }
+    }
+
+    /// 取走等待者独占的快照。终态优先，尚无快照时在超时后返回状态包。
+    ///
+    /// # 参数
+    /// - `timed_out`：true 表示已到等待上限；false 时尚无快照返回 None。
+    fn poll_response(&mut self, timed_out: bool) -> Option<Vec<u8>> {
+        let poll = self.poll.as_mut()?;
+        let bytes = match poll {
+            _ if self.frame.state >= 2 => self.frame.status_packet(),
+            FramePoll::Ready(bytes) => std::mem::take(bytes),
+            FramePoll::Waiting if timed_out => self.frame.status_packet(),
+            _ => return None,
+        };
+        *poll = FramePoll::Delivered;
+        Some(bytes)
+    }
 }
 
 /// 注册表拥有的会话句柄；Drop 关闭取消通道，后台任务随后关闭协议客户端。
@@ -211,8 +294,14 @@ impl VncService {
         }
         let shared = Arc::new(Mutex::new(SharedFrame {
             frame: VncFrame::default(),
+            updating: false,
+            frame_ready: false,
+            resized_in_update: false,
+            full_requested: false,
+            poll: None,
             last_poll: Instant::now(),
             changed: Arc::new(Notify::new()),
+            view_resumed: Arc::new(Notify::new()),
         }));
         let (input, receiver) = mpsc::channel(INPUT_QUEUE_CAPACITY);
         let (cancel, cancelled) = watch::channel(());
@@ -230,53 +319,43 @@ impl VncService {
         Ok(())
     }
 
-    /// 读取并消费最新脏区域；二进制响应由 Tauri 直接交给前端，不累积帧队列。
-    ///
-    /// # 参数
-    /// - `session_id`：待读取的有效会话 ID。
-    /// - `full`：true 返回完整桌面，false 只返回自上次读取以来的变化。
-    ///
-    /// # Errors
-    /// 会话不存在或锁损坏时返回错误；调用方停止取帧并显示失败状态。
-    pub(crate) fn snapshot(&self, session_id: &str, full: bool) -> Result<Vec<u8>, String> {
-        let shared = {
-            let sessions = self.sessions.lock().map_err(|_| "VNC 会话锁已损坏")?;
-            Arc::clone(&sessions.get(session_id).ok_or("VNC 会话不存在")?.shared)
-        };
-        // 图像复制只持有本会话的锁，不占用全局注册表锁。
-        let mut shared = shared.lock().map_err(|_| "VNC 图像锁已损坏")?;
-        shared.last_poll = Instant::now();
-        Ok(shared.frame.snapshot(full))
-    }
-
-    /// 等到变化区域、终态或有限超时后返回快照；等待时释放所有锁，不排队保存旧帧。
+    /// 等待整批画面、终态或超时。每个会话只允许一个在途请求，等待时不持锁。
     ///
     /// # 参数
     /// - `session_id`：目标会话 ID，仅用于查询已有句柄。
-    /// - `full`：true 立即返回完整桌面；false 在已连接且无变化时等待通知。
+    /// - `full`：true 请求重建整屏；若本次只返回状态，整屏需求留到下一次成功取帧。
     ///
     /// # Errors
-    /// 会话不存在或锁损坏时返回错误；取消等待不消费区域，允许后续请求重试。
+    /// 会话不存在、已有取帧或锁损坏时返回错误。取消后丢弃的快照由下次整屏恢复。
     pub(crate) async fn next_frame(&self, session_id: &str, full: bool) -> Result<Vec<u8>, String> {
-        if full {
-            return self.snapshot(session_id, true);
-        }
         let shared = {
             let sessions = self.sessions.lock().map_err(|_| "VNC 会话锁已损坏")?;
             Arc::clone(&sessions.get(session_id).ok_or("VNC 会话不存在")?.shared)
         };
-        // notify_one 会保留一个许可，检查区域到开始等待之间发生的更新不会丢失。
+        // 先登记等待者，再释放锁；更新结束与开始等待之间的通知由 Notify 保留。
         let changed = {
             let mut current = shared.lock().map_err(|_| "VNC 图像锁已损坏")?;
-            current.last_poll = Instant::now();
+            if current.poll.is_some() {
+                return Err("VNC 会话已有取帧请求".into());
+            }
+            current.mark_polled();
+            if current.frame.state >= 2 {
+                return Ok(current.frame.status_packet());
+            }
+            current.full_requested |= full;
+            if current.can_snapshot() {
+                return Ok(current.take_snapshot());
+            }
+            current.poll = Some(FramePoll::Waiting);
             Arc::clone(&current.changed)
         };
+        let _slot = FramePollGuard { shared: &shared };
         let wait = async {
             loop {
                 {
                     let mut current = shared.lock().map_err(|_| "VNC 图像锁已损坏")?;
-                    if current.frame.has_changes() || current.frame.state != 1 {
-                        return Ok(current.frame.snapshot(false));
+                    if let Some(bytes) = current.poll_response(false) {
+                        return Ok(bytes);
                     }
                 }
                 changed.notified().await;
@@ -286,7 +365,10 @@ impl VncService {
             Ok(result) => result,
             Err(_) => {
                 let mut current = shared.lock().map_err(|_| "VNC 图像锁已损坏")?;
-                Ok(current.frame.snapshot(false))
+                // 与更新结束同时到达时先取已准备的响应，否则只返回状态。
+                current
+                    .poll_response(true)
+                    .ok_or_else(|| "VNC 取帧槽位已结束".into())
             }
         }
     }
@@ -367,7 +449,7 @@ pub(crate) fn open_vnc_session(
     service.open(request)
 }
 
-/// 返回当前会话的二进制变化区域；静止画面异步等待通知，最长二百五十毫秒。
+/// 返回当前会话已完成的二进制变化区域；等待最长二百五十毫秒，超时可只返回状态。
 ///
 /// # 参数
 /// - `service`：应用拥有的 VNC 注册表。
@@ -508,10 +590,13 @@ async fn connect(request: &mut VncOpenRequest) -> Result<VncClient, String> {
         .set_auth_method(async move { Ok(engine_password) })
         .set_pixel_format(PixelFormat::rgba())
         .allow_shared(true)
+        // 优先使用无损 Tight；未发送 JPEG 质量扩展，服务端可选 ZRLE 或 Raw。
+        .add_encoding(VncEncoding::Tight)
         .add_encoding(VncEncoding::Zrle)
         .add_encoding(VncEncoding::CopyRect)
         .add_encoding(VncEncoding::Raw)
         .add_encoding(VncEncoding::DesktopSizePseudo)
+        .add_encoding(VncEncoding::LastRectPseudo)
         .build()
         .map_err(|error| error.to_string())?
         .try_start()
@@ -536,11 +621,11 @@ async fn run_session(
 ) {
     let connected = tokio::select! {
         biased;
-        _ = cancelled.changed() => return,
-        result = timeout(CONNECT_TIMEOUT, connect(&mut request)) => result.map_err(|_| "VNC 连接超时".to_string()).and_then(|result| result),
+        _ = cancelled.changed() => None,
+        result = timeout(CONNECT_TIMEOUT, connect(&mut request)) => Some(result.map_err(|_| "VNC 连接超时".to_string()).and_then(|result| result)),
     };
     let result = match connected {
-        Ok(client) => {
+        Some(Ok(client)) => {
             let result = tokio::select! {
                 biased;
                 _ = cancelled.changed() => Ok(()),
@@ -559,7 +644,8 @@ async fn run_session(
                 (Ok(()), _) => Err("关闭 VNC 协议任务失败".into()),
             }
         }
-        Err(error) => Err(error),
+        Some(Err(error)) => Err(error),
+        None => Ok(()),
     };
     match shared.lock() {
         Ok(mut current) => {
@@ -576,10 +662,10 @@ async fn run_session(
     };
 }
 
-/// 顺序消费有界输入和协议事件，只维护最新像素；隐藏视图停止主动请求变化。
+/// 在更新头到达后安排下次请求，在更新结束时提交画面。隐藏视图暂停新请求。
 ///
 /// # 参数
-/// - `client`：已连接的协议引擎，函数不接管关闭职责。
+/// - `client`：已连接的协议引擎；取消读取会释放引擎锁，调用方负责关闭。
 /// - `shared`：当前会话桌面和前端活动时间，锁仅保护同步像素操作。
 /// - `input`：当前任务唯一输入接收端，关闭后正常结束。
 ///
@@ -587,21 +673,36 @@ async fn run_session(
 /// 远端断开、解码失败、像素越界或输入超时终止会话；调用方负责关闭引擎。
 async fn drive(
     client: &VncClient,
-    shared: &Arc<Mutex<SharedFrame>>,
+    shared: &Mutex<SharedFrame>,
     input: &mut mpsc::Receiver<Vec<VncInput>>,
 ) -> Result<(), String> {
-    {
+    let view_resumed = {
         let mut current = shared.lock().map_err(|_| "VNC 图像锁已损坏")?;
         current.frame.state = 1;
-        current.changed.notify_one();
-    }
-    let mut tick = interval(EVENT_INTERVAL);
-    tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
-    let mut last_refresh = Instant::now() - REFRESH_INTERVAL;
-    // 协议引擎已请求首张完整桌面；收到像素后才补充增量请求，静止时等待远端响应。
-    let mut refresh_pending = true;
+        Arc::clone(&current.view_resumed)
+    };
+    let mut next_refresh = TokioInstant::now();
+    // 初始整屏由协议引擎请求。后续每批更新头触发一次增量请求，尺寸变化可要求整屏。
+    let mut refresh = None;
     loop {
+        let can_refresh = refresh.is_some()
+            && shared
+                .lock()
+                .map_err(|_| "VNC 图像锁已损坏")?
+                .last_poll
+                .elapsed()
+                < VIEW_IDLE_TIMEOUT;
+        if can_refresh && TokioInstant::now() >= next_refresh {
+            if let Some(request) = refresh.take() {
+                timeout(INPUT_TIMEOUT, client.input(request))
+                    .await
+                    .map_err(|_| "VNC 图像请求超时")?
+                    .map_err(|error| error.to_string())?;
+                next_refresh = TokioInstant::now() + REFRESH_INTERVAL;
+            }
+        }
         tokio::select! {
+            // 输入分支一旦选中，等待 recv_event 的 Future 已释放引擎内部的锁。
             batch = input.recv() => {
                 let Some(batch) = batch else { return Ok(()); };
                 for event in batch {
@@ -612,34 +713,69 @@ async fn drive(
                     timeout(INPUT_TIMEOUT, client.input(event)).await.map_err(|_| "VNC 输入超时")?.map_err(|error| error.to_string())?;
                 }
             }
-            _ = tick.tick() => {
-                let started = Instant::now();
-                for _ in 0..MAX_EVENTS_PER_TICK {
-                    let Some(event) = client.poll_event().await.map_err(|error| format!("VNC 连接已结束：{error}"))? else { break; };
-                    let mut current = shared.lock().map_err(|_| "VNC 图像锁已损坏")?;
-                    match event {
-                        VncEvent::SetResolution(screen) => current.frame.resize(screen.width, screen.height)?,
-                        VncEvent::RawImage(rect, data) => { current.frame.draw(rect, &data)?; refresh_pending = false; }
-                        VncEvent::Copy(destination, source) => { current.frame.copy(destination, source)?; refresh_pending = false; }
-                        VncEvent::Error(error) => return Err(format!("VNC 协议错误：{error}")),
-                        // 未协商 Tight/JPEG、光标或扩展剪贴板；不将远端文本写入系统剪贴板。
-                        VncEvent::JpegImage(_, _) => return Err("服务端发送了未协商的 JPEG 编码".into()),
-                        _ => {}
+            event = client.recv_event() => {
+                let event = event.map_err(|error| format!("VNC 连接已结束：{error}"))?;
+                if let Some(request) = apply_frame_event(shared, event)? {
+                    // 尺寸变化的整屏请求优先于尚未发出的增量请求。
+                    if !matches!(refresh, Some(X11Event::FullRefresh)) {
+                        refresh = Some(request);
                     }
-                    if current.frame.has_changes() {
-                        current.changed.notify_one();
-                    }
-                    if started.elapsed() >= EVENT_BATCH_BUDGET {
-                        break;
-                    }
-                }
-                let active = shared.lock().map_err(|_| "VNC 图像锁已损坏")?.last_poll.elapsed() < VIEW_IDLE_TIMEOUT;
-                if active && !refresh_pending && last_refresh.elapsed() >= REFRESH_INTERVAL {
-                    timeout(INPUT_TIMEOUT, client.input(X11Event::Refresh)).await.map_err(|_| "VNC 图像请求超时")?.map_err(|error| error.to_string())?;
-                    refresh_pending = true;
-                    last_refresh = Instant::now();
                 }
             }
+            _ = sleep_until(next_refresh), if can_refresh && refresh.is_some() => {}
+            // 取帧在锁内记录活动时间后唤醒这里；下一轮重新判断是否可以刷新。
+            _ = view_resumed.notified() => {}
         }
+    }
+}
+
+/// 处理更新边界或矩形；仅开始和尺寸变化可安排下一次刷新。
+///
+/// # 参数
+/// - `shared`：本会话桌面；锁在返回前释放，不等待网络。
+/// - `event`：引擎移交的已解码事件，原始像素在写入后释放。
+///
+/// # Errors
+/// 锁损坏、非法图像或协议错误结束会话；非法矩形不改变桌面。
+fn apply_frame_event(
+    shared: &Mutex<SharedFrame>,
+    event: VncEvent,
+) -> Result<Option<X11Event>, String> {
+    let mut current = shared.lock().map_err(|_| "VNC 图像锁已损坏")?;
+    match event {
+        VncEvent::FramebufferUpdateStart => {
+            current.updating = true;
+            Ok(Some(X11Event::Refresh))
+        }
+        VncEvent::FramebufferUpdateEnd => {
+            current.finish_update();
+            // 更新头已按旧尺寸预取，实际改尺寸后需再请求一次新尺寸完整图像。
+            Ok(std::mem::take(&mut current.resized_in_update).then_some(X11Event::FullRefresh))
+        }
+        VncEvent::SetResolution(screen) => {
+            let resized =
+                (current.frame.width, current.frame.height) != (screen.width, screen.height);
+            current.frame.resize(screen.width, screen.height)?;
+            // 握手只分配缓冲；首批像素到达前不向前端发送占位黑屏。
+            if current.updating && resized {
+                current.resized_in_update = true;
+                current.frame_ready = true;
+            }
+            Ok(None)
+        }
+        VncEvent::RawImage(rect, data) => {
+            current.frame.draw(rect, &data)?;
+            current.frame_ready = true;
+            Ok(None)
+        }
+        VncEvent::Copy(destination, source) => {
+            current.frame.copy(destination, source)?;
+            current.frame_ready = true;
+            Ok(None)
+        }
+        VncEvent::Error(error) => Err(format!("VNC 协议错误：{error}")),
+        VncEvent::JpegImage(_, _) => Err("服务端发送了未协商的 JPEG 编码".into()),
+        // 光标和剪贴板扩展未协商；不修改本机光标或剪贴板。
+        _ => Ok(None),
     }
 }

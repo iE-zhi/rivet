@@ -16,6 +16,8 @@ const MULTI_RECT_FORMAT: u8 = 1;
 const RECT_HEADER_BYTES: usize = 8;
 /// 每个像素使用红、绿、蓝和不透明度四个字节。
 const PIXEL_BYTES: usize = 4;
+/// 按本机字节序构造的掩码，仅把 RGBA 的最后一字节设为不透明。
+const OPAQUE_ALPHA: u32 = u32::from_ne_bytes([0, 0, 0, u8::MAX]);
 
 /// 会话内最新桌面；由服务层互斥锁保护，快照只消费脏区，不丢弃像素。
 #[derive(Default)]
@@ -139,7 +141,17 @@ impl VncFrame {
         !self.dirty.is_empty()
     }
 
-    /// 写入协议引擎解码的 RGBA 区域，并将未使用的 alpha 字节设为不透明。
+    /// 返回无尺寸、无像素的状态包。错误附带消息，前端保留上一批画面的尺寸和像素。
+    pub(crate) fn status_packet(&self) -> Vec<u8> {
+        let mut bytes = vec![0; FRAME_HEADER_BYTES];
+        bytes[12] = self.state;
+        if self.state == 3 {
+            bytes.extend_from_slice(self.error.as_bytes());
+        }
+        bytes
+    }
+
+    /// 单次遍历写入解码后的 RGBA，同时将协议填充字节设为不透明。
     ///
     /// # 参数
     /// - `rect`：远端变化区域，必须完全位于当前桌面内。
@@ -153,14 +165,19 @@ impl VncFrame {
         if data.len() != row_bytes * usize::from(rect.height) {
             return Err("VNC 像素长度无效".into());
         }
-        for row in 0..usize::from(rect.height) {
-            let start = ((usize::from(rect.y) + row) * usize::from(self.width)
-                + usize::from(rect.x))
-                * PIXEL_BYTES;
-            let target = &mut self.pixels[start..start + row_bytes];
-            target.copy_from_slice(&data[row * row_bytes..(row + 1) * row_bytes]);
-            for pixel in target.as_chunks_mut::<PIXEL_BYTES>().0 {
-                pixel[3] = u8::MAX;
+        let stride = usize::from(self.width) * PIXEL_BYTES;
+        let start = usize::from(rect.y) * stride;
+        let rows = &mut self.pixels[start..start + usize::from(rect.height) * stride];
+        if row_bytes == stride {
+            // 全宽区域可一次处理连续像素，常见于 Raw 全屏和整行更新。
+            write_opaque_pixels(rows, data);
+        } else {
+            let left = usize::from(rect.x) * PIXEL_BYTES;
+            for (target, source) in rows
+                .chunks_exact_mut(stride)
+                .zip(data.chunks_exact(row_bytes))
+            {
+                write_opaque_pixels(&mut target[left..left + row_bytes], source);
             }
         }
         self.mark_dirty(rect);
@@ -206,14 +223,12 @@ impl VncFrame {
     /// # 参数
     /// - `full`：true 返回完整当前桌面，供新挂载或恢复显示的消费者重建 Canvas。
     pub(crate) fn snapshot(&mut self, full: bool) -> Vec<u8> {
-        let mut bytes = vec![0; FRAME_HEADER_BYTES];
-        bytes[0..2].copy_from_slice(&self.width.to_le_bytes());
-        bytes[2..4].copy_from_slice(&self.height.to_le_bytes());
-        bytes[12] = self.state;
+        let mut bytes = self.status_packet();
         if self.state == 3 {
-            bytes.extend_from_slice(self.error.as_bytes());
             return bytes;
         }
+        bytes[0..2].copy_from_slice(&self.width.to_le_bytes());
+        bytes[2..4].copy_from_slice(&self.height.to_le_bytes());
         if full && self.width > 0 && self.height > 0 {
             self.dirty.clear();
             self.dirty.push(Rect {
@@ -269,5 +284,18 @@ impl VncFrame {
         }
         self.dirty.clear();
         bytes
+    }
+}
+
+/// 不分配内存，顺序写入已校验像素，保持 RGB 并用 255 替换协议填充字节。
+///
+/// # 参数
+/// - `target`：当前桌面的独占可写区域，字节数与 `source` 一致且为四的倍数。
+/// - `source`：解码器的只读 RGBA 字节，本函数不保留借用。
+fn write_opaque_pixels(target: &mut [u8], source: &[u8]) {
+    let (target, _) = target.as_chunks_mut::<PIXEL_BYTES>();
+    let (source, _) = source.as_chunks::<PIXEL_BYTES>();
+    for (pixel, &source) in target.iter_mut().zip(source) {
+        *pixel = (u32::from_ne_bytes(source) | OPAQUE_ALPHA).to_ne_bytes();
     }
 }

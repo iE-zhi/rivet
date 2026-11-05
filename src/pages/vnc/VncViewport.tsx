@@ -72,6 +72,8 @@ export default function VncViewport({
   const inputs = useRef<{ event: VncInput; move: boolean }[]>([]);
   const sending = useRef(false);
   const animation = useRef<number | null>(null);
+  /** 当前事件循环内只安排一次键、按钮或滚轮批次，避免为每个按下/释放单独发 IPC。 */
+  const urgentInput = useRef(false);
   const mounted = useRef(true);
   const failed = useRef(false);
   /** 当前桌面的串行取帧调度器，暂停不销毁在途请求。 */
@@ -96,7 +98,7 @@ export default function VncViewport({
   /** 顺序发送队列，等待期间允许积累有限的新输入；失败后停止发送并断开。 */
   const flush = useCallback(async () => {
     animation.current = null;
-    if (sending.current || failed.current) return;
+    if (!mounted.current || sending.current || failed.current) return;
     sending.current = true;
     try {
       while (inputs.current.length && !failed.current) {
@@ -112,7 +114,7 @@ export default function VncViewport({
     }
   }, [sessionId, fail]);
 
-  /** 接收有限输入；连续鼠标移动合并为最新位置，按钮变化和按键保持原顺序。 */
+  /** event 保持输入顺序；move 允许合并连续移动，按键、按钮和滚轮在当前事件循环发送。 */
   const enqueue = useCallback(
     (event: VncInput, move = false) => {
       if (readOnly || failed.current) return;
@@ -136,10 +138,20 @@ export default function VncViewport({
         );
         return;
       }
-      if (animation.current === null && !sending.current)
-        animation.current = requestAnimationFrame(() => {
+      if (sending.current || urgentInput.current) return;
+      if (!move) {
+        if (animation.current !== null) cancelAnimationFrame(animation.current);
+        animation.current = null;
+        urgentInput.current = true;
+        queueMicrotask(/** 同一事件循环产生的按下与释放作为一个有序批次发送。 */ () => {
+          urgentInput.current = false;
           void flush();
         });
+      } else if (animation.current === null) {
+        animation.current = requestAnimationFrame(/** 纯移动只在绘制时钟发送最后位置。 */ () => {
+          void flush();
+        });
+      }
     },
     [readOnly, fail, flush, zh],
   );

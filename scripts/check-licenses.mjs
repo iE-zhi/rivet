@@ -161,7 +161,7 @@ function collectCargoLicenses() {
   if (result.error || result.status !== 0) throw new Error([result.stderr, result.error?.message, "cargo metadata 失败"].filter(Boolean).join("\n"));
   const metadata = JSON.parse(result.stdout);
   return metadata.packages.flatMap((pkg) => {
-    if (pkg.source === null) return [];
+    if (pkg.id === metadata.resolve?.root) return [];
     const packageId = `${pkg.name}@${pkg.version}`;
     if (!pkg.license || !hasApprovedLicense(packageId, pkg.license)) return [`${packageId}: ${pkg.license ?? "missing license"}`];
     return [];

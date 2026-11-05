@@ -2,6 +2,9 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { VncConnection } from "./model";
 
+/** 每个会话最后一个已登记的读取；跨视图重挂载串行，响应后释放条目。 */
+const frameRequests = new Map<string, Promise<ArrayBuffer>>();
+
 /** 有序的键鼠输入批次；最大长度与后端保持一致。 */
 export type VncInput =
   | { kind: "key"; key: number; down: boolean }
@@ -36,12 +39,21 @@ export async function closeSession(sessionId: string): Promise<void> {
   if (isTauri()) await invoke("close_vnc_session", { sessionId });
 }
 
-/** sessionId 指定已有会话；full 立即重建完整桌面，否则等待最新区域，最长 250ms。 */
-export function pollFrame(
+/** sessionId 指定已有会话；full 请求完整桌面，后端可在 250ms 后先返回状态。 */
+export async function pollFrame(
   sessionId: string,
   full = false,
 ): Promise<ArrayBuffer> {
-  return invoke("vnc_poll_frame", { sessionId, full });
+  /** 旧视图的读取结束后再发 IPC，新视图始终拥有自己的响应。 */
+  const read = () => invoke<ArrayBuffer>("vnc_poll_frame", { sessionId, full });
+  const previous = frameRequests.get(sessionId);
+  const request = previous ? previous.then(read, read) : read();
+  frameRequests.set(sessionId, request);
+  try {
+    return await request;
+  } finally {
+    if (frameRequests.get(sessionId) === request) frameRequests.delete(sessionId);
+  }
 }
 
 /** 顺序发送已限流的键鼠事件，队列满或只读时由后端拒绝。 */

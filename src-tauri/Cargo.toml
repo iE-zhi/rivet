@@ -32,8 +32,8 @@ tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync", "time", "fs"] }
 tempfile = "3"
-# VNC 客户端协议引擎；固定已审查的 MIT/Apache-2.0 版本。
-vnc-rs = "=0.6.0"
+# VNC 协议引擎的 0.6.0 副本，向画面调度器报告 RFB 更新边界。
+vnc-rs = { version = "=0.6.0", path = "vendor/vnc-rs" }
 # Apple 屏幕共享认证的协议算法；复用现有依赖图中的固定版本。
 aes = { version = "=0.9.3", features = ["zeroize"] }
 crypto-bigint = { version = "=0.7.5", features = ["alloc", "zeroize"] }

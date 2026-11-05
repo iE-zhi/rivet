@@ -394,7 +394,10 @@ async fn handshake(stream: &mut TcpStream, password: bool, reject: bool) -> bool
     true
 }
 
-/// 读取客户端设置消息到首次完整刷新；stream 只连接假服务器，不接触真实桌面。
+/// 校验客户端的编码优先级及首次完整刷新，消息不符或断开时使测试失败。
+///
+/// # 参数
+/// - `stream`：假服务端独占的 socket，读取到首个完整刷新为止。
 async fn wait_for_refresh(stream: &mut TcpStream) {
     loop {
         match stream.read_u8().await.unwrap() {
@@ -405,8 +408,12 @@ async fn wait_for_refresh(stream: &mut TcpStream) {
             2 => {
                 stream.read_u8().await.unwrap();
                 let count = stream.read_u16().await.unwrap();
-                let mut encodings = vec![0; usize::from(count) * 4];
-                stream.read_exact(&mut encodings).await.unwrap();
+                // Tight 无损优先，同时协商 ZRLE、CopyRect、Raw、DesktopSize 和 LastRect。
+                let expected = [7, 16, 1, 0, -223, -224];
+                assert_eq!(usize::from(count), expected.len());
+                for encoding in expected {
+                    assert_eq!(stream.read_i32().await.unwrap(), encoding);
+                }
             }
             3 => {
                 let mut rest = [0; 9];
@@ -419,11 +426,17 @@ async fn wait_for_refresh(stream: &mut TcpStream) {
     }
 }
 
-/// 等到指定会话状态出现，或三秒超时；每轮读取真实快照，间隔仅用于让出调度。
+/// 读取真实快照直到预期状态；三秒超时使测试失败。
+///
+/// # 参数
+/// - `service`：测试独占的会话注册表。
+/// - `id`：刚注册的测试会话 ID。
+/// - `state`：预期的二进制会话状态码。
 async fn wait_state(service: &VncService, id: &str, state: u8) -> Vec<u8> {
+    // service、id 和 state 借给限时任务，结果包含首次匹配状态的快照。
     timeout(TEST_TIMEOUT, async {
         loop {
-            let frame = service.snapshot(id, false).unwrap();
+            let frame = service.next_frame(id, false).await.unwrap();
             if frame[12] == state {
                 return frame;
             }
@@ -477,8 +490,8 @@ async fn loopback_desktop_renders_pixels_sends_keys_and_closes_socket() {
     timeout(TEST_TIMEOUT, pixels_ready).await.unwrap().unwrap();
     let frame = timeout(TEST_TIMEOUT, async {
         loop {
-            let frame = service.snapshot("desktop", false).unwrap();
-            // 初始尺寸事件会先产生黑色完整帧；只有目标像素到达才完成验收。
+            let frame = service.next_frame("desktop", false).await.unwrap();
+            // 只有完整更新才携带像素；超时状态包由下一次请求继续等待。
             if frame.get(FRAME_HEADER_BYTES) == Some(&21) {
                 break frame;
             }
@@ -501,7 +514,7 @@ async fn loopback_desktop_renders_pixels_sends_keys_and_closes_socket() {
     service.close("desktop").unwrap();
     service.close("desktop").unwrap();
     timeout(TEST_TIMEOUT, server).await.unwrap().unwrap();
-    assert!(service.snapshot("desktop", false).is_err());
+    assert!(service.next_frame("desktop", false).await.is_err());
 }
 
 /// 服务端同时提供无认证和密码时必须选择密码；拒绝结果使会话进入错误而不发送 ClientInit。
@@ -705,24 +718,34 @@ fn dirty_regions_merge_transitively_and_bound_fragmentation() {
     }
 }
 
-/// 假服务器只按通知发送两次 Raw 更新；验证无重复完整刷新、等待不丢通知、取消及关闭唤醒。
+/// 假服务器按通知发送 Tight 和 Raw 更新；验证无损解码、LastRect、增量等待及关闭唤醒。
 #[tokio::test]
 async fn frame_wait_wakes_for_pixels_and_close_without_duplicate_full_requests() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let (requested, request_ready) = tokio::sync::oneshot::channel();
     let (advance, advanced) = tokio::sync::oneshot::channel();
+    // listener、requested、advanced 移交假服务器；测试末尾等待 socket 关闭与任务退出。
     let server = tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.unwrap();
         stream.set_nodelay(true).unwrap();
         assert!(handshake(&mut stream, false, false).await);
         wait_for_refresh(&mut stream).await;
-        stream.write_all(&[0, 0, 0, 1]).await.unwrap();
+        // 未预先计算矩形数量的更新以 LastRect 结束，Tight 载荷为 2×2 RGB 的 zlib 同步块。
+        stream.write_all(&[0, 0, 255, 255]).await.unwrap();
         for value in [0, 0, 2, 2] {
             stream.write_u16(value).await.unwrap();
         }
-        stream.write_u32(0).await.unwrap();
-        stream.write_all(&[21, 22, 23, 0].repeat(4)).await.unwrap();
+        stream.write_i32(7).await.unwrap();
+        stream
+            .write_all(&[
+                0, 20, 120, 156, 18, 21, 19, 151, 87, 80, 212, 212, 210, 54, 54, 49, 5, 0, 0, 0,
+                255, 255,
+            ])
+            .await
+            .unwrap();
+        stream.write_u64(0).await.unwrap();
+        stream.write_i32(-224).await.unwrap();
         assert_eq!(stream.read_u8().await.unwrap(), 3);
         let mut refresh = [0; 9];
         stream.read_exact(&mut refresh).await.unwrap();
@@ -744,8 +767,14 @@ async fn frame_wait_wakes_for_pixels_and_close_without_duplicate_full_requests()
     let service = Arc::new(VncService::default());
     service.open(request("wait-frames", port)).unwrap();
     timeout(TEST_TIMEOUT, request_ready).await.unwrap().unwrap();
-    let first = service.snapshot("wait-frames", true).unwrap();
-    assert_eq!(first[FRAME_HEADER_BYTES], 21);
+    let first = timeout(TEST_TIMEOUT, service.next_frame("wait-frames", true))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        &first[FRAME_HEADER_BYTES..],
+        &[21, 22, 23, 255, 31, 32, 33, 255, 41, 42, 43, 255, 51, 52, 53, 255]
+    );
 
     // 远端不更新时，有限等待最终返回空区域快照，不挂起 IPC 或重复请求整屏。
     let idle = timeout(TEST_TIMEOUT, service.next_frame("wait-frames", false))
@@ -777,5 +806,133 @@ async fn frame_wait_wakes_for_pixels_and_close_without_duplicate_full_requests()
     service.close("wait-frames").unwrap();
     let closed = timeout(TEST_TIMEOUT, closing).await.unwrap().unwrap();
     assert_eq!(closed[12], 2);
+    timeout(TEST_TIMEOUT, server).await.unwrap().unwrap();
+}
+
+/// 模拟一个更新分四块送达。首块前预取下一批，前三块保持不可见，空更新仍继续请求。
+#[tokio::test]
+async fn fragmented_update_prefetches_on_header_and_publishes_only_once_complete() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (partial_sent, partial_ready) = tokio::sync::oneshot::channel();
+    let (finish, finish_ready) = tokio::sync::oneshot::channel();
+    let (empty_followed, empty_ready) = tokio::sync::oneshot::channel();
+    // listener 和三个同步通道移交服务端；客户端释放末块后等到 EOF 收束任务。
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        stream.set_nodelay(true).unwrap();
+        assert!(handshake(&mut stream, false, false).await);
+        wait_for_refresh(&mut stream).await;
+        // 一批共四个 Raw 像素；收到下一批请求之前只发送更新头。
+        stream.write_all(&[0, 0, 0, 4]).await.unwrap();
+        let mut packet = [0; 10];
+        stream.read_exact(&mut packet).await.unwrap();
+        assert_eq!(packet, [3, 1, 0, 0, 0, 0, 0, 2, 0, 2]);
+        let rectangles = [
+            [0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 2, 0, 0, 0],
+            [0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0],
+            [0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 4, 0, 0, 0],
+        ];
+        for rectangle in &rectangles[..3] {
+            stream.write_all(rectangle).await.unwrap();
+        }
+        partial_sent.send(()).unwrap();
+        // 末块被挡住期间，键盘应及时通过，前面的矩形不能产生额外刷新。
+        let mut key = [0; 8];
+        stream.read_exact(&mut key).await.unwrap();
+        assert_eq!(key, [4, 1, 0, 0, 0, 0, 0, 97]);
+        finish_ready.await.unwrap();
+        stream.write_all(&rectangles[3]).await.unwrap();
+        // 紧跟下一批空更新，先前等待的快照仍应可取，空更新也必须继续流水线。
+        stream.write_all(&[0, 0, 0, 0]).await.unwrap();
+        stream.read_exact(&mut packet).await.unwrap();
+        assert_eq!(packet, [3, 1, 0, 0, 0, 0, 0, 2, 0, 2]);
+        empty_followed.send(()).unwrap();
+        let mut remaining = Vec::new();
+        stream.read_to_end(&mut remaining).await.unwrap();
+        assert!(remaining.is_empty());
+    });
+    let service = VncService::default();
+    service.open(request("fragmented", port)).unwrap();
+    timeout(TEST_TIMEOUT, partial_ready).await.unwrap().unwrap();
+    let status = service.next_frame("fragmented", true).await.unwrap();
+    assert_eq!(status.len(), FRAME_HEADER_BYTES);
+    assert_eq!(&status[..4], &[0; 4]);
+    assert_eq!(status[12], 1);
+    service
+        .send(
+            "fragmented",
+            vec![VncInput::Key {
+                key: 97,
+                down: true,
+            }],
+        )
+        .unwrap();
+    let mut waiting = Box::pin(service.next_frame("fragmented", false));
+    // cx 仅轮询一次以登记等待者，服务端此时还不能发送末块。
+    assert!(poll_fn(|cx| Poll::Ready(waiting.as_mut().poll(cx)))
+        .await
+        .is_pending());
+    assert!(service.next_frame("fragmented", true).await.is_err());
+    finish.send(()).unwrap();
+    // 先等到服务端确认下一批请求已发出，再消费已经提交的快照。
+    timeout(TEST_TIMEOUT, empty_ready).await.unwrap().unwrap();
+    let frame = timeout(TEST_TIMEOUT, waiting).await.unwrap().unwrap();
+    assert_eq!(&frame[..4], &[2, 0, 2, 0]);
+    assert_eq!(
+        &frame[FRAME_HEADER_BYTES..],
+        &[1, 0, 0, 255, 2, 0, 0, 255, 3, 0, 0, 255, 4, 0, 0, 255]
+    );
+    let idle = service.next_frame("fragmented", false).await.unwrap();
+    assert_eq!(idle.len(), FRAME_HEADER_BYTES);
+    service.close("fragmented").unwrap();
+    timeout(TEST_TIMEOUT, server).await.unwrap().unwrap();
+}
+
+/// 假服务器只回复尺寸变更，断言客户端用新尺寸请求完整像素，不因没有收到 Raw 区域而停住。
+#[tokio::test]
+async fn resize_only_update_requests_full_pixels_at_the_new_size() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (requested, request_ready) = tokio::sync::oneshot::channel();
+    // listener、requested 移交假服务器；测试确认收到刷新后关闭会话并等待 socket EOF。
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        assert!(handshake(&mut stream, false, false).await);
+        wait_for_refresh(&mut stream).await;
+        stream.write_all(&[0, 0, 0, 1]).await.unwrap();
+        let mut request = [0; 10];
+        stream.read_exact(&mut request).await.unwrap();
+        assert_eq!(request, [3, 1, 0, 0, 0, 0, 0, 2, 0, 2]);
+        // 单矩形更新只携带 3×2 尺寸和 DesktopSize 编码（-223），没有像素载荷。
+        stream
+            .write_all(&[0, 0, 0, 0, 0, 3, 0, 2, 255, 255, 255, 33])
+            .await
+            .unwrap();
+        stream.read_exact(&mut request).await.unwrap();
+        assert_eq!(request, [3, 0, 0, 0, 0, 0, 0, 3, 0, 2]);
+        requested.send(()).unwrap();
+        let mut remaining = Vec::new();
+        stream.read_to_end(&mut remaining).await.unwrap();
+        assert!(remaining.is_empty());
+    });
+    let service = VncService::default();
+    service.open(request("resize-only", port)).unwrap();
+    // 以真实取帧唤醒为同步点；忽略握手时的初始 2×2 缓冲。
+    timeout(TEST_TIMEOUT, async {
+        loop {
+            let frame = service.next_frame("resize-only", false).await.unwrap();
+            assert!(frame[12] < 2);
+            if frame[..4] == [3, 0, 2, 0] {
+                break;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    // 测试先确认服务端收到请求，再关闭，避免取消尚未发送的刷新。
+    timeout(TEST_TIMEOUT, request_ready).await.unwrap().unwrap();
+    service.close("resize-only").unwrap();
     timeout(TEST_TIMEOUT, server).await.unwrap().unwrap();
 }
