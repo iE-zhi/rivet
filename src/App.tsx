@@ -16,7 +16,17 @@ import { DEFAULT_LINUX_XAUTH_PATH, deserializeX11ServerAddress, deserializeXauth
 import { readTerminalActivityBarScrollbarHidden, TERMINAL_ACTIVITY_BAR_SCROLLBAR_HIDDEN_STORAGE_KEY } from "./preferences/terminalSettings";
 import { readSshKeepaliveSettings, SSH_KEEPALIVE_STORAGE_KEY, serializeSshKeepaliveSettings } from "./preferences/sshKeepalive";
 
-const TerminalPage = lazy(() => import("./pages/TerminalPage"));
+/** 首次加载终端页面时等待内置西文字体，避免 xterm 用备用字体测量字符单元格。 */
+const TerminalPage = lazy(async () => {
+  const [page] = await Promise.all([
+    import("./pages/TerminalPage"),
+    // xterm 使用 W 测量字符尺寸，只需加载包含它的字体子集，字号由终端设置决定。
+    document.fonts.load('1em "JetBrains Mono Variable"', "W").catch(/** 字体资源失败时记录错误，终端继续使用备用字体。 */ (error: unknown) => {
+      console.warn("终端内置字体加载失败", error);
+    }),
+  ]);
+  return page;
+});
 /** VNC 页面首次访问时加载，连接与桌面状态由其独立模块持有。 */
 const VncPage = lazy(() => import("./pages/VncPage"));
 /** Markdown 编辑器首次访问时加载，离开导航仍保留文档和草稿。 */
