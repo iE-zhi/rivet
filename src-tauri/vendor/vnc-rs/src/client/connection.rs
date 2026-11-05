@@ -197,6 +197,10 @@ impl VncInner {
         })
     }
 
+    /// 将输入转换成网络消息，关闭或非法剪贴板载荷返回错误。
+    ///
+    /// # 参数
+    /// - `event`：调用方移交的输入或剪贴板消息；刷新使用当前原子桌面尺寸。
     fn input_message(&self, event: X11Event) -> Result<ClientMsg, VncError> {
         if self.closed {
             Err(VncError::ClientNotRunning)
@@ -229,7 +233,18 @@ impl VncInner {
                     if text.len() > crate::limits::MAX_TEXT {
                         return Err(VncError::InvalidImageData);
                     }
-                    ClientMsg::ClientCutText(text)
+                    let latin1 = text
+                        .chars()
+                        .map(|character| u8::try_from(u32::from(character)))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|_| VncError::General("VNC clipboard requires Latin-1".into()))?;
+                    ClientMsg::ClientCutText(latin1)
+                }
+                X11Event::ExtendedClipboard(bytes) => {
+                    if !(4..=crate::clipboard::MAX_PACKET_BYTES).contains(&bytes.len()) {
+                        return Err(VncError::General("Invalid VNC clipboard length".into()));
+                    }
+                    ClientMsg::ExtendedClipboard(bytes)
                 }
             };
             Ok(msg)
@@ -506,7 +521,11 @@ where
     // main decoding loop
     loop {
         let server_msg = ServerMsg::read(stream).await?;
-        trace!("Server message got: {:?}", server_msg);
+        // 剪贴板可能包含密码等秘密，跟踪日志只记录消息类型。
+        trace!(
+            "VNC server message: {:?}",
+            std::mem::discriminant(&server_msg)
+        );
         match server_msg {
             ServerMsg::FramebufferUpdate(rect_num) => {
                 output_func(VncEvent::FramebufferUpdateStart).await?;
@@ -595,6 +614,9 @@ where
                         VncEncoding::LastRectPseudo => {
                             break;
                         }
+                        VncEncoding::ExtendedClipboardPseudo => {
+                            return Err(VncError::InvalidImageData)
+                        }
                     }
                 }
                 for update in updates.into_updates() {
@@ -614,6 +636,12 @@ where
             ServerMsg::ServerCutText(text) => {
                 output_func(VncEvent::Text(text)).await?;
             }
+            ServerMsg::ExtendedClipboard(bytes)
+                if encodings.contains(&VncEncoding::ExtendedClipboardPseudo) =>
+            {
+                output_func(VncEvent::ExtendedClipboard(bytes)).await?;
+            }
+            ServerMsg::ExtendedClipboard(_) => return Err(VncError::WrongServerMessage),
         }
     }
 }

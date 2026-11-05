@@ -208,6 +208,7 @@
 //! dual licensed as above, without any additional terms or conditions.
 
 pub mod client;
+pub mod clipboard;
 mod codec;
 pub mod config;
 mod desktop;

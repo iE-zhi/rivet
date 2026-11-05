@@ -22,6 +22,8 @@ mod vnc;
 mod vnc_apple_auth;
 #[path = "../src/vnc_frame.rs"]
 mod vnc_frame;
+#[path = "../src/vnc_system_clipboard.rs"]
+mod vnc_system_clipboard;
 #[path = "../src/vnc_transport.rs"]
 mod vnc_transport;
 #[path = "../src/x11.rs"]

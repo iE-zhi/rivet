@@ -8,6 +8,7 @@ const frameRequests = new Map<string, Promise<ArrayBuffer>>();
 /** 有序的键鼠输入批次；最大长度与后端保持一致。 */
 export type VncInput =
   | { kind: "key"; key: number; down: boolean }
+  | { kind: "paste"; key: number }
   | { kind: "pointer"; x: number; y: number; buttons: number };
 
 /** 启动可取消的直连会话；浏览器预览明确拒绝网络连接。 */
@@ -62,6 +63,11 @@ export function sendInput(
   events: VncInput[],
 ): Promise<void> {
   return invoke("vnc_send_input", { sessionId, events });
+}
+
+/** 更新键盘焦点所属会话，IPC 只传会话标识和焦点状态。 */
+export function setClipboardFocus(sessionId: string, focused: boolean): Promise<void> {
+  return invoke("vnc_set_clipboard_focus", { sessionId, focused });
 }
 
 /** 读取本连接的加密密码；浏览器预览返回空值供填写，不模拟已保存凭据。 */

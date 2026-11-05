@@ -15,6 +15,8 @@
 - GPL-3.0：Hao 代码块顶栏样式及复制、折叠图标，已适配 Milkdown，附 `licenses/GPL-3.0-Hao.txt`；[样式源码](https://github.com/chengzhongxue/halo-theme-hao/blob/main/templates/assets/libs/prism/code.css)、[图标源码](https://github.com/chengzhongxue/halo-theme-hao/blob/main/templates/assets/icon/iconfont.svg)。
 
 - MIT：`vnc-rs@0.6.0`，更新边界补丁及源码见 `src-tauri/vendor/vnc-rs`，随安装包附带 `licenses/MIT-vnc-rs.txt`。
+- MIT：`arboard@3.6.1`，附 `licenses/MIT-arboard.txt`；[源码](https://github.com/1Password/arboard/tree/v3.6.1)。
+- BSL-1.0：`clipboard-win@5.4.3`、`error-code@3.4.0`，附 `licenses/BSL-1.0.txt`；[许可](https://www.boost.org/LICENSE_1_0.txt)。
 - Unlicense：`async_io_stream@0.3.3`（VNC 间接依赖）。对应源码：[crates.io async_io_stream 0.3.3](https://crates.io/crates/async_io_stream/0.3.3)。
 
 - MPL-2.0：`option-ext@0.2.0`；随安装包附带 `licenses/MPL-2.0.txt`。对应源码：[crates.io option-ext 0.2.0](https://crates.io/crates/option-ext/0.2.0)。

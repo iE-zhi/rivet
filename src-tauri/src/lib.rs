@@ -22,6 +22,7 @@ mod terminal_serial;
 mod vnc;
 mod vnc_apple_auth;
 mod vnc_frame;
+mod vnc_system_clipboard;
 mod vnc_transport;
 #[cfg(windows)]
 mod windows_icon;
@@ -55,6 +56,7 @@ pub fn run() -> tauri::Result<()> {
             vnc::open_vnc_session,
             vnc::vnc_poll_frame,
             vnc::vnc_send_input,
+            vnc::vnc_set_clipboard_focus,
             vnc::close_vnc_session,
             vnc::load_vnc_password,
             vnc::save_vnc_password,

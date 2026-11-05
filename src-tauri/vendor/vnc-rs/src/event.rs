@@ -88,6 +88,8 @@ pub enum VncEvent {
     /// According to [RFC6143](https://www.rfc-editor.org/rfc/rfc6143.html#section-7.6.4)
     ///
     Text(String),
+    /// 扩展剪贴板的有界二进制载荷，包含标志和可选数据。
+    ExtendedClipboard(Vec<u8>),
     /// If any unexpected error happens in the async process routines
     /// This event will propagate the error to the current context
     Error(String),
@@ -156,4 +158,6 @@ pub enum X11Event {
     /// Only Latin-1 character set is allowed
     ///
     CopyText(String),
+    /// 发送已编码的扩展剪贴板载荷，使用负的 RFB 长度字段。
+    ExtendedClipboard(Vec<u8>),
 }

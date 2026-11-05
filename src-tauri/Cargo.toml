@@ -17,6 +17,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# VNC 在正常复制粘贴时读写系统纯文本剪贴板，复用跨平台实现。
+arboard = { version = "=3.6.1", default-features = false, features = ["wayland-data-control"] }
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

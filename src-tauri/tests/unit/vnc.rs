@@ -408,8 +408,8 @@ async fn wait_for_refresh(stream: &mut TcpStream) {
             2 => {
                 stream.read_u8().await.unwrap();
                 let count = stream.read_u16().await.unwrap();
-                // Tight 无损优先，同时协商 ZRLE、CopyRect、Raw、DesktopSize 和 LastRect。
-                let expected = [7, 16, 1, 0, -223, -224];
+                // 图像编码顺序固定，扩展剪贴板仅用于协商 UTF-8 文本。
+                let expected = [7, 16, 1, 0, -223, -224, 0xc0a1_e5ce_u32 as i32];
                 assert_eq!(usize::from(count), expected.len());
                 for encoding in expected {
                     assert_eq!(stream.read_i32().await.unwrap(), encoding);
@@ -447,7 +447,7 @@ async fn wait_state(service: &VncService, id: &str, state: u8) -> Vec<u8> {
     .expect("session should reach expected state")
 }
 
-/// 完成真实 TCP/RFB 初始化、2×2 RGBA 更新和键盘传输；关闭句柄后服务端必须收到 EOF。
+/// 回环桌面可绘制 2×2 像素。没有系统焦点时，粘贴只转发按键，关闭后服务端收到 EOF。
 #[tokio::test]
 async fn loopback_desktop_renders_pixels_sends_keys_and_closes_socket() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -475,7 +475,10 @@ async fn loopback_desktop_renders_pixels_sends_keys_and_closes_socket() {
                     let mut rest = [0; 7];
                     stream.read_exact(&mut rest).await.unwrap();
                     assert_eq!(rest[0], 1);
-                    assert_eq!(u32::from_be_bytes(rest[3..7].try_into().unwrap()), 97);
+                    assert_eq!(
+                        u32::from_be_bytes(rest[3..7].try_into().unwrap()),
+                        u32::from(b'v')
+                    );
                     break;
                 }
                 other => panic!("unexpected message {other}"),
@@ -504,9 +507,8 @@ async fn loopback_desktop_renders_pixels_sends_keys_and_closes_socket() {
     service
         .send(
             "desktop",
-            vec![VncInput::Key {
-                key: 97,
-                down: true,
+            vec![VncInput::Paste {
+                key: u32::from(b'v'),
             }],
         )
         .unwrap();
@@ -515,6 +517,148 @@ async fn loopback_desktop_renders_pixels_sends_keys_and_closes_socket() {
     service.close("desktop").unwrap();
     timeout(TEST_TIMEOUT, server).await.unwrap().unwrap();
     assert!(service.next_frame("desktop", false).await.is_err());
+}
+
+/// 验证真实扩展消息的通知、UTF-8/CRLF 解码和发送授权；所有剪贴板数据均为测试常量。
+#[test]
+fn extended_clipboard_requests_text_and_only_provides_locally_offered_content() {
+    use vnc::{clipboard::Clipboard, X11Event};
+    let mut clipboard = Clipboard::default();
+    // CAPS 支持纯文本、Request、Peek、Notify 和 Provide，禁止主动直接发送内容。
+    let caps = [0x1f, 0, 0, 1, 0, 0, 0, 0];
+    let reply = clipboard.receive(&caps).unwrap().reply;
+    assert!(matches!(reply, Some(X11Event::ExtendedClipboard(bytes)) if bytes == caps));
+    let request = [0x02, 0, 0, 1];
+    assert!(clipboard.receive(&request).unwrap().reply.is_none());
+    let notify = [0x08, 0, 0, 1];
+    let reply = clipboard.receive(&notify).unwrap().reply;
+    assert!(matches!(reply, Some(X11Event::ExtendedClipboard(bytes)) if bytes == request));
+    // TigerVNC 可用 zlib 同步刷新结束消息，夹具独立编码“你好\r\nVNC\0”。
+    let provide = [
+        0x10, 0, 0, 1, 120, 156, 98, 96, 96, 224, 121, 178, 119, 193, 211, 165, 123, 121, 185, 194,
+        252, 156, 25, 0, 0, 0, 0, 255, 255,
+    ];
+    assert_eq!(
+        clipboard.receive(&provide).unwrap().remote.as_deref(),
+        Some("你好\nVNC")
+    );
+    assert!(clipboard.receive(&provide[..8]).is_err());
+    assert!(
+        matches!(clipboard.offer("本地\n剪贴板".into()).unwrap(), X11Event::ExtendedClipboard(bytes) if bytes == notify)
+    );
+    let Some(X11Event::ExtendedClipboard(packet)) = clipboard.receive(&request).unwrap().reply
+    else {
+        panic!("expected the explicitly offered text");
+    };
+    assert_eq!(
+        clipboard.receive(&packet).unwrap().remote.as_deref(),
+        Some("本地\n剪贴板")
+    );
+    assert!(clipboard.receive(&request).unwrap().reply.is_none());
+}
+
+/// 旧服务端使用 Latin-1，验证保真、换行归一化及超长或不支持字符的拒绝路径。
+#[test]
+fn legacy_clipboard_rejects_unrepresentable_text_and_normalizes_line_endings() {
+    use vnc::{
+        clipboard::{Clipboard, MAX_TEXT_BYTES},
+        X11Event,
+    };
+    let mut clipboard = Clipboard::default();
+    assert!(
+        matches!(clipboard.offer("café\r\nVNC".into()).unwrap(), X11Event::CopyText(text) if text == "café\nVNC")
+    );
+    assert!(clipboard.offer("你好".into()).is_err());
+    assert!(clipboard.offer("a\0b".into()).is_err());
+    assert!(clipboard.offer("a".repeat(MAX_TEXT_BYTES + 1)).is_err());
+    assert_eq!(
+        clipboard
+            .receive_legacy("é\r\n".into())
+            .unwrap()
+            .remote
+            .as_deref(),
+        Some("é\n")
+    );
+}
+
+/// 用始终失焦的窗口替身验证会话切换和迟到的失焦通知，测试不会接触系统剪贴板。
+#[tokio::test]
+async fn clipboard_focus_replacement_keeps_the_new_session_isolated() {
+    use crate::vnc_system_clipboard::SystemClipboard;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let bridge = Arc::new(SystemClipboard::default());
+    let calls = Arc::new(AtomicUsize::new(0));
+    // 若旧会话被错误地保留，查询即失败，且不会访问真实系统剪贴板。
+    bridge
+        .set_target(
+            "previous",
+            Some(Box::new(|| panic!("previous target must not be queried"))),
+        )
+        .unwrap();
+    let observed = Arc::clone(&calls);
+    // observed 归替身窗口所有；只统计新会话的查询，false 阻止原生访问。
+    bridge
+        .set_target(
+            "current",
+            Some(Box::new(move || {
+                observed.fetch_add(1, Ordering::Relaxed);
+                Ok(false)
+            })),
+        )
+        .unwrap();
+    bridge.set_target("previous", None).unwrap();
+    assert!(bridge.read("previous").await.unwrap().is_none());
+    assert!(bridge.read("current").await.unwrap().is_none());
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+}
+
+/// 在真实回环会话中验证负长度扩展消息的协商和请求；无窗口焦点时不碰系统剪贴板。
+#[tokio::test]
+async fn loopback_clipboard_capabilities_and_notify_use_signed_lengths() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (complete, completed) = tokio::sync::oneshot::channel();
+    // listener 与完成信号归假服务器所有；客户端最后关闭会话并等待 EOF。
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        assert!(handshake(&mut stream, false, false).await);
+        wait_for_refresh(&mut stream).await;
+        // ServerCutText: -8、文本能力及零主动发送限额。
+        stream
+            .write_all(&[3, 0, 0, 0, 255, 255, 255, 248, 0x1f, 0, 0, 1, 0, 0, 0, 0])
+            .await
+            .unwrap();
+        let mut caps = [0; 16];
+        stream.read_exact(&mut caps).await.unwrap();
+        assert_eq!(
+            caps,
+            [6, 0, 0, 0, 255, 255, 255, 248, 0x1f, 0, 0, 1, 0, 0, 0, 0]
+        );
+        // -4 的 Notify 声明有纯文本；客户端回复 Request，随后仍正常处理画面。
+        stream
+            .write_all(&[3, 0, 0, 0, 255, 255, 255, 252, 0x08, 0, 0, 1])
+            .await
+            .unwrap();
+        let mut request = [0; 12];
+        stream.read_exact(&mut request).await.unwrap();
+        assert_eq!(request, [6, 0, 0, 0, 255, 255, 255, 252, 0x02, 0, 0, 1]);
+        stream
+            .write_all(&[3, 0, 0, 0, 0, 0, 0, 1, 0xe9, 0, 0, 0, 0])
+            .await
+            .unwrap();
+        let mut refresh = [0; 10];
+        stream.read_exact(&mut refresh).await.unwrap();
+        assert_eq!(refresh, [3, 1, 0, 0, 0, 0, 0, 2, 0, 2]);
+        complete.send(()).unwrap();
+        let mut remaining = Vec::new();
+        stream.read_to_end(&mut remaining).await.unwrap();
+        assert!(remaining.is_empty());
+    });
+    let service = VncService::default();
+    service.open(request("clipboard-wire", port)).unwrap();
+    timeout(TEST_TIMEOUT, completed).await.unwrap().unwrap();
+    service.close("clipboard-wire").unwrap();
+    timeout(TEST_TIMEOUT, server).await.unwrap().unwrap();
 }
 
 /// 服务端同时提供无认证和密码时必须选择密码；拒绝结果使会话进入错误而不发送 ClientInit。

@@ -17,6 +17,7 @@ import {
   closeSession,
   pollFrame,
   sendInput,
+  setClipboardFocus,
   type VncInput,
 } from "./api";
 import { decodeFrame, type VncState } from "./model";
@@ -266,6 +267,39 @@ export default function VncViewport({
     }
   }, [active, releaseInputs, sessionId, fail, onState]);
 
+  /** 仅远端键盘捕获有焦点时允许同步；切换标签或窗口失焦时撤销。 */
+  useEffect(() => {
+    const keyboard = keyboardRef.current;
+    if (!keyboard || !active || !connected || readOnly) return;
+    let last = false;
+    /** focused 由当前 DOM 和窗口焦点决定；相同值不重复发 IPC。 */
+    const publish = (focused: boolean) => {
+      if (last === focused) return;
+      last = focused;
+      void setClipboardFocus(sessionId, focused).catch(
+        /** 焦点更新失败只记诊断，不影响输入和画面。 */ (error: unknown) => {
+          console.warn("VNC 剪贴板焦点更新失败", error);
+        },
+      );
+    };
+    /** 键盘获得焦点或窗口回来时确认仍是远端输入框。 */
+    const focus = () => publish(document.hasFocus() && document.activeElement === keyboard);
+    /** 不论焦点转向应用内还是应用外，都取消本会话资格。 */
+    const blur = () => publish(false);
+    keyboard.addEventListener("focus", focus);
+    keyboard.addEventListener("blur", blur);
+    window.addEventListener("focus", focus);
+    window.addEventListener("blur", blur);
+    focus();
+    return /** 移除监听并撤销仍由当前视图持有的焦点。 */ () => {
+      keyboard.removeEventListener("focus", focus);
+      keyboard.removeEventListener("blur", blur);
+      window.removeEventListener("focus", focus);
+      window.removeEventListener("blur", blur);
+      blur();
+    };
+  }, [active, connected, readOnly, sessionId]);
+
   /** 使用非 passive 原生监听拦截远端滚轮，仅在桌面已连接且允许输入时发送脉冲。 */
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -286,7 +320,7 @@ export default function VncViewport({
     return () => canvas.removeEventListener("wheel", wheel);
   }, [active, connected, readOnly, enqueue]);
 
-  /** 转发非组合键盘事件并阻止本地快捷键；macOS 锁定键独立于普通按键配对。 */
+  /** 转发键盘事件；普通粘贴的首个按下在后端同步文本，释放与重复仍保持原顺序。 */
   const handleKey = (
     event: KeyboardEvent<HTMLInputElement>,
     down: boolean,
@@ -302,7 +336,15 @@ export default function VncViewport({
     if (!events.length) return;
     event.preventDefault();
     event.stopPropagation();
-    for (const input of events) enqueue({ kind: "key", ...input });
+    const paste = down && !event.repeat && !event.altKey && !event.shiftKey
+      && (event.ctrlKey || event.metaKey) && event.code === "KeyV";
+    for (const input of events) {
+      if (paste && input.down && (input.key === 0x76 || input.key === 0x56)) {
+        enqueue({ kind: "paste", key: input.key });
+      } else {
+        enqueue({ kind: "key", ...input });
+      }
+    }
   };
 
   /** 将缩放后的鼠标位置反算为远端像素；捕获仅持续到全部鼠标按钮释放。 */

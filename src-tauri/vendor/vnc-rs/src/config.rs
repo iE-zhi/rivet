@@ -17,6 +17,8 @@ pub enum VncEncoding {
     DesktopSizePseudo = -223,
     LastRectPseudo = -224,
     ExtendedDesktopSizePseudo = -308,
+    /// 在 SetEncodings 中声明支持带 UTF-8 文本的剪贴板扩展。
+    ExtendedClipboardPseudo = 0xc0a1_e5ce_u32 as i32,
 }
 
 impl From<u32> for VncEncoding {

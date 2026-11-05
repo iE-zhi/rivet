@@ -1,6 +1,7 @@
 //! 独立 VNC 会话服务与 Tauri 命令；拥有 TCP/协议任务、有界输入队列和最新桌面。
 //! 仅支持直连标准 RFB，不访问 SSH 的连接、配置或会话状态。
 
+use crate::vnc_system_clipboard::{SystemClipboard, WindowFocus};
 use crate::{credential_store, vnc_apple_auth, vnc_frame::VncFrame, vnc_transport::VncTransport};
 use serde::Deserialize;
 use std::{
@@ -8,12 +9,13 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tauri::{ipc::Response, State};
+use tauri::{ipc::Response, State, Window};
 use tokio::{
     net::TcpStream,
     sync::{mpsc, watch, Notify},
     time::{sleep_until, timeout, Instant as TokioInstant},
 };
+use vnc::clipboard::{Clipboard, ClipboardUpdate};
 use vnc::{PixelFormat, VncClient, VncConnector, VncEncoding, VncEvent, X11Event};
 use zeroize::{Zeroize, Zeroizing};
 
@@ -72,6 +74,11 @@ impl Drop for VncOpenRequest {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) enum VncInput {
+    /// 正常粘贴键按下；先读取焦点会话的系统文本，再发送同一个远端按键。
+    Paste {
+        /// X11 的 v 或 V 键值；修饰键和释放事件仍走常规队列。
+        key: u32,
+    },
     /// X11 keysym 按下或释放事件。
     Key {
         /// 标准 X11 keysym 或 Unicode keysym，零值非法。
@@ -143,6 +150,14 @@ impl Drop for FramePollGuard<'_> {
 }
 
 impl SharedFrame {
+    /// 会话断开或超过取帧活跃期时拒绝剪贴板读写。
+    fn check_clipboard_active(&self) -> Result<(), String> {
+        if self.frame.state != 1 || self.last_poll.elapsed() >= VIEW_IDLE_TIMEOUT {
+            return Err("VNC 桌面当前未激活".into());
+        }
+        Ok(())
+    }
+
     /// 在会话锁内记录取帧时间；从闲置恢复时唤醒协议任务以补发待处理的刷新。
     fn mark_polled(&mut self) {
         let now = Instant::now();
@@ -206,6 +221,8 @@ struct VncSession {
 pub(crate) struct VncService {
     /// 会话 ID 到资源句柄的映射；关闭或应用退出时释放句柄触发取消。
     sessions: Mutex<HashMap<String, VncSession>>,
+    /// 应用内只允许一个 VNC 桌面拥有剪贴板焦点；协议任务共享此原生边界。
+    clipboard: Arc<SystemClipboard>,
 }
 
 /// 校验独立连接/会话标识，拒绝控制字符和空值。
@@ -315,7 +332,13 @@ impl VncService {
             },
         );
         // 任务独占请求中的密码、输入接收端和取消接收端；注册表移除后取消优先执行。
-        tauri::async_runtime::spawn(run_session(request, shared, receiver, cancelled));
+        tauri::async_runtime::spawn(run_session(
+            request,
+            shared,
+            receiver,
+            Arc::clone(&self.clipboard),
+            cancelled,
+        ));
         Ok(())
     }
 
@@ -400,6 +423,11 @@ impl VncService {
                     VncInput::Key { key, .. } if *key == 0 || *key > 0x0110_ffff => {
                         return Err("VNC 按键无效".into())
                     }
+                    VncInput::Paste { key }
+                        if ![u32::from(b'v'), u32::from(b'V')].contains(key) =>
+                    {
+                        return Err("VNC 粘贴按键无效".into())
+                    }
                     VncInput::Pointer { x, y, buttons }
                         if *x >= shared.frame.width
                             || *y >= shared.frame.height
@@ -430,6 +458,34 @@ impl VncService {
             .map_err(|_| "VNC 会话锁已损坏")?
             .remove(session_id);
         Ok(())
+    }
+
+    /// 记录当前键盘焦点；前端只在原有远程键盘捕获启停时调用。
+    ///
+    /// # 参数
+    /// - `session_id`：目标会话 ID；设置时必须已连接且可写。
+    /// - `has_focus`：Some 设置原生焦点查询，None 幂等清除当前会话的焦点。
+    /// # Errors
+    /// 无效会话、只读或锁失败时不设置焦点，不访问系统剪贴板。
+    pub(crate) fn set_clipboard_focus(
+        &self,
+        session_id: &str,
+        has_focus: Option<WindowFocus>,
+    ) -> Result<(), String> {
+        if has_focus.is_some() {
+            let sessions = self.sessions.lock().map_err(|_| "VNC 会话锁已损坏")?;
+            let session = sessions.get(session_id).ok_or("VNC 会话不存在")?;
+            if session.read_only {
+                return Err("VNC 会话为只读模式".into());
+            }
+            session
+                .shared
+                .lock()
+                .map_err(|_| "VNC 图像锁已损坏")?
+                .check_clipboard_active()?;
+            return self.clipboard.set_target(session_id, has_focus);
+        }
+        self.clipboard.set_target(session_id, None)
     }
 }
 
@@ -486,6 +542,33 @@ pub(crate) fn vnc_send_input(
     events: Vec<VncInput>,
 ) -> Result<(), String> {
     service.send(&session_id, events)
+}
+
+/// 同步键盘捕获焦点，只有其所属的本机窗口可以成为剪贴板目标。
+///
+/// # 参数
+/// - `service`：应用的 VNC 注册表。
+/// - `window`：发出 IPC 的窗口句柄，由 Tauri 注入。
+/// - `session_id`：当前活动会话的 ID。
+/// - `focused`：true 启用焦点，false 撤销该会话焦点。
+/// # Errors
+/// 会话无效、只读或锁损坏时返回错误。
+#[tauri::command]
+pub(crate) fn vnc_set_clipboard_focus(
+    service: State<'_, VncService>,
+    window: Window,
+    session_id: String,
+    focused: bool,
+) -> Result<(), String> {
+    // window 只由焦点任期持有；实际原生查询在剪贴板工作线程执行。
+    let has_focus = if focused {
+        let query: WindowFocus =
+            Box::new(move || window.is_focused().map_err(|error| error.to_string()));
+        Some(query)
+    } else {
+        None
+    };
+    service.set_clipboard_focus(&session_id, has_focus)
 }
 
 /// 幂等关闭并注销一个会话。
@@ -597,6 +680,7 @@ async fn connect(request: &mut VncOpenRequest) -> Result<VncClient, String> {
         .add_encoding(VncEncoding::Raw)
         .add_encoding(VncEncoding::DesktopSizePseudo)
         .add_encoding(VncEncoding::LastRectPseudo)
+        .add_encoding(VncEncoding::ExtendedClipboardPseudo)
         .build()
         .map_err(|error| error.to_string())?
         .try_start()
@@ -612,11 +696,13 @@ async fn connect(request: &mut VncOpenRequest) -> Result<VncClient, String> {
 /// - `request`：本任务拥有的配置和临时密码，不跨会话共享。
 /// - `shared`：短锁保护的最新桌面，锁不会跨 await。
 /// - `input`：有界输入接收端，任务结束后关闭。
+/// - `system_clipboard`：应用唯一的原生剪贴板边界，会话结束时撤销当前焦点。
 /// - `cancelled`：注册表移除句柄时关闭的取消通道。
 async fn run_session(
     mut request: VncOpenRequest,
     shared: Arc<Mutex<SharedFrame>>,
     mut input: mpsc::Receiver<Vec<VncInput>>,
+    system_clipboard: Arc<SystemClipboard>,
     mut cancelled: watch::Receiver<()>,
 ) {
     let connected = tokio::select! {
@@ -629,7 +715,7 @@ async fn run_session(
             let result = tokio::select! {
                 biased;
                 _ = cancelled.changed() => Ok(()),
-                result = drive(&client, &shared, &mut input) => result,
+                result = drive(&client, &shared, &mut input, &system_clipboard, &request.session_id) => result,
             };
             // 关闭引擎会释放网络/解码任务；清理失败保留为会话错误，不掩盖先前错误。
             let cleanup = timeout(INPUT_TIMEOUT, client.close()).await;
@@ -647,6 +733,9 @@ async fn run_session(
         Some(Err(error)) => Err(error),
         None => Ok(()),
     };
+    if let Err(error) = system_clipboard.set_target(&request.session_id, None) {
+        eprintln!("清理 VNC 剪贴板焦点失败：{error}");
+    }
     match shared.lock() {
         Ok(mut current) => {
             match result {
@@ -668,6 +757,8 @@ async fn run_session(
 /// - `client`：已连接的协议引擎；取消读取会释放引擎锁，调用方负责关闭。
 /// - `shared`：当前会话桌面和前端活动时间，锁仅保护同步像素操作。
 /// - `input`：当前任务唯一输入接收端，关闭后正常结束。
+/// - `system_clipboard`：共享原生剪贴板，只有焦点会话可读写。
+/// - `session_id`：用于限定本次系统剪贴板操作的会话 ID。
 ///
 /// # Errors
 /// 远端断开、解码失败、像素越界或输入超时终止会话；调用方负责关闭引擎。
@@ -675,6 +766,8 @@ async fn drive(
     client: &VncClient,
     shared: &Mutex<SharedFrame>,
     input: &mut mpsc::Receiver<Vec<VncInput>>,
+    system_clipboard: &Arc<SystemClipboard>,
+    session_id: &str,
 ) -> Result<(), String> {
     let view_resumed = {
         let mut current = shared.lock().map_err(|_| "VNC 图像锁已损坏")?;
@@ -684,6 +777,11 @@ async fn drive(
     let mut next_refresh = TokioInstant::now();
     // 初始整屏由协议引擎请求。后续每批更新头触发一次增量请求，尺寸变化可要求整屏。
     let mut refresh = None;
+    let mut clipboard = Clipboard::default();
+    // 无效扩展载荷只诊断一次，避免远端持续刷日志；画面仍可继续。
+    let mut clipboard_warning = false;
+    // 剪贴板访问失败只保留一次诊断；之后仍转发原始粘贴按键。
+    let mut system_clipboard_warning = false;
     loop {
         let can_refresh = refresh.is_some()
             && shared
@@ -708,6 +806,15 @@ async fn drive(
                 for event in batch {
                     let event = match event {
                         VncInput::Key { key, down } => X11Event::KeyEvent((key, down).into()),
+                        VncInput::Paste { key } => {
+                            if let Err(error) = offer_system_clipboard(client, &mut clipboard, system_clipboard, session_id).await {
+                                if !system_clipboard_warning {
+                                    system_clipboard_warning = true;
+                                    eprintln!("VNC 本地剪贴板未同步：{error}");
+                                }
+                            }
+                            X11Event::KeyEvent((key, true).into())
+                        }
                         VncInput::Pointer { x, y, buttons } => X11Event::PointerEvent((x, y, buttons).into()),
                     };
                     timeout(INPUT_TIMEOUT, client.input(event)).await.map_err(|_| "VNC 输入超时")?.map_err(|error| error.to_string())?;
@@ -715,11 +822,33 @@ async fn drive(
             }
             event = client.recv_event() => {
                 let event = event.map_err(|error| format!("VNC 连接已结束：{error}"))?;
-                if let Some(request) = apply_frame_event(shared, event)? {
-                    // 尺寸变化的整屏请求优先于尚未发出的增量请求。
-                    if !matches!(refresh, Some(X11Event::FullRefresh)) {
-                        refresh = Some(request);
+                let event = match event {
+                    VncEvent::Text(text) => clipboard.receive_legacy(text),
+                    VncEvent::ExtendedClipboard(packet) => clipboard.receive(&packet),
+                    event => {
+                        if let Some(request) = apply_frame_event(shared, event)? {
+                            // 尺寸变化的整屏请求优先于尚未发出的增量请求。
+                            if !matches!(refresh, Some(X11Event::FullRefresh)) {
+                                refresh = Some(request);
+                            }
+                        }
+                        continue;
                     }
+                };
+                match event {
+                    Ok(update) => {
+                        if let Err(error) = apply_clipboard_update(client, system_clipboard, session_id, update).await {
+                            if !system_clipboard_warning {
+                                system_clipboard_warning = true;
+                                eprintln!("VNC 远端剪贴板未同步：{error}");
+                            }
+                        }
+                    }
+                    Err(error) if !clipboard_warning => {
+                        clipboard_warning = true;
+                        eprintln!("VNC 剪贴板消息已拒绝：{error}");
+                    }
+                    Err(_) => {}
                 }
             }
             _ = sleep_until(next_refresh), if can_refresh && refresh.is_some() => {}
@@ -727,6 +856,69 @@ async fn drive(
             _ = view_resumed.notified() => {}
         }
     }
+}
+
+/// 在有限等待内把剪贴板消息交给协议写队列；网络错误向调用者报告。
+///
+/// # 参数
+/// - `client`：当前会话的协议引擎。
+/// - `event`：移交所有权的剪贴板消息。
+/// # Errors
+/// 队列、连接或超时错误，不重发消息。
+async fn write_clipboard(client: &VncClient, event: X11Event) -> Result<(), String> {
+    timeout(INPUT_TIMEOUT, client.input(event))
+        .await
+        .map_err(|_| "VNC 剪贴板发送超时")?
+        .map_err(|error| error.to_string())
+}
+
+/// 在远端收到粘贴键之前发布用户本机的纯文本；空或非文本保留远端原来的行为。
+///
+/// # 参数
+/// - `client`：当前会话引擎。
+/// - `clipboard`：当前会话的协议协商及已授权文本。
+/// - `system`：原生剪贴板边界，失焦时不读取。
+/// - `session_id`：用户实际按下粘贴键的会话。
+/// # Errors
+/// 原生读取、协议编码或队列失败均返回错误，调用方仍转发原始按键。
+async fn offer_system_clipboard(
+    client: &VncClient,
+    clipboard: &mut Clipboard,
+    system: &Arc<SystemClipboard>,
+    session_id: &str,
+) -> Result<(), String> {
+    if let Some(text) = system
+        .read(session_id)
+        .await?
+        .filter(|text| !text.is_empty())
+    {
+        write_clipboard(client, clipboard.offer(text)?).await?;
+    }
+    Ok(())
+}
+
+/// 发送协议响应并把收到的非空纯文本交给系统；空内容不覆盖本机剪贴板。
+///
+/// # 参数
+/// - `client`：当前会话引擎。
+/// - `system`：原生剪贴板边界，失焦时不写入。
+/// - `session_id`：远端文本所属会话。
+/// - `update`：移交的已校验文本变更和可选响应。
+/// # Errors
+/// 系统写入或协议发送失败向会话任务报告。
+async fn apply_clipboard_update(
+    client: &VncClient,
+    system: &Arc<SystemClipboard>,
+    session_id: &str,
+    update: ClipboardUpdate,
+) -> Result<(), String> {
+    if let Some(reply) = update.reply {
+        write_clipboard(client, reply).await?;
+    }
+    if let Some(text) = update.remote {
+        system.write(session_id, text).await?;
+    }
+    Ok(())
 }
 
 /// 处理更新边界或矩形；仅开始和尺寸变化可安排下一次刷新。
@@ -775,7 +967,7 @@ fn apply_frame_event(
         }
         VncEvent::Error(error) => Err(format!("VNC 协议错误：{error}")),
         VncEvent::JpegImage(_, _) => Err("服务端发送了未协商的 JPEG 编码".into()),
-        // 光标和剪贴板扩展未协商；不修改本机光标或剪贴板。
+        // 此处仅处理画面，未协商的光标事件不修改本机光标。
         _ => Ok(None),
     }
 }

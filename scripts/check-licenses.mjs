@@ -4,13 +4,16 @@ import { spawnSync } from "node:child_process";
 
 /** 允许的宽松 SPDX 许可证集合，新增未识别许可证时校验失败。 */
 const allowed = new Set(["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib"]);
-/** 用户已批准的精确包版本例外；许可证标识也必须与审查时一致。 */
+/** 已审查的精确包版本例外；许可证标识也必须与审查时一致。 */
 const approvedExceptions = new Map([
   // 用户已批准 Mermaid 的精确间接依赖，分发时附带许可与源码链接。
   ["elkjs@0.9.3", "EPL-2.0"],
   ["robust-predicates@3.0.3", "Unlicense"],
   // VNC 协议引擎的固定间接依赖；已核对其公有领域授权全文。
   ["async_io_stream@0.3.3", "Unlicense"],
+  // arboard 在 Windows 的固定间接依赖，分发随附 Boost 许可全文。
+  ["clipboard-win@5.4.3", "BSL-1.0"],
+  ["error-code@3.4.0", "BSL-1.0"],
   ["@fontsource-variable/jetbrains-mono@5.3.0", "OFL-1.1"],
   ["lightningcss-darwin-arm64@1.33.0", "MPL-2.0"],
   ["lightningcss@1.33.0", "MPL-2.0"],
