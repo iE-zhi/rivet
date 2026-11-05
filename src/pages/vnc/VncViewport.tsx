@@ -30,6 +30,8 @@ const MAX_QUEUED_INPUTS = 128;
 const INPUT_BATCH_SIZE = 64;
 /** Ctrl+Alt+Delete 的标准左侧 X11 keysym。 */
 const SECURE_ATTENTION_KEYS = [0xffe3, 0xffe9, 0xffff];
+/** 鼠标进入窗格顶部十个 CSS 像素时展开操作栏。 */
+const TOOLBAR_EDGE_PX = 10;
 /** 当前 WebView 是否使用 macOS 锁定键事件语义，不改变其他平台的按键配对。 */
 const MACOS_KEYBOARD = navigator.platform.startsWith("Mac");
 
@@ -258,10 +260,11 @@ export default function VncViewport({
       pump.dispose();
   }, [sessionId, fail, onState]);
 
-  /** 可见性变化只暂停或恢复同一个调度器；隐藏时释放已按下的键鼠。 */
+  /** 可见性变化只暂停或恢复同一个调度器；隐藏时收起工具栏并释放键鼠。 */
   useEffect(() => {
     framePump.current?.setActive(active);
     if (!active) {
+      viewportRef.current?.removeAttribute("data-tools-at-edge");
       keyboardRef.current?.blur();
       releaseInputs();
     }
@@ -408,6 +411,20 @@ export default function VncViewport({
     void operation?.catch((error: unknown) => setToolError(String(error)));
   };
 
+  /** event 为窗格内的指针移动；仅切换顶部悬停状态，保留画布原有的键鼠转发。 */
+  const updateToolbarHover = (event: PointerEvent<HTMLDivElement>) => {
+    const viewport = event.currentTarget;
+    if (event.pointerType !== "mouse" || event.buttons !== 0) {
+      viewport.removeAttribute("data-tools-at-edge");
+      return;
+    }
+    const distanceFromTop = event.clientY - viewport.getBoundingClientRect().top;
+    viewport.toggleAttribute(
+      "data-tools-at-edge",
+      distanceFromTop >= 0 && distanceFromTop < TOOLBAR_EDGE_PX,
+    );
+  };
+
   const scale =
     fit && screen.width
       ? Math.min(
@@ -417,50 +434,47 @@ export default function VncViewport({
         )
       : 1;
   return (
-    <div ref={viewportRef} className="vnc-viewport">
-      <div className="vnc-notch">
+    <div
+      ref={viewportRef}
+      className="vnc-viewport"
+      onPointerEnter={updateToolbarHover}
+      onPointerMove={updateToolbarHover}
+      onPointerLeave={/** event 离开窗格时清除鼠标展开状态，键盘焦点由样式独立处理。 */ (event) =>
+        event.currentTarget.removeAttribute("data-tools-at-edge")
+      }
+    >
+      <div
+        className="vnc-pane-tools"
+        role="toolbar"
+        aria-label={zh ? "远程桌面操作" : "Remote desktop controls"}
+      >
+        <span>
+          {screen.width ? `${screen.width} × ${screen.height}` : ""}
+          {readOnly ? (zh ? " · 只读" : " · View only") : ""}
+        </span>
+        <Button
+          variant="secondary"
+          onClick={/** 仅切换本地画布缩放，不请求远端改变桌面尺寸。 */ () => setFit((value) => !value)}
+          aria-pressed={fit}
+        >
+          {fit ? (zh ? "适应窗口" : "Fit") : "1:1"}
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={secureAttention}
+          disabled={!connected || readOnly}
+        >
+          Ctrl+Alt+Del
+        </Button>
         <button
           type="button"
-          className="vnc-notch-handle"
-          aria-label={zh ? "远程桌面操作" : "Remote desktop controls"}
-          title={zh ? "远程桌面操作" : "Remote desktop controls"}
-          onClick={/** 点击或触摸后保留焦点，使操作栏在指针离开时仍可操作。 */ (event) => event.currentTarget.focus()}
+          className="vnc-icon-button"
+          title={zh ? "全屏" : "Full screen"}
+          aria-label={zh ? "全屏" : "Full screen"}
+          onClick={fullscreen}
         >
-          <span aria-hidden="true" />
+          <SvgIcon name="display" />
         </button>
-        <div
-          className="vnc-pane-tools"
-          role="toolbar"
-          aria-label={zh ? "远程桌面操作" : "Remote desktop controls"}
-        >
-          <span>
-            {screen.width ? `${screen.width} × ${screen.height}` : ""}
-            {readOnly ? (zh ? " · 只读" : " · View only") : ""}
-          </span>
-          <Button
-            variant="secondary"
-            onClick={/** 仅切换本地画布缩放，不请求远端改变桌面尺寸。 */ () => setFit((value) => !value)}
-            aria-pressed={fit}
-          >
-            {fit ? (zh ? "适应窗口" : "Fit") : "1:1"}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={secureAttention}
-            disabled={!connected || readOnly}
-          >
-            Ctrl+Alt+Del
-          </Button>
-          <button
-            type="button"
-            className="vnc-icon-button"
-            title={zh ? "全屏" : "Full screen"}
-            aria-label={zh ? "全屏" : "Full screen"}
-            onClick={fullscreen}
-          >
-            <SvgIcon name="display" />
-          </button>
-        </div>
       </div>
       {toolError && (
         <div className="vnc-error" role="alert">

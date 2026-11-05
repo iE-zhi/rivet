@@ -155,45 +155,16 @@
   flex: 1;
   flex-direction: column;
 }
-/* 刘海覆盖桌面，不占布局高度；透明区域与收起的操作栏不拦截远端输入。 */
-.vnc-notch {
+/* 操作栏悬浮在顶部触发范围内，收起时不参与指针命中，按钮仍可用 Tab 到达。 */
+.vnc-pane-tools {
   position: absolute;
   z-index: 2;
-  top: 0;
+  top: 4px;
   left: 50%;
   display: flex;
   width: max-content;
   max-width: calc(100% - 16px);
-  flex-direction: column;
-  align-items: center;
   transform: translateX(-50%);
-  pointer-events: none;
-}
-.vnc-notch-handle {
-  display: grid;
-  width: 64px;
-  height: 14px;
-  flex: 0 0 14px;
-  place-items: center;
-  padding: 0;
-  border: 1px solid var(--r-border);
-  border-top: 0;
-  border-radius: 0 0 9px 9px;
-  background: var(--r-surface);
-  color: var(--r-subtle);
-  box-shadow: 0 2px 6px rgb(0 0 0 / 12%);
-  cursor: pointer;
-  pointer-events: auto;
-}
-.vnc-notch-handle > span {
-  width: 24px;
-  height: 3px;
-  border-radius: 2px;
-  background: currentColor;
-}
-.vnc-pane-tools {
-  display: flex;
-  max-width: 100%;
   align-items: center;
   gap: 5px;
   padding: 6px;
@@ -202,17 +173,14 @@
   background: var(--r-surface);
   box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
   opacity: 0;
-  visibility: hidden;
   pointer-events: none;
-  transition:
-    opacity var(--r-overlay-fade-duration) ease,
-    visibility var(--r-overlay-fade-duration) ease;
+  transition: opacity var(--r-overlay-fade-duration) ease;
 }
-/* 悬停和键盘焦点共享展开状态；离开并失焦后自动收起，无定时器。 */
-.vnc-notch:hover .vnc-pane-tools,
-.vnc-notch:focus-within .vnc-pane-tools {
+/* 指针进入操作栏后保持展开；只有键盘导航焦点会在离开时保留展开状态。 */
+.vnc-viewport[data-tools-at-edge] > .vnc-pane-tools,
+.vnc-pane-tools:hover,
+.vnc-pane-tools:has(:focus-visible) {
   opacity: 1;
-  visibility: visible;
   pointer-events: auto;
 }
 .vnc-pane-tools > span {
